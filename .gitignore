@@ -1,0 +1,13 @@
+# Flutter
+client/**/build/
+client/**/.dart_tool/
+client/**/.flutter-plugins
+client/**/.flutter-plugins-dependencies
+
+# Node backend
+server/**/node_modules/
+server/**/.env
+
+# OS
+.DS_Store
+Thumbs.db
