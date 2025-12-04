@@ -1,6 +1,10 @@
 const Project = require("../models/Project");
+const Contract = require("../models/Contract");
+const { generateBoqForProject } = require("../utils/boq.");
 
+// =======================
 // إنشاء مشروع جديد (client)
+// =======================
 exports.createProject = async (req, res) => {
   try {
     const { title, description, location, area, floors, finishingLevel } =
@@ -27,11 +31,14 @@ exports.createProject = async (req, res) => {
       project,
     });
   } catch (err) {
+    console.error("createProject error:", err);
     res.status(500).json({ error: err.message });
   }
 };
 
-// مشاريعي (العميل)
+// =======================
+// مشاريعي (client)
+// =======================
 exports.getMyProjects = async (req, res) => {
   try {
     const projects = await Project.find({ owner: req.user._id })
@@ -40,11 +47,14 @@ exports.getMyProjects = async (req, res) => {
 
     res.json(projects);
   } catch (err) {
+    console.error("getMyProjects error:", err);
     res.status(500).json({ error: err.message });
   }
 };
 
+// =======================
 // المشاريع المفتوحة (للمقاولين)
+// =======================
 exports.getOpenProjects = async (req, res) => {
   try {
     const projects = await Project.find({
@@ -56,11 +66,14 @@ exports.getOpenProjects = async (req, res) => {
 
     res.json(projects);
   } catch (err) {
+    console.error("getOpenProjects error:", err);
     res.status(500).json({ error: err.message });
   }
 };
 
+// =======================
 // مشروع معيّن
+// =======================
 exports.getProjectById = async (req, res) => {
   try {
     const project = await Project.findById(req.params.projectId)
@@ -74,16 +87,14 @@ exports.getProjectById = async (req, res) => {
 
     res.json(project);
   } catch (err) {
+    console.error("getProjectById error:", err);
     res.status(500).json({ error: err.message });
   }
 };
 
-//
-// ========================= OFFERS =========================
-//
-
-// المقاول يقدّم عرض على مشروع معيّن
-// POST /api/projects/:projectId/offers
+// =======================
+// المقاول يقدّم عرض على مشروع
+// =======================
 exports.createOffer = async (req, res) => {
   try {
     const { price, message } = req.body;
@@ -98,14 +109,13 @@ exports.createOffer = async (req, res) => {
       return res.status(404).json({ message: "Project not found" });
     }
 
-    // لازم المشروع يكون مفتوح
     if (project.status !== "open") {
       return res
         .status(400)
         .json({ message: "Offers are only allowed on open projects" });
     }
 
-    // ممنوع نفس المقاول يقدم أكثر من عرض على نفس المشروع
+    // ممنوع نفس المقاول يقدم عرضين على نفس المشروع
     const existing = project.offers.find(
       (o) => o.contractor.toString() === req.user._id.toString()
     );
@@ -125,12 +135,14 @@ exports.createOffer = async (req, res) => {
 
     res.status(201).json({ message: "Offer submitted", project });
   } catch (err) {
+    console.error("createOffer error:", err);
     res.status(500).json({ error: err.message });
   }
 };
 
-// العميل يشوف كل العروض على مشروعه
-// GET /api/projects/:projectId/offers
+// =======================
+// العميل يشوف العروض على مشروعه
+// =======================
 exports.getProjectOffers = async (req, res) => {
   try {
     const { projectId } = req.params;
@@ -143,19 +155,20 @@ exports.getProjectOffers = async (req, res) => {
       return res.status(404).json({ message: "Project not found" });
     }
 
-    // تأكد إنه صاحب المشروع
     if (project.owner._id.toString() !== req.user._id.toString()) {
       return res.status(403).json({ message: "Not owner of this project" });
     }
 
     res.json(project.offers);
   } catch (err) {
+    console.error("getProjectOffers error:", err);
     res.status(500).json({ error: err.message });
   }
 };
 
-// العميل يقبل عرض معيّن
-// PATCH /api/projects/:projectId/offers/:offerId/accept
+// =======================
+// العميل يقبل عرض معيّن + إنشاء عقد
+// =======================
 exports.acceptOffer = async (req, res) => {
   try {
     const { projectId, offerId } = req.params;
@@ -165,7 +178,6 @@ exports.acceptOffer = async (req, res) => {
       return res.status(404).json({ message: "Project not found" });
     }
 
-    // تأكد إنه صاحب المشروع
     if (project.owner.toString() !== req.user._id.toString()) {
       return res.status(403).json({ message: "Not owner of this project" });
     }
@@ -175,11 +187,9 @@ exports.acceptOffer = async (req, res) => {
       return res.status(404).json({ message: "Offer not found" });
     }
 
-    // تعيين المقاول للمشروع
     project.contractor = offer.contractor;
     project.status = "in_progress";
 
-    // تحديث حالة العروض
     project.offers.forEach((o) => {
       if (o._id.toString() === offerId.toString()) {
         o.status = "accepted";
@@ -190,8 +200,75 @@ exports.acceptOffer = async (req, res) => {
 
     await project.save();
 
-    res.json({ message: "Offer accepted", project });
+    const contract = await Contract.create({
+      project: project._id,
+      client: project.owner,
+      contractor: offer.contractor,
+      agreedPrice: offer.price,
+      terms: offer.message || "",
+      status: "active",
+      startDate: new Date(),
+    });
+
+    res.json({
+      message: "Offer accepted and contract created",
+      project,
+      contract,
+    });
   } catch (err) {
+    console.error("acceptOffer error:", err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// =======================
+// رفع مخطط + Mock AI + BOQ
+// =======================
+exports.uploadPlanAndEstimate = async (req, res) => {
+  try {
+    const { projectId } = req.params;
+
+    const project = await Project.findById(projectId);
+    if (!project) {
+      return res.status(404).json({ message: "Project not found" });
+    }
+
+    if (project.owner.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: "Not owner of this project" });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ message: "Plan file is required" });
+    }
+
+    project.planFile = req.file.path;
+
+    // Mock AI: لاحقاً بتستبدله باستدعاء حقيقي لـ Vision
+    const mockAiResult = {
+      totalArea: project.area || 180,
+      floors: project.floors || 1,
+      rooms: 6,
+      bathrooms: 3,
+    };
+
+    project.planAnalysis = mockAiResult;
+    project.area = mockAiResult.totalArea;
+    project.floors = mockAiResult.floors;
+
+    const estimation = generateBoqForProject(project);
+    project.estimation = estimation;
+
+    await project.save();
+
+    res.json({
+      message:
+        "Plan uploaded, mock AI analysis applied and BOQ estimation calculated.",
+      planAnalysis: project.planAnalysis,
+      estimation: project.estimation,
+      planFileUrl: `/uploads/${req.file.filename}`,
+    });
+  } catch (err) {
+    console.error("uploadPlanAndEstimate error:", err);
     res.status(500).json({ error: err.message });
   }
 };

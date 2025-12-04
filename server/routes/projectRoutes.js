@@ -1,5 +1,7 @@
 const express = require("express");
 const router = express.Router();
+const path = require("path");
+const multer = require("multer");
 
 const {
   createProject,
@@ -9,6 +11,7 @@ const {
   createOffer,
   getProjectOffers,
   acceptOffer,
+  uploadPlanAndEstimate,
 } = require("../controllers/projectController");
 
 const {
@@ -17,7 +20,29 @@ const {
   contractorOnly,
 } = require("../middleware/authMiddleWare");
 
-// إنشاء مشروع (client فقط)
+// إعداد التخزين لملفات المخططات
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, "uploads/plans/"),
+  filename: (req, file, cb) =>
+    cb(
+      null,
+      Date.now() +
+        "-" +
+        Math.round(Math.random() * 1e9) +
+        path.extname(file.originalname)
+    ),
+});
+
+const planUpload = multer({
+  storage,
+  fileFilter: (req, file, cb) => {
+    const allowed = ["image/png", "image/jpeg", "application/pdf"];
+    if (allowed.includes(file.mimetype)) cb(null, true);
+    else cb(new Error("Invalid file type"), false);
+  },
+});
+
+// إنشاء مشروع جديد (client فقط)
 router.post("/", protect, clientOnly, createProject);
 
 // مشاريعي (client)
@@ -26,10 +51,13 @@ router.get("/my", protect, clientOnly, getMyProjects);
 // المشاريع المفتوحة (contractor)
 router.get("/open", protect, contractorOnly, getOpenProjects);
 
-// المقاول يقدّم عرض على مشروع
+// مشروع معيّن
+router.get("/:projectId", protect, getProjectById);
+
+// المقاول يقدّم عرض
 router.post("/:projectId/offers", protect, contractorOnly, createOffer);
 
-// العميل يشوف العروض على مشروعه
+// العميل يشوف العروض
 router.get("/:projectId/offers", protect, clientOnly, getProjectOffers);
 
 // العميل يقبل عرض معيّن
@@ -40,7 +68,13 @@ router.patch(
   acceptOffer
 );
 
-// مشروع معيّن (أي مستخدم مسجّل يقدر يشوف التفاصيل)
-router.get("/:projectId", protect, getProjectById);
+// رفع مخطط + Mock AI + BOQ
+router.post(
+  "/:projectId/plan",
+  protect,
+  clientOnly,
+  planUpload.single("planFile"),
+  uploadPlanAndEstimate
+);
 
 module.exports = router;
