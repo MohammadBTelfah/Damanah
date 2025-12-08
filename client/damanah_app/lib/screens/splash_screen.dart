@@ -14,7 +14,7 @@ class _SplashScreenState extends State<SplashScreen> {
     super.initState();
 
     // بعد ثانيتين انتقل للصفحة التالية (لاحقًا بتتغير للـ Login Page)
-    Timer(const Duration(seconds: 4), () {
+    Timer(const Duration(seconds: 2), () {
       Navigator.pushReplacementNamed(context, "/role");
     });
   }
