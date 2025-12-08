@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'login_screen.dart';
+
 
 class AuthChoiceScreen extends StatelessWidget {
   final String role;
@@ -97,7 +99,14 @@ class AuthChoiceScreen extends StatelessWidget {
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
-                      onPressed: () {},
+onPressed: () {
+  Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (_) => LoginScreen(role: role),
+    ),
+  );
+},
                       style: ElevatedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 16),
                         backgroundColor: const Color(0xFF16C79A),
