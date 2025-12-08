@@ -105,6 +105,7 @@ function estimateTiles(area) {
   };
 }
 
+
 // 🔹 توليد BOQ كامل لمشروع واحد
 function generateBoqForProject(project) {
   const area = project.area || 0;
