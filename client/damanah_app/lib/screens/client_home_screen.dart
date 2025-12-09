@@ -6,7 +6,7 @@ class ClientHomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const bgColor = Color(0xFF0F261F);
-    const cardColor = Color(0xFF1B3A35);
+    const cardColor = Color(0xFF0F261F);
     const accentColor = Color(0xFF8BE3B5);
 
     return Scaffold(

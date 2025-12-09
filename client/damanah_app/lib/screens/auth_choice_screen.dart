@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'login_screen.dart';
-
+import 'client_register_screen.dart'; // 👈 مهم
 
 class AuthChoiceScreen extends StatelessWidget {
   final String role;
@@ -49,7 +49,7 @@ class AuthChoiceScreen extends StatelessWidget {
               child: Center(
                 child: Image.asset(
                   "assets/images/logo.png",
-                  height: 90, // ← رفعت الحجم قليلاً
+                  height: 90,
                   fit: BoxFit.contain,
                 ),
               ),
@@ -71,9 +71,7 @@ class AuthChoiceScreen extends StatelessWidget {
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-
                   const SizedBox(height: 12),
-
                   Text(
                     isClient
                         ? "Find the right professional for your home project."
@@ -99,14 +97,14 @@ class AuthChoiceScreen extends StatelessWidget {
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
-onPressed: () {
-  Navigator.push(
-    context,
-    MaterialPageRoute(
-      builder: (_) => LoginScreen(role: role),
-    ),
-  );
-},
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => LoginScreen(role: role),
+                          ),
+                        );
+                      },
                       style: ElevatedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 16),
                         backgroundColor: const Color(0xFF16C79A),
@@ -132,10 +130,31 @@ onPressed: () {
                   SizedBox(
                     width: double.infinity,
                     child: OutlinedButton(
-                      onPressed: () {},
+                      onPressed: () {
+                        if (isClient) {
+                          // 🧑‍💼 تسجيل العميل
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const ClientRegisterScreen(),
+                            ),
+                          );
+                        } else {
+                          // 👷‍♂️ لاحقاً نعمل شاشة Register خاصة بالمقاول
+                          // حالياً ممكن نوديه لنفس اللوجين أو نخليها TODO
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => LoginScreen(role: role),
+                            ),
+                          );
+                        }
+                      },
                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 16),
-                        side: BorderSide(color: Colors.white.withOpacity(0.25)),
+                        side: BorderSide(
+                          color: Colors.white.withOpacity(0.25),
+                        ),
                         backgroundColor: Colors.white.withOpacity(0.06),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(40),
