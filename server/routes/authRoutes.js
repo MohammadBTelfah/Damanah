@@ -34,6 +34,7 @@ router.post(
   upload.fields([
     { name: "identityDocument", maxCount: 1 },
     { name: "contractorDocument", maxCount: 1 },
+    { name: "profileImage", maxCount: 1 },
   ]),
   register
 );

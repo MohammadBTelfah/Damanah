@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+
 import 'login_screen.dart';
-import 'client_register_screen.dart'; // 👈 مهم
+import 'client_register_screen.dart';
+import 'contractor_register_screen.dart'; // ✅ مهم
 
 class AuthChoiceScreen extends StatelessWidget {
   final String role;
@@ -126,13 +128,12 @@ class AuthChoiceScreen extends StatelessWidget {
 
                   const SizedBox(height: 14),
 
-                  // Sign up button
+                  // ✅ Sign up button (معدّل)
                   SizedBox(
                     width: double.infinity,
                     child: OutlinedButton(
                       onPressed: () {
                         if (isClient) {
-                          // 🧑‍💼 تسجيل العميل
                           Navigator.push(
                             context,
                             MaterialPageRoute(
@@ -140,12 +141,10 @@ class AuthChoiceScreen extends StatelessWidget {
                             ),
                           );
                         } else {
-                          // 👷‍♂️ لاحقاً نعمل شاشة Register خاصة بالمقاول
-                          // حالياً ممكن نوديه لنفس اللوجين أو نخليها TODO
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (_) => LoginScreen(role: role),
+                              builder: (_) => const ContractorRegisterScreen(),
                             ),
                           );
                         }

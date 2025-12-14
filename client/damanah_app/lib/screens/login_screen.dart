@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import 'client_home_screen.dart';
+import 'client_register_screen.dart';
+import 'contractor_register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
-  final String role; // "client" أو "contractor"
+  final String role; // 'client' أو 'contractor'
 
   const LoginScreen({super.key, required this.role});
 
@@ -44,9 +46,8 @@ class _LoginScreenState extends State<LoginScreen> {
       ..showSnackBar(snackBar);
   }
 
+  // ================= LOGIN =================
   Future<void> _handleLogin() async {
-    debugPrint('Login button pressed');
-
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
@@ -57,14 +58,10 @@ class _LoginScreenState extends State<LoginScreen> {
         password: _passwordController.text.trim(),
       );
 
-      debugPrint('Login response: $res');
-
       if (!mounted) return;
 
-      // نجاح
       _showTopSnackBar("Login successful", Colors.green);
 
-      // بعد شوي انقل لصفحة الـ Home للـ Client
       Future.delayed(const Duration(milliseconds: 1200), () {
         if (!mounted) return;
         Navigator.pushReplacement(
@@ -76,12 +73,28 @@ class _LoginScreenState extends State<LoginScreen> {
       });
     } catch (e) {
       if (!mounted) return;
-      debugPrint('Login error: $e');
       _showTopSnackBar("Login failed", Colors.red);
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  // ================= SIGN UP NAVIGATION =================
+  void _goToSignup() {
+    if (widget.role == 'client') {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => const ClientRegisterScreen(),
+        ),
+      );
+    } else {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => const ContractorRegisterScreen(),
+        ),
+      );
     }
   }
 
@@ -96,7 +109,7 @@ class _LoginScreenState extends State<LoginScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // AppBar بسيط
+            // AppBar
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: Row(
@@ -126,7 +139,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
             const SizedBox(height: 24),
 
-            // عنوان Welcome back
+            // Title
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 24),
               child: Align(
@@ -144,7 +157,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
             const SizedBox(height: 24),
 
-            // الفورم
+            // Form
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -160,8 +173,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           filled: true,
                           fillColor: inputFill,
                           hintText: "Email",
-                          hintStyle:
-                              const TextStyle(color: Colors.white54),
+                          hintStyle: const TextStyle(color: Colors.white54),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
                             borderSide: BorderSide.none,
@@ -193,8 +205,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           filled: true,
                           fillColor: inputFill,
                           hintText: "Password",
-                          hintStyle:
-                              const TextStyle(color: Colors.white54),
+                          hintStyle: const TextStyle(color: Colors.white54),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
                             borderSide: BorderSide.none,
@@ -216,39 +227,15 @@ class _LoginScreenState extends State<LoginScreen> {
                         },
                       ),
 
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 24),
 
-                      // Forgot password
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: TextButton(
-                          onPressed: () {
-                            // TODO: Forgot password screen
-                          },
-                          style: TextButton.styleFrom(
-                            padding: EdgeInsets.zero,
-                          ),
-                          child: const Text(
-                            "Forgot password?",
-                            style: TextStyle(
-                              color: Colors.white70,
-                              decoration: TextDecoration.underline,
-                            ),
-                          ),
-                        ),
-                      ),
-
-                      const SizedBox(height: 16),
-
-                      // زر Login
+                      // Login button
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton(
                           onPressed: _isLoading ? null : _handleLogin,
                           style: ElevatedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(
-                              vertical: 16,
-                            ),
+                            padding: const EdgeInsets.symmetric(vertical: 16),
                             backgroundColor: primaryButton,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(40),
@@ -277,11 +264,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
                       const SizedBox(height: 24),
 
-                      // Don't have an account?
-                      TextButton(
-                        onPressed: () {
-                          // TODO: Go to Sign up
-                        },
+                      // Sign up
+                      GestureDetector(
+                        onTap: _goToSignup,
                         child: const Text(
                           "Don't have an account? Sign up",
                           style: TextStyle(
