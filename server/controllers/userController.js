@@ -17,11 +17,17 @@ exports.updateProfile = async (req, res) => {
     const allowed = ["name", "phone"];
     const updates = {};
 
+    // fields العادية
     Object.keys(req.body).forEach((key) => {
       if (allowed.includes(key)) {
         updates[key] = req.body[key];
       }
     });
+
+    // ✅ صورة البروفايل (multer single)
+    if (req.file) {
+      updates.profileImage = req.file.path; // مثل: uploads/xxx.jpg
+    }
 
     const updated = await User.findByIdAndUpdate(req.user._id, updates, {
       new: true,

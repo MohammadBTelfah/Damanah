@@ -1,16 +1,50 @@
 import 'package:flutter/material.dart';
+import '../services/session_service.dart';
+import 'app_drawer.dart';
+import 'profile_screen.dart';
 
-class ClientHomeScreen extends StatelessWidget {
+class ClientHomeScreen extends StatefulWidget {
   const ClientHomeScreen({super.key});
+
+  @override
+  State<ClientHomeScreen> createState() => _ClientHomeScreenState();
+}
+
+class _ClientHomeScreenState extends State<ClientHomeScreen> {
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  Map<String, dynamic>? _user;
+
+  static const String baseUrl = "http://10.0.2.2:5000";
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUser();
+  }
+
+  Future<void> _loadUser() async {
+    final u = await SessionService.getUser();
+    if (mounted) setState(() => _user = u);
+  }
 
   @override
   Widget build(BuildContext context) {
     const bgColor = Color(0xFF0F261F);
     const cardColor = Color(0xFF0F261F);
-    const accentColor = Color(0xFF8BE3B5);
+
+    final name = (_user?["name"] ?? "User").toString();
+    final profileImage = _user?["profileImage"];
+
+    final String? profileUrl =
+        (profileImage != null && profileImage.toString().isNotEmpty)
+            ? "$baseUrl/${profileImage.toString()}"
+            : null;
 
     return Scaffold(
+      key: _scaffoldKey,
       backgroundColor: bgColor,
+      drawer: _user == null ? null : AppDrawer(user: _user!, baseUrl: baseUrl),
+
       bottomNavigationBar: BottomNavigationBar(
         backgroundColor: bgColor,
         type: BottomNavigationBarType.fixed,
@@ -18,88 +52,72 @@ class ClientHomeScreen extends StatelessWidget {
         unselectedItemColor: Colors.white60,
         currentIndex: 0,
         items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home_filled),
-            label: 'Home',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.assignment_outlined),
-            label: 'Projects',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.chat_bubble_outline),
-            label: 'Messages',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person_outline),
-            label: 'Profile',
-          ),
+          BottomNavigationBarItem(icon: Icon(Icons.home_filled), label: 'Home'),
+          BottomNavigationBarItem(icon: Icon(Icons.assignment_outlined), label: 'Projects'),
+          BottomNavigationBarItem(icon: Icon(Icons.chat_bubble_outline), label: 'Messages'),
+          BottomNavigationBarItem(icon: Icon(Icons.person_outline), label: 'Profile'),
         ],
+        onTap: (index) async {
+          if (index == 3 && _user != null) {
+            await Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => ProfileScreen(user: _user!, baseUrl: baseUrl),
+              ),
+            );
+            await _loadUser(); // ✅ هي اللي بتحل رجوع البيانات القديمة
+          }
+        },
       ),
+
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ===== App Bar Custom =====
               Row(
                 children: [
-                  const CircleAvatar(
-                    radius: 18,
-                    backgroundColor: Colors.white24,
-                    child: Icon(
-                      Icons.person,
-                      color: Colors.white,
+                  GestureDetector(
+                    onTap: () => _scaffoldKey.currentState?.openDrawer(),
+                    child: CircleAvatar(
+                      radius: 18,
+                      backgroundColor: Colors.white24,
+                      backgroundImage: profileUrl != null ? NetworkImage(profileUrl) : null,
+                      child: profileUrl == null
+                          ? const Icon(Icons.person, color: Colors.white)
+                          : null,
                     ),
                   ),
                   const Spacer(),
                   const Text(
                     'Home',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                    ),
+                    style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600),
                   ),
                   const Spacer(),
                   IconButton(
                     onPressed: () {},
-                    icon: const Icon(
-                      Icons.settings_outlined,
-                      color: Colors.white,
-                    ),
+                    icon: const Icon(Icons.settings_outlined, color: Colors.white),
                   ),
                 ],
               ),
 
               const SizedBox(height: 24),
 
-              // ===== Welcome Text =====
-              const Text(
-                "Welcome back, Sarah",
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 26,
-                  fontWeight: FontWeight.bold,
-                ),
+              Text(
+                "Welcome back, $name",
+                style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.bold),
               ),
 
               const SizedBox(height: 24),
 
-              // ===== Quick Actions =====
               const Text(
                 "Quick Actions",
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 20,
-                  fontWeight: FontWeight.w600,
-                ),
+                style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w600),
               ),
 
               const SizedBox(height: 16),
 
-              // Row 1
               Row(
                 children: const [
                   Expanded(
@@ -122,7 +140,6 @@ class ClientHomeScreen extends StatelessWidget {
 
               const SizedBox(height: 12),
 
-              // Row 2
               Row(
                 children: const [
                   Expanded(
@@ -145,14 +162,9 @@ class ClientHomeScreen extends StatelessWidget {
 
               const SizedBox(height: 24),
 
-              // ===== Project Offers =====
               const Text(
                 "Project Offers",
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 20,
-                  fontWeight: FontWeight.w600,
-                ),
+                style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w600),
               ),
 
               const SizedBox(height: 12),
@@ -165,93 +177,28 @@ class ClientHomeScreen extends StatelessWidget {
                 padding: const EdgeInsets.all(16),
                 child: Row(
                   children: [
-                    // نص
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: const [
-                          Text(
-                            "Offer from BuildRight",
-                            style: TextStyle(
-                              color: Colors.white70,
-                              fontSize: 13,
-                            ),
-                          ),
+                          Text("Offer from BuildRight", style: TextStyle(color: Colors.white70, fontSize: 13)),
                           SizedBox(height: 6),
-                          Text(
-                            "Kitchen Remodel",
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
+                          Text("Kitchen Remodel",
+                              style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
                           SizedBox(height: 4),
-                          Text(
-                            "View offer details",
-                            style: TextStyle(
-                              color: Colors.white54,
-                              fontSize: 13,
-                            ),
-                          ),
+                          Text("View offer details", style: TextStyle(color: Colors.white54, fontSize: 13)),
                         ],
                       ),
                     ),
                     const SizedBox(width: 12),
-                    // صورة بسيطة
                     Container(
                       height: 70,
                       width: 90,
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(12),
-                        color: Colors.green.shade700,
+                        color: Colors.green,
                       ),
-                      child: const Icon(
-                        Icons.kitchen_outlined,
-                        color: Colors.white,
-                        size: 32,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 24),
-
-              // ===== Community =====
-              const Text(
-                "Community",
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 20,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-
-              const SizedBox(height: 12),
-
-              SizedBox(
-                height: 210,
-                child: ListView(
-                  scrollDirection: Axis.horizontal,
-                  children: const [
-                    _CommunityCard(
-                      title: "Tips for Home Renovation",
-                      subtitle: "Learn how to plan your renovation",
-                      icon: Icons.landscape_outlined,
-                      color: Colors.blue,
-                    ),
-                    _CommunityCard(
-                      title: "Choosing the Right Contractor",
-                      subtitle: "Find the best contractor for your needs",
-                      icon: Icons.home_repair_service_outlined,
-                      color: Colors.orange,
-                    ),
-                    _CommunityCard(
-                      title: "Manage Project Costs",
-                      subtitle: "Keep your project on budget",
-                      icon: Icons.attach_money,
-                      color: Colors.purple,
+                      child: const Icon(Icons.kitchen_outlined, color: Colors.white, size: 32),
                     ),
                   ],
                 ),
@@ -264,7 +211,6 @@ class ClientHomeScreen extends StatelessWidget {
   }
 }
 
-// ===== Widget لبطاقات Quick Actions =====
 class _QuickActionCard extends StatelessWidget {
   final IconData icon;
   final String title;
@@ -296,115 +242,17 @@ class _QuickActionCard extends StatelessWidget {
               borderRadius: BorderRadius.circular(10),
               color: Colors.white10,
             ),
-            child: Icon(
-              icon,
-              color: Colors.white,
-              size: 22,
-            ),
+            child: Icon(icon, color: Colors.white, size: 22),
           ),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 14.5,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
+                Text(title,
+                    style: const TextStyle(color: Colors.white, fontSize: 14.5, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 4),
-                Text(
-                  subtitle,
-                  style: const TextStyle(
-                    color: Colors.white60,
-                    fontSize: 12,
-                    height: 1.3,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ===== Widget لبطاقات Community =====
-class _CommunityCard extends StatelessWidget {
-  final String title;
-  final String subtitle;
-  final IconData icon;
-  final Color color;
-
-  const _CommunityCard({
-    required this.title,
-    required this.subtitle,
-    required this.icon,
-    required this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    const bg = Color(0xFF1B3A35);
-
-    return Container(
-      width: 220,
-      margin: const EdgeInsets.only(right: 12),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // صورة / بلوك علوي
-          Container(
-            height: 110,
-            decoration: BoxDecoration(
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(16),
-              ),
-              color: color,
-            ),
-            child: Center(
-              child: Icon(
-                icon,
-                color: Colors.white,
-                size: 36,
-              ),
-            ),
-          ),
-          Padding(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  subtitle,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white60,
-                    fontSize: 12,
-                    height: 1.3,
-                  ),
-                ),
+                Text(subtitle, style: const TextStyle(color: Colors.white60, fontSize: 12, height: 1.3)),
               ],
             ),
           ),

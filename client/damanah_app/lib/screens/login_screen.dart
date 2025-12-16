@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
+
 import '../services/auth_service.dart';
+import '../services/session_service.dart';
+
 import 'client_home_screen.dart';
+// import 'contractor_home_screen.dart'; // ✅ إذا عندك صفحة خاصة للمقاول فعلها
+
 import 'client_register_screen.dart';
 import 'contractor_register_screen.dart';
 
@@ -17,6 +22,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+
   bool _isLoading = false;
 
   final AuthService _authService = AuthService();
@@ -60,20 +66,46 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (!mounted) return;
 
+      // ✅ احفظ التوكن واليوزر في الجهاز
+      final token = res["token"];
+      final user = res["user"];
+
+      if (token != null && user != null) {
+        await SessionService.saveSession(
+          token: token.toString(),
+          user: Map<String, dynamic>.from(user),
+        );
+      }
+
       _showTopSnackBar("Login successful", Colors.green);
 
-      Future.delayed(const Duration(milliseconds: 1200), () {
+      Future.delayed(const Duration(milliseconds: 800), () {
         if (!mounted) return;
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (_) => const ClientHomeScreen(),
-          ),
-        );
+
+        // ✅ روح على Home حسب الدور
+        if (widget.role == 'client') {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => const ClientHomeScreen()),
+          );
+        } else {
+          // ✅ إذا عندك صفحة ContractorHomeScreen فعّلها
+          // Navigator.pushReplacement(
+          //   context,
+          //   MaterialPageRoute(builder: (_) => const ContractorHomeScreen()),
+          // );
+
+          // مؤقتاً (لحد ما تعمل صفحة المقاول)
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => const ClientHomeScreen()),
+          );
+        }
       });
     } catch (e) {
       if (!mounted) return;
       _showTopSnackBar("Login failed", Colors.red);
+      debugPrint("Login error: $e");
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -84,16 +116,12 @@ class _LoginScreenState extends State<LoginScreen> {
     if (widget.role == 'client') {
       Navigator.push(
         context,
-        MaterialPageRoute(
-          builder: (_) => const ClientRegisterScreen(),
-        ),
+        MaterialPageRoute(builder: (_) => const ClientRegisterScreen()),
       );
     } else {
       Navigator.push(
         context,
-        MaterialPageRoute(
-          builder: (_) => const ContractorRegisterScreen(),
-        ),
+        MaterialPageRoute(builder: (_) => const ContractorRegisterScreen()),
       );
     }
   }
@@ -157,7 +185,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
             const SizedBox(height: 24),
 
-            // Form
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -185,12 +212,8 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         keyboardType: TextInputType.emailAddress,
                         validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Email is required';
-                          }
-                          if (!value.contains('@')) {
-                            return 'Enter a valid email';
-                          }
+                          if (value == null || value.isEmpty) return 'Email is required';
+                          if (!value.contains('@')) return 'Enter a valid email';
                           return null;
                         },
                       ),
@@ -217,12 +240,8 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         obscureText: true,
                         validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Password is required';
-                          }
-                          if (value.length < 6) {
-                            return 'At least 6 characters';
-                          }
+                          if (value == null || value.isEmpty) return 'Password is required';
+                          if (value.length < 6) return 'At least 6 characters';
                           return null;
                         },
                       ),
