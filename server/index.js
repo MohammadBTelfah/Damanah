@@ -6,21 +6,26 @@ const dotenv = require("dotenv");
 dotenv.config();
 
 const app = express();
-// call routes
+
+// Routes imports
 const authRoutes = require("./routes/authRoutes");
 const userRoutes = require("./routes/userRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const projectRoutes = require("./routes/projectRoutes");
+
 // Middlewares
 app.use(cors());
 app.use(express.json());
+
+// 🔥 مهم جداً: عرض ملفّات الرفع
+app.use("/uploads", express.static("uploads"));
 
 // Test route
 app.get("/", (req, res) => {
   res.json({ message: "Damanah API is running 🚀" });
 });
 
-// Routes
+// API routes
 app.use("/api/auth", authRoutes);
 app.use("/api/user", userRoutes);
 app.use("/api/admin", adminRoutes);

@@ -18,23 +18,48 @@ const projectSchema = new mongoose.Schema(
     description: { type: String },
     location: { type: String },
 
-    area: { type: Number },
-    floors: { type: Number },
-    finishingLevel: { type: String },
+    // بيانات هندسية أساسية
+    area: { type: Number }, // مساحة البناء بالمتر المربع
+    floors: { type: Number }, // عدد الطوابق
+    finishingLevel: { type: String }, // عادي / متوسط / فاخر ... الخ
 
+    // حالة المشروع
     status: {
       type: String,
       enum: ["open", "in_progress", "completed", "cancelled"],
       default: "open",
     },
 
-    costEstimation: {
-      materials: { type: Number, default: 0 },
-      labor: { type: Number, default: 0 },
-      total: { type: Number, default: 0 },
+    // ملف مخطط البيت (صورة / PDF)
+    planFile: {
+      type: String,
+      default: null,
     },
 
-    // 👇 عروض المقاولين على المشروع
+    // نتيجة تحليل المخطط (من الـ AI أو Mock)
+    planAnalysis: {
+      totalArea: Number,
+      floors: Number,
+      rooms: Number,
+      bathrooms: Number,
+    },
+
+    // نتيجة حساب الكميات (BOQ)
+    estimation: {
+      items: [
+        {
+          name: String, // steel, paint, blocks...
+          quantity: Number,
+          unit: String,
+          pricePerUnit: Number,
+          total: Number,
+        },
+      ],
+      totalCost: { type: Number, default: 0 },
+      currency: { type: String, default: "JOD" },
+    },
+
+    // عروض المقاولين على المشروع
     offers: [
       {
         contractor: {

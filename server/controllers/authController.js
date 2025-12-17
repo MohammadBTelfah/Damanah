@@ -19,11 +19,19 @@ exports.register = async (req, res) => {
     // قراءة الملفات المرفوعة من multer
     const files = req.files || {};
 
+    // ✅ صورة البروفايل (اختيارية)
+    const profileImagePath =
+      files.profileImage && files.profileImage[0]
+        ? files.profileImage[0].path
+        : null;
+
+    // الهوية
     const identityDocPath =
       files.identityDocument && files.identityDocument[0]
         ? files.identityDocument[0].path
         : null;
 
+    // وثيقة المقاول
     const contractorDocPath =
       files.contractorDocument && files.contractorDocument[0]
         ? files.contractorDocument[0].path
@@ -51,6 +59,10 @@ exports.register = async (req, res) => {
       password: hash,
       phone,
       role: role || "client",
+
+      // ✅ الجديد
+      profileImage: profileImagePath,
+
       identityDocument: identityDocPath,
       contractorDocument: contractorDocPath,
       // identityStatus = pending by default
@@ -65,6 +77,10 @@ exports.register = async (req, res) => {
       email: user.email,
       phone: user.phone,
       role: user.role,
+
+      // ✅ الجديد
+      profileImage: user.profileImage,
+
       identityStatus: user.identityStatus,
       contractorStatus: user.contractorStatus,
       identityDocument: user.identityDocument,
@@ -85,10 +101,11 @@ exports.login = async (req, res) => {
     const { email, password } = req.body;
 
     const user = await User.findOne({ email });
-    if (!user)
+    if (!user) {
       return res
         .status(400)
         .json({ message: "Invalid email or password" });
+    }
 
     if (!user.isActive) {
       return res
@@ -107,10 +124,11 @@ exports.login = async (req, res) => {
     }
 
     const match = await bcrypt.compare(password, user.password);
-    if (!match)
+    if (!match) {
       return res
         .status(400)
         .json({ message: "Invalid email or password" });
+    }
 
     const token = jwt.sign(
       { id: user._id, role: user.role },
@@ -118,12 +136,17 @@ exports.login = async (req, res) => {
       { expiresIn: "7d" }
     );
 
+    // ✅ رجّع كل البيانات اللي يحتاجها الفرونت
     const userData = {
       id: user._id,
       name: user.name,
       email: user.email,
       phone: user.phone,
       role: user.role,
+
+      // ✅ الجديد
+      profileImage: user.profileImage,
+
       identityStatus: user.identityStatus,
       contractorStatus: user.contractorStatus,
       identityDocument: user.identityDocument,

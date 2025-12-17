@@ -9,10 +9,12 @@ const {
   resetPassword,
 } = require("../controllers/userController");
 const { protect } = require("../middleware/authMiddleWare");
+const upload = require("../middleware/upload");
+
 
 // تحتاج تسجيل دخول
 router.get("/me", protect, getProfile);
-router.patch("/me", protect, updateProfile);
+router.patch("/me", protect, upload.single("profileImage"), updateProfile);
 router.delete("/me", protect, deleteMyAccount);
 router.patch("/change-password", protect, changePassword);
 

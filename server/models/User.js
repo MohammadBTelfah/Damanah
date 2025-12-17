@@ -15,6 +15,12 @@ const userSchema = new mongoose.Schema(
       required: true,
       minlength: 6,
     },
+    // صورة البروفايل
+    profileImage: {
+      type: String,
+      default: null,
+      },
+
 
     phone: {
       type: String,

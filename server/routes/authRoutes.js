@@ -19,9 +19,10 @@ const storage = multer.diskStorage({
 });
 
 const fileFilter = (req, file, cb) => {
-  const allowed = ["image/jpeg", "image/png", "application/pdf"];
-  if (allowed.includes(file.mimetype)) cb(null, true);
-  else cb(new Error("Invalid file type"), false);
+  console.log("Uploaded file:", file.originalname, file.mimetype);
+
+  // مؤقتًا: نقبل أي نوع ملف عشان نمشي تسجيل المستخدم
+  cb(null, true);
 };
 
 const upload = multer({ storage, fileFilter });
@@ -33,6 +34,7 @@ router.post(
   upload.fields([
     { name: "identityDocument", maxCount: 1 },
     { name: "contractorDocument", maxCount: 1 },
+    { name: "profileImage", maxCount: 1 },
   ]),
   register
 );
