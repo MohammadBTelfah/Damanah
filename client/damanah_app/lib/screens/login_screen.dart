@@ -3,15 +3,12 @@ import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import '../services/session_service.dart';
 
-import 'client_home_screen.dart';
-// import 'contractor_home_screen.dart'; // ✅ إذا عندك صفحة خاصة للمقاول فعلها
-
+import 'MainShell.dart'; // ✅ بدل ClientHomeScreen
 import 'client_register_screen.dart';
 import 'contractor_register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   final String role; // 'client' أو 'contractor'
-
   const LoginScreen({super.key, required this.role});
 
   @override
@@ -79,28 +76,14 @@ class _LoginScreenState extends State<LoginScreen> {
 
       _showTopSnackBar("Login successful", Colors.green);
 
+      // ✅ روح على MainShell (اللي فيه Bottom Bar)
       Future.delayed(const Duration(milliseconds: 800), () {
         if (!mounted) return;
 
-        // ✅ روح على Home حسب الدور
-        if (widget.role == 'client') {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => const ClientHomeScreen()),
-          );
-        } else {
-          // ✅ إذا عندك صفحة ContractorHomeScreen فعّلها
-          // Navigator.pushReplacement(
-          //   context,
-          //   MaterialPageRoute(builder: (_) => const ContractorHomeScreen()),
-          // );
-
-          // مؤقتاً (لحد ما تعمل صفحة المقاول)
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => const ClientHomeScreen()),
-          );
-        }
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const MainShell()),
+        );
       });
     } catch (e) {
       if (!mounted) return;
@@ -212,8 +195,12 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         keyboardType: TextInputType.emailAddress,
                         validator: (value) {
-                          if (value == null || value.isEmpty) return 'Email is required';
-                          if (!value.contains('@')) return 'Enter a valid email';
+                          if (value == null || value.isEmpty) {
+                            return 'Email is required';
+                          }
+                          if (!value.contains('@')) {
+                            return 'Enter a valid email';
+                          }
                           return null;
                         },
                       ),
@@ -240,8 +227,12 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         obscureText: true,
                         validator: (value) {
-                          if (value == null || value.isEmpty) return 'Password is required';
-                          if (value.length < 6) return 'At least 6 characters';
+                          if (value == null || value.isEmpty) {
+                            return 'Password is required';
+                          }
+                          if (value.length < 6) {
+                            return 'At least 6 characters';
+                          }
                           return null;
                         },
                       ),
