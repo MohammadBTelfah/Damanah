@@ -10,6 +10,7 @@ const {
   updateIdentityStatus,
   getPendingContractors,
   updateContractorStatus,
+  getUserIdentityDetails
 } = require("../controllers/adminController");
 const { protect, adminOnly } = require("../middleware/authMiddleWare");
 
@@ -23,6 +24,7 @@ router.get("/users/:id", getUserById);
 router.patch("/users/:id", updateUserByAdmin);
 router.delete("/users/:id", deleteUserByAdmin);
 router.patch("/users/:id/toggle-active", toggleUserActiveStatus);
+router.get("/users/:id/identity-details", getUserIdentityDetails);
 
 // Identity verification
 router.get("/users/pending-identity", getPendingIdentities);

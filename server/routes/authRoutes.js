@@ -3,9 +3,13 @@ const router = express.Router();
 const multer = require("multer");
 const path = require("path");
 
-const { register, login } = require("../controllers/authController");
+const {
+  register,
+  login,
+  verifyEmail,
+  resendVerificationEmail,
+} = require("../controllers/authController");
 
-// إعداد التخزين
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, "uploads/"),
   filename: (req, file, cb) =>
@@ -18,17 +22,61 @@ const storage = multer.diskStorage({
     ),
 });
 
+
+const allowedMime = [
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+  "image/svg+xml",
+  "image/tiff",
+  "application/pdf",
+];
+
+// الامتدادات المسموحة (احتياط)
+const allowedExt = [
+  ".jpg",
+  ".jpeg",
+  ".png",
+  ".gif",
+  ".webp",
+  ".svg",
+  ".tiff",
+  ".pdf",
+];
+
 const fileFilter = (req, file, cb) => {
   console.log("Uploaded file:", file.originalname, file.mimetype);
 
-  // مؤقتًا: نقبل أي نوع ملف عشان نمشي تسجيل المستخدم
-  cb(null, true);
+  const ext = path.extname(file.originalname).toLowerCase();
+
+  // ✅ إذا الميم تايب معروف ومسموح
+  if (allowedMime.includes(file.mimetype)) {
+    return cb(null, true);
+  }
+
+  // ✅ Flutter أحيانًا يبعث octet-stream → نتحقق من الامتداد
+  if (
+    file.mimetype === "application/octet-stream" &&
+    allowedExt.includes(ext)
+  ) {
+    return cb(null, true);
+  }
+
+  return cb(
+    new Error("Only image files (JPG, PNG, etc.) and PDF are allowed"),
+    false
+  );
 };
 
-const upload = multer({ storage, fileFilter });
+const upload = multer({
+  storage,
+  fileFilter,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+});
 
-// identityDocument: هوية مدنية
-// contractorDocument: وثيقة المقاول
+// Register
 router.post(
   "/register",
   upload.fields([
@@ -39,6 +87,13 @@ router.post(
   register
 );
 
+// Login
 router.post("/login", login);
+
+// Verify Email
+router.get("/verify-email/:token", verifyEmail);
+
+// Resend Verification Email
+router.post("/resend-verification-email", resendVerificationEmail);
 
 module.exports = router;

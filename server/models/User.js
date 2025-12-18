@@ -15,12 +15,12 @@ const userSchema = new mongoose.Schema(
       required: true,
       minlength: 6,
     },
+
     // صورة البروفايل
     profileImage: {
       type: String,
       default: null,
-      },
-
+    },
 
     phone: {
       type: String,
@@ -36,6 +36,26 @@ const userSchema = new mongoose.Schema(
     // ملف هوية مدنية (صورة أو PDF) لكل المستخدمين
     identityDocument: {
       type: String,
+      default: null,
+    },
+
+    // ✅ الرقم الوطني (من Scan / OCR)
+    nationalId: {
+      type: String,
+      default: null,
+    },
+
+    // ✅ نسبة الثقة (اختياري) 0 → 1
+    nationalIdConfidence: {
+      type: Number,
+      default: null,
+      min: 0,
+      max: 1,
+    },
+
+    // ✅ وقت استخراج البيانات من الهوية
+    identityExtractedAt: {
+      type: Date,
       default: null,
     },
 
@@ -62,7 +82,23 @@ const userSchema = new mongoose.Schema(
     // تفعيل / تعطيل الحساب
     isActive: {
       type: Boolean,
-      default: true,
+      default: false,
+    },
+
+    // ✅ تفعيل الإيميل
+    emailVerified: {
+      type: Boolean,
+      default: false,
+    },
+
+    emailVerificationToken: {
+      type: String,
+      default: null,
+    },
+
+    emailVerificationExpires: {
+      type: Date,
+      default: null,
     },
 
     // لاستعادة كلمة المرور

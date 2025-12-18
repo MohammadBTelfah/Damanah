@@ -85,7 +85,23 @@ exports.getPendingIdentities = async (req, res) => {
       identityDocument: { $ne: null },
     }).select("-password");
 
-    res.json(users);
+    // ✅ حوّل المسارات إلى روابط قابلة للفتح
+    const baseUrl = process.env.APP_URL || "http://localhost:5000";
+
+    const mapped = users.map((u) => ({
+      ...u.toObject(),
+      identityDocumentUrl: u.identityDocument
+        ? `${baseUrl}/${u.identityDocument.replace(/\\/g, "/")}`
+        : null,
+      profileImageUrl: u.profileImage
+        ? `${baseUrl}/${u.profileImage.replace(/\\/g, "/")}`
+        : null,
+      contractorDocumentUrl: u.contractorDocument
+        ? `${baseUrl}/${u.contractorDocument.replace(/\\/g, "/")}`
+        : null,
+    }));
+
+    res.json(mapped);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -95,16 +111,24 @@ exports.getPendingIdentities = async (req, res) => {
 // body: { status: "verified" or "rejected" }
 exports.updateIdentityStatus = async (req, res) => {
   try {
-    const { status } = req.body;
+    const { status, nationalId } = req.body;
+
     if (!["verified", "rejected"].includes(status)) {
       return res.status(400).json({ message: "Invalid identity status" });
     }
 
-    const user = await User.findByIdAndUpdate(
-      req.params.id,
-      { identityStatus: status },
-      { new: true }
-    ).select("-password");
+    const updates = { identityStatus: status };
+
+    // ✅ إذا الأدمن عدّل الرقم الوطني
+    if (typeof nationalId === "string" && nationalId.trim().length > 0) {
+      updates.nationalId = nationalId.trim();
+      updates.identityExtractedAt = new Date(); // اختياري
+      updates.nationalIdConfidence = null; // اختياري
+    }
+
+    const user = await User.findByIdAndUpdate(req.params.id, updates, {
+      new: true,
+    }).select("-password");
 
     if (!user) return res.status(404).json({ message: "User not found" });
 
@@ -113,6 +137,29 @@ exports.updateIdentityStatus = async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 };
+
+
+
+// GET /api/admin/users/:id/identity
+exports.getUserIdentityDetails = async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id).select("-password");
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const baseUrl = process.env.APP_URL || "http://localhost:5000";
+
+    res.json({
+      ...user.toObject(),
+      identityDocumentUrl: user.identityDocument
+        ? `${baseUrl}/${user.identityDocument.replace(/\\/g, "/")}`
+        : null,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+
 
 // =============== المقاولين ===============
 

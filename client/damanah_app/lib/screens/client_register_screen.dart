@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../services/auth_service.dart';
 import 'login_screen.dart';
+import 'scan_id_screen.dart'; // ✅ جديد
 
 class ClientRegisterScreen extends StatefulWidget {
   const ClientRegisterScreen({super.key});
@@ -21,6 +22,9 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
 
+  // ✅ الرقم الوطني (قابل للتعديل)
+  final _nationalIdController = TextEditingController();
+
   final AuthService _authService = AuthService();
 
   bool _isLoading = false;
@@ -30,9 +34,9 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
   String? _profileImageName;
   // ----------------------------------
 
-  // ---------- Identity Document ----------
-  String? _identityFilePath; // مسار الهوية
-  String? _identityFileName;
+  // ---------- Identity Document (from Scan) ----------
+  File? _identityImageFile; // ✅ ملف صورة الهوية من الكاميرا
+  double? _nationalIdConfidence; // اختياري (حاليًا غالبًا null)
   // --------------------------------------
 
   @override
@@ -42,6 +46,7 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
     _phoneController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
+    _nationalIdController.dispose();
     super.dispose();
   }
 
@@ -76,24 +81,37 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
     }
   }
 
-  Future<void> _pickIdentityDocument() async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.any, // ممكن تخليها image لو بدك صور فقط
+  // ✅ Scan ID (Camera + OCR)
+  Future<void> _scanNationalId() async {
+    final result = await Navigator.push<ScanIdResult>(
+      context,
+      MaterialPageRoute(builder: (_) => const ScanIdScreen()),
     );
 
-    if (result != null && result.files.single.path != null) {
+    if (result != null) {
       setState(() {
-        _identityFilePath = result.files.single.path!;
-        _identityFileName = result.files.single.name;
+        _identityImageFile = result.imageFile;
+        _nationalIdController.text = result.nationalId;
+        _nationalIdConfidence = result.confidence;
       });
+
+      _showTopSnackBar("ID scanned successfully", Colors.green);
     }
   }
 
   Future<void> _handleRegister() async {
     if (!_formKey.currentState!.validate()) return;
 
-    if (_identityFilePath == null) {
-      _showTopSnackBar("Please upload your national ID", Colors.red);
+    // ✅ لازم يكون في صورة هوية من الـ Scan
+    if (_identityImageFile == null) {
+      _showTopSnackBar("Please scan your national ID", Colors.red);
+      return;
+    }
+
+    // ✅ لازم يكون في رقم وطني
+    final nationalId = _nationalIdController.text.trim();
+    if (nationalId.isEmpty) {
+      _showTopSnackBar("National ID is required", Colors.red);
       return;
     }
 
@@ -111,18 +129,29 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
         phone: _phoneController.text.trim(),
-        identityFilePath: _identityFilePath!,
-        profileImagePath: _profileImagePath, // ✅ جديد (اختياري)
+
+        // ✅ identityDocument لازم يكون صورة (من scan)
+        identityFilePath: _identityImageFile!.path,
+
+        // ✅ الرقم الوطني
+        nationalId: nationalId,
+        nationalIdConfidence: _nationalIdConfidence,
+
+        // ✅ اختياري
+        profileImagePath: _profileImagePath,
       );
 
       debugPrint("Register response: $res");
 
       if (!mounted) return;
 
-      _showTopSnackBar("Account created successfully", Colors.green);
+      _showTopSnackBar(
+        "Account created. Check your email to verify.",
+        Colors.green,
+      );
 
       // بعد التسجيل، ودّيه لصفحة الـ Login
-      Future.delayed(const Duration(milliseconds: 1200), () {
+      Future.delayed(const Duration(milliseconds: 1400), () {
         if (!mounted) return;
         Navigator.pushReplacement(
           context,
@@ -214,63 +243,62 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
                   key: _formKey,
                   child: Column(
                     children: [
-// ================= Profile Image (Centered) =================
-const SizedBox(height: 8),
+                      // ================= Profile Image (Centered) =================
+                      const SizedBox(height: 8),
 
-GestureDetector(
-  onTap: _pickProfileImage,
-  child: Stack(
-    alignment: Alignment.center,
-    children: [
-      CircleAvatar(
-        radius: 48, // 🔥 كبرنا الحجم
-        backgroundColor: Colors.white12,
-        backgroundImage: _profileImagePath != null
-            ? FileImage(File(_profileImagePath!))
-            : null,
-        child: _profileImagePath == null
-            ? const Icon(
-                Icons.person,
-                size: 48,
-                color: Colors.white70,
-              )
-            : null,
-      ),
+                      GestureDetector(
+                        onTap: _pickProfileImage,
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            CircleAvatar(
+                              radius: 48,
+                              backgroundColor: Colors.white12,
+                              backgroundImage: _profileImagePath != null
+                                  ? FileImage(File(_profileImagePath!))
+                                  : null,
+                              child: _profileImagePath == null
+                                  ? const Icon(
+                                      Icons.person,
+                                      size: 48,
+                                      color: Colors.white70,
+                                    )
+                                  : null,
+                            ),
+                            Positioned(
+                              bottom: 0,
+                              right: 0,
+                              child: Container(
+                                padding: const EdgeInsets.all(6),
+                                decoration: BoxDecoration(
+                                  color: Colors.black87,
+                                  shape: BoxShape.circle,
+                                  border:
+                                      Border.all(color: Colors.white, width: 1),
+                                ),
+                                child: const Icon(
+                                  Icons.camera_alt,
+                                  size: 16,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
 
-      // أيقونة الكاميرا
-      Positioned(
-        bottom: 0,
-        right: 0,
-        child: Container(
-          padding: const EdgeInsets.all(6),
-          decoration: BoxDecoration(
-            color: Colors.black87,
-            shape: BoxShape.circle,
-            border: Border.all(color: Colors.white, width: 1),
-          ),
-          child: const Icon(
-            Icons.camera_alt,
-            size: 16,
-            color: Colors.white,
-          ),
-        ),
-      ),
-    ],
-  ),
-),
+                      const SizedBox(height: 8),
 
-const SizedBox(height: 8),
+                      Text(
+                        "Tap to add profile photo (optional)",
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.7),
+                          fontSize: 13,
+                        ),
+                      ),
 
-Text(
-  "Tap to add profile photo (optional)",
-  style: TextStyle(
-    color: Colors.white.withOpacity(0.7),
-    fontSize: 13,
-  ),
-),
-
-const SizedBox(height: 20),
-// ============================================================
+                      const SizedBox(height: 20),
+                      // ============================================================
 
                       // Name
                       TextFormField(
@@ -420,13 +448,13 @@ const SizedBox(height: 20),
                         },
                       ),
 
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 16),
 
-                      // Identity Document Upload
+                      // ================= Scan National ID =================
                       Align(
                         alignment: Alignment.centerLeft,
                         child: Text(
-                          "National ID (image or PDF)",
+                          "National ID (scan by camera)",
                           style: TextStyle(
                             color: Colors.white.withOpacity(0.9),
                             fontSize: 14,
@@ -435,8 +463,9 @@ const SizedBox(height: 20),
                         ),
                       ),
                       const SizedBox(height: 8),
+
                       InkWell(
-                        onTap: _pickIdentityDocument,
+                        onTap: _scanNationalId,
                         borderRadius: BorderRadius.circular(12),
                         child: Container(
                           width: double.infinity,
@@ -446,7 +475,7 @@ const SizedBox(height: 20),
                             color: inputFill,
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                              color: _identityFilePath == null
+                              color: _identityImageFile == null
                                   ? Colors.white24
                                   : Colors.green,
                             ),
@@ -454,15 +483,17 @@ const SizedBox(height: 20),
                           child: Row(
                             children: [
                               const Icon(
-                                Icons.upload_file_outlined,
+                                Icons.document_scanner_outlined,
                                 color: Colors.white70,
                               ),
                               const SizedBox(width: 10),
                               Expanded(
                                 child: Text(
-                                  _identityFileName ?? "Upload your national ID",
+                                  _identityImageFile == null
+                                      ? "Scan your national ID"
+                                      : "ID scanned ✅ (tap to rescan)",
                                   style: TextStyle(
-                                    color: _identityFilePath == null
+                                    color: _identityImageFile == null
                                         ? Colors.white54
                                         : Colors.white,
                                     fontSize: 14,
@@ -474,6 +505,36 @@ const SizedBox(height: 20),
                           ),
                         ),
                       ),
+
+                      const SizedBox(height: 12),
+
+                      // National ID field (auto-filled + editable)
+                      TextFormField(
+                        controller: _nationalIdController,
+                        style: const TextStyle(color: Colors.white),
+                        keyboardType: TextInputType.number,
+                        decoration: InputDecoration(
+                          filled: true,
+                          fillColor: inputFill,
+                          hintText: "National ID (auto-filled)",
+                          hintStyle: const TextStyle(color: Colors.white54),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 16,
+                          ),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return "National ID is required";
+                          }
+                          return null;
+                        },
+                      ),
+                      // =====================================================
 
                       const SizedBox(height: 24),
 

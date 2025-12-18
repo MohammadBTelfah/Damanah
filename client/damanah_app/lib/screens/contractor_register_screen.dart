@@ -4,12 +4,14 @@ import 'package:flutter/material.dart';
 
 import '../services/auth_service.dart';
 import 'login_screen.dart';
+import 'scan_id_screen.dart'; // ✅ جديد
 
 class ContractorRegisterScreen extends StatefulWidget {
   const ContractorRegisterScreen({super.key});
 
   @override
-  State<ContractorRegisterScreen> createState() => _ContractorRegisterScreenState();
+  State<ContractorRegisterScreen> createState() =>
+      _ContractorRegisterScreenState();
 }
 
 class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
@@ -21,6 +23,9 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
 
+  // ✅ الرقم الوطني (auto-filled + editable)
+  final _nationalIdController = TextEditingController();
+
   final AuthService _authService = AuthService();
 
   bool _isLoading = false;
@@ -29,9 +34,9 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
   String? _profileImagePath;
   // ----------------------------------
 
-  // ---------- Identity Document ----------
-  String? _identityFilePath;
-  String? _identityFileName;
+  // ---------- Identity (from Scan) ----------
+  File? _identityImageFile; // ✅ صورة الهوية من الكاميرا
+  double? _nationalIdConfidence;
   // --------------------------------------
 
   // ---------- Contractor Document ----------
@@ -46,12 +51,16 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
     _phoneController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
+    _nationalIdController.dispose();
     super.dispose();
   }
 
   void _showTopSnackBar(String message, Color color) {
     final snackBar = SnackBar(
-      content: Text(message, style: const TextStyle(color: Colors.white, fontSize: 16)),
+      content: Text(
+        message,
+        style: const TextStyle(color: Colors.white, fontSize: 16),
+      ),
       backgroundColor: color,
       behavior: SnackBarBehavior.floating,
       margin: const EdgeInsets.only(top: 20, left: 16, right: 16),
@@ -70,13 +79,21 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
     }
   }
 
-  Future<void> _pickIdentityDocument() async {
-    final result = await FilePicker.platform.pickFiles(type: FileType.any);
-    if (result != null && result.files.single.path != null) {
+  // ✅ Scan ID (Camera + OCR)
+  Future<void> _scanNationalId() async {
+    final result = await Navigator.push<ScanIdResult>(
+      context,
+      MaterialPageRoute(builder: (_) => const ScanIdScreen()),
+    );
+
+    if (result != null) {
       setState(() {
-        _identityFilePath = result.files.single.path!;
-        _identityFileName = result.files.single.name;
+        _identityImageFile = result.imageFile;
+        _nationalIdController.text = result.nationalId;
+        _nationalIdConfidence = result.confidence;
       });
+
+      _showTopSnackBar("ID scanned successfully", Colors.green);
     }
   }
 
@@ -93,17 +110,27 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
   Future<void> _handleRegister() async {
     if (!_formKey.currentState!.validate()) return;
 
-    if (_identityFilePath == null) {
-      _showTopSnackBar("Please upload your national ID", Colors.red);
+    // ✅ لازم scan للهوية
+    if (_identityImageFile == null) {
+      _showTopSnackBar("Please scan your national ID", Colors.red);
       return;
     }
 
+    // ✅ لازم رقم وطني
+    final nationalId = _nationalIdController.text.trim();
+    if (nationalId.isEmpty) {
+      _showTopSnackBar("National ID is required", Colors.red);
+      return;
+    }
+
+    // ✅ لازم وثيقة المقاول
     if (_contractorFilePath == null) {
       _showTopSnackBar("Please upload contractor document", Colors.red);
       return;
     }
 
-    if (_passwordController.text.trim() != _confirmPasswordController.text.trim()) {
+    if (_passwordController.text.trim() !=
+        _confirmPasswordController.text.trim()) {
       _showTopSnackBar("Passwords do not match", Colors.red);
       return;
     }
@@ -116,21 +143,36 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
         phone: _phoneController.text.trim(),
-        identityFilePath: _identityFilePath!,
+
+        // ✅ identityDocument من scan
+        identityFilePath: _identityImageFile!.path,
+
+        // ✅ contractor doc
         contractorFilePath: _contractorFilePath!,
-        profileImagePath: _profileImagePath, // optional
+
+        // ✅ جديد
+        nationalId: nationalId,
+        nationalIdConfidence: _nationalIdConfidence,
+
+        // optional
+        profileImagePath: _profileImagePath,
       );
 
       debugPrint("Contractor register response: $res");
 
       if (!mounted) return;
-      _showTopSnackBar("Account created successfully", Colors.green);
+      _showTopSnackBar(
+        "Account created. Check your email to verify.",
+        Colors.green,
+      );
 
-      Future.delayed(const Duration(milliseconds: 1200), () {
+      Future.delayed(const Duration(milliseconds: 1400), () {
         if (!mounted) return;
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (_) => const LoginScreen(role: 'contractor')),
+          MaterialPageRoute(
+            builder: (_) => const LoginScreen(role: 'contractor'),
+          ),
         );
       });
     } catch (e) {
@@ -161,12 +203,20 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
                   InkWell(
                     onTap: () => Navigator.pop(context),
                     borderRadius: BorderRadius.circular(30),
-                    child: const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 20),
+                    child: const Icon(
+                      Icons.arrow_back_ios_new,
+                      color: Colors.white,
+                      size: 20,
+                    ),
                   ),
                   const Spacer(),
                   const Text(
                     "Dhamanah",
-                    style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600),
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                   const Spacer(),
                   IconButton(
@@ -185,7 +235,11 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
                 alignment: Alignment.centerLeft,
                 child: Text(
                   "Create contractor account",
-                  style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ),
@@ -212,7 +266,11 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
                                   ? FileImage(File(_profileImagePath!))
                                   : null,
                               child: _profileImagePath == null
-                                  ? const Icon(Icons.person, size: 48, color: Colors.white70)
+                                  ? const Icon(
+                                      Icons.person,
+                                      size: 48,
+                                      color: Colors.white70,
+                                    )
                                   : null,
                             ),
                             Positioned(
@@ -223,9 +281,16 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
                                 decoration: BoxDecoration(
                                   color: Colors.black87,
                                   shape: BoxShape.circle,
-                                  border: Border.all(color: Colors.white, width: 1),
+                                  border: Border.all(
+                                    color: Colors.white,
+                                    width: 1,
+                                  ),
                                 ),
-                                child: const Icon(Icons.camera_alt, size: 16, color: Colors.white),
+                                child: const Icon(
+                                  Icons.camera_alt,
+                                  size: 16,
+                                  color: Colors.white,
+                                ),
                               ),
                             ),
                           ],
@@ -234,10 +299,12 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
                       const SizedBox(height: 8),
                       Text(
                         "Tap to add profile photo (optional)",
-                        style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 13),
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.7),
+                          fontSize: 13,
+                        ),
                       ),
                       const SizedBox(height: 20),
-                      // ============================================
 
                       // Full name
                       TextFormField(
@@ -252,10 +319,14 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
                             borderRadius: BorderRadius.circular(12),
                             borderSide: BorderSide.none,
                           ),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 16,
+                          ),
                         ),
-                        validator: (value) =>
-                            (value == null || value.isEmpty) ? "Name is required" : null,
+                        validator: (value) => (value == null || value.isEmpty)
+                            ? "Name is required"
+                            : null,
                       ),
                       const SizedBox(height: 12),
 
@@ -272,12 +343,18 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
                             borderRadius: BorderRadius.circular(12),
                             borderSide: BorderSide.none,
                           ),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 16,
+                          ),
                         ),
                         keyboardType: TextInputType.emailAddress,
                         validator: (value) {
-                          if (value == null || value.isEmpty) return "Email is required";
-                          if (!value.contains("@")) return "Enter a valid email";
+                          if (value == null || value.isEmpty) {
+                            return "Email is required";
+                          }
+                          if (!value.contains("@"))
+                            return "Enter a valid email";
                           return null;
                         },
                       ),
@@ -296,11 +373,15 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
                             borderRadius: BorderRadius.circular(12),
                             borderSide: BorderSide.none,
                           ),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 16,
+                          ),
                         ),
                         keyboardType: TextInputType.phone,
-                        validator: (value) =>
-                            (value == null || value.isEmpty) ? "Phone is required" : null,
+                        validator: (value) => (value == null || value.isEmpty)
+                            ? "Phone is required"
+                            : null,
                       ),
                       const SizedBox(height: 12),
 
@@ -317,11 +398,16 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
                             borderRadius: BorderRadius.circular(12),
                             borderSide: BorderSide.none,
                           ),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 16,
+                          ),
                         ),
                         obscureText: true,
                         validator: (value) {
-                          if (value == null || value.isEmpty) return "Password is required";
+                          if (value == null || value.isEmpty) {
+                            return "Password is required";
+                          }
                           if (value.length < 6) return "At least 6 characters";
                           return null;
                         },
@@ -341,20 +427,24 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
                             borderRadius: BorderRadius.circular(12),
                             borderSide: BorderSide.none,
                           ),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 16,
+                          ),
                         ),
                         obscureText: true,
-                        validator: (value) =>
-                            (value == null || value.isEmpty) ? "Please confirm password" : null,
+                        validator: (value) => (value == null || value.isEmpty)
+                            ? "Please confirm password"
+                            : null,
                       ),
 
                       const SizedBox(height: 16),
 
-                      // Identity upload
+                      // ✅ Scan ID
                       Align(
                         alignment: Alignment.centerLeft,
                         child: Text(
-                          "National ID (image or PDF)",
+                          "National ID (scan by camera)",
                           style: TextStyle(
                             color: Colors.white.withOpacity(0.9),
                             fontSize: 14,
@@ -364,27 +454,39 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
                       ),
                       const SizedBox(height: 8),
                       InkWell(
-                        onTap: _pickIdentityDocument,
+                        onTap: _scanNationalId,
                         borderRadius: BorderRadius.circular(12),
                         child: Container(
                           width: double.infinity,
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 14,
+                          ),
                           decoration: BoxDecoration(
                             color: inputFill,
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                              color: _identityFilePath == null ? Colors.white24 : Colors.green,
+                              color: _identityImageFile == null
+                                  ? Colors.white24
+                                  : Colors.green,
                             ),
                           ),
                           child: Row(
                             children: [
-                              const Icon(Icons.upload_file_outlined, color: Colors.white70),
+                              const Icon(
+                                Icons.document_scanner_outlined,
+                                color: Colors.white70,
+                              ),
                               const SizedBox(width: 10),
                               Expanded(
                                 child: Text(
-                                  _identityFileName ?? "Upload your national ID",
+                                  _identityImageFile == null
+                                      ? "Scan your national ID"
+                                      : "ID scanned ✅ (tap to rescan)",
                                   style: TextStyle(
-                                    color: _identityFilePath == null ? Colors.white54 : Colors.white,
+                                    color: _identityImageFile == null
+                                        ? Colors.white54
+                                        : Colors.white,
                                     fontSize: 14,
                                   ),
                                   overflow: TextOverflow.ellipsis,
@@ -393,6 +495,34 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
                             ],
                           ),
                         ),
+                      ),
+
+                      const SizedBox(height: 12),
+
+                      TextFormField(
+                        controller: _nationalIdController,
+                        style: const TextStyle(color: Colors.white),
+                        keyboardType: TextInputType.number,
+                        decoration: InputDecoration(
+                          filled: true,
+                          fillColor: inputFill,
+                          hintText: "National ID (auto-filled)",
+                          hintStyle: const TextStyle(color: Colors.white54),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 16,
+                          ),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return "National ID is required";
+                          }
+                          return null;
+                        },
                       ),
 
                       const SizedBox(height: 12),
@@ -415,21 +545,30 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
                         borderRadius: BorderRadius.circular(12),
                         child: Container(
                           width: double.infinity,
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 14,
+                          ),
                           decoration: BoxDecoration(
                             color: inputFill,
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                              color: _contractorFilePath == null ? Colors.white24 : Colors.green,
+                              color: _contractorFilePath == null
+                                  ? Colors.white24
+                                  : Colors.green,
                             ),
                           ),
                           child: Row(
                             children: [
-                              const Icon(Icons.upload_file_outlined, color: Colors.white70),
+                              const Icon(
+                                Icons.upload_file_outlined,
+                                color: Colors.white70,
+                              ),
                               const SizedBox(width: 10),
                               Expanded(
                                 child: Text(
-                                  _contractorFileName ?? "Upload contractor document",
+                                  _contractorFileName ??
+                                      "Upload contractor document",
                                   style: TextStyle(
                                     color: _contractorFilePath == null
                                         ? Colors.white54
@@ -453,7 +592,9 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
                           style: ElevatedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(vertical: 16),
                             backgroundColor: primaryButton,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(40)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(40),
+                            ),
                             elevation: 0,
                           ),
                           child: _isLoading
@@ -483,7 +624,8 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
                           Navigator.pushReplacement(
                             context,
                             MaterialPageRoute(
-                              builder: (_) => const LoginScreen(role: 'contractor'),
+                              builder: (_) =>
+                                  const LoginScreen(role: 'contractor'),
                             ),
                           );
                         },

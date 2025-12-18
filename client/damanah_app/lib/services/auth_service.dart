@@ -3,7 +3,7 @@ import 'package:http/http.dart' as http;
 
 class AuthService {
   // على Android Emulator نستخدم 10.0.2.2
-  static const String _baseUrl = 'http://10.0.2.2:5000/api/auth';
+  static const String _baseUrl = 'http://192.168.1.14:5000/api/auth';
 
   // ===== Login =====
   Future<Map<String, dynamic>> login({
@@ -30,14 +30,16 @@ class AuthService {
     }
   }
 
-  // ===== Client Register (مع ملف هوية + صورة اختيارية) =====
+  // ===== Client Register (Scan ID + صورة اختيارية) =====
   Future<Map<String, dynamic>> registerClient({
     required String name,
     required String email,
     required String password,
     required String phone,
-    required String identityFilePath, // path للملف
-    String? profileImagePath, // ✅ اختياري (بدون required)
+    required String identityFilePath, // ✅ صورة الهوية من Scan (camera)
+    required String nationalId, // ✅ جديد
+    double? nationalIdConfidence, // ✅ اختياري
+    String? profileImagePath, // اختياري
   }) async {
     final uri = Uri.parse('$_baseUrl/register');
     final request = http.MultipartRequest('POST', uri);
@@ -47,6 +49,14 @@ class AuthService {
     request.fields['password'] = password;
     request.fields['phone'] = phone;
     request.fields['role'] = 'client';
+
+    // ✅ الرقم الوطني
+    request.fields['nationalId'] = nationalId;
+
+    // ✅ (اختياري) نسبة الثقة
+    if (nationalIdConfidence != null) {
+      request.fields['nationalIdConfidence'] = nationalIdConfidence.toString();
+    }
 
     // صورة البروفايل (اختياري)
     if (profileImagePath != null && profileImagePath.isNotEmpty) {
@@ -78,7 +88,7 @@ class AuthService {
     }
   }
 
-  // ===== Contractor Register (هوية + وثيقة مقاول + صورة اختيارية) =====
+  // ===== Contractor Register (Scan ID + وثيقة مقاول + صورة اختيارية) =====
   Future<Map<String, dynamic>> registerContractor({
     required String name,
     required String email,
@@ -86,6 +96,8 @@ class AuthService {
     required String phone,
     required String identityFilePath, // الهوية
     required String contractorFilePath, // وثيقة المقاول
+    required String nationalId, // ✅ جديد
+    double? nationalIdConfidence, // ✅ اختياري
     String? profileImagePath, // صورة اختيارية
   }) async {
     final uri = Uri.parse('$_baseUrl/register');
@@ -95,7 +107,15 @@ class AuthService {
     request.fields['email'] = email;
     request.fields['password'] = password;
     request.fields['phone'] = phone;
-    request.fields['role'] = 'contractor'; // ✅ مهم
+    request.fields['role'] = 'contractor';
+
+    // ✅ الرقم الوطني
+    request.fields['nationalId'] = nationalId;
+
+    // ✅ (اختياري) نسبة الثقة
+    if (nationalIdConfidence != null) {
+      request.fields['nationalIdConfidence'] = nationalIdConfidence.toString();
+    }
 
     // صورة البروفايل (اختياري)
     if (profileImagePath != null && profileImagePath.isNotEmpty) {
@@ -132,6 +152,27 @@ class AuthService {
       return data as Map<String, dynamic>;
     } else {
       throw Exception(data['message'] ?? 'Registration failed');
+    }
+  }
+
+  // ===== Resend Verification Email =====
+  Future<Map<String, dynamic>> resendVerificationEmail({
+    required String email,
+  }) async {
+    final url = Uri.parse('$_baseUrl/resend-verification-email');
+
+    final response = await http.post(
+      url,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'email': email}),
+    );
+
+    final data = jsonDecode(response.body);
+
+    if (response.statusCode == 200) {
+      return data as Map<String, dynamic>;
+    } else {
+      throw Exception(data['message'] ?? 'Resend failed');
     }
   }
 }
