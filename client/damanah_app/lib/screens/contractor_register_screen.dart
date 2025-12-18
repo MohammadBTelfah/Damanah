@@ -353,8 +353,9 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
                           if (value == null || value.isEmpty) {
                             return "Email is required";
                           }
-                          if (!value.contains("@"))
+                          if (!value.contains("@")) {
                             return "Enter a valid email";
+                          }
                           return null;
                         },
                       ),
