@@ -1,5 +1,32 @@
 const User = require("../models/User");
 
+
+//regular register for admins
+exports.registerAdmin = async (req, res) => {
+  try {
+    const { name, email, password } = req.body;
+    const existingAdmin = await User.findOne({ email, role: "admin" });
+    if (existingAdmin) {
+      return res.status(400).json({ message: "Admin already exists" });
+    } 
+    const newAdmin = new User({
+      name,
+      email,  
+      password,
+      role: "admin",
+      isEmailVerified: true,
+    });
+    await newAdmin.save();
+    res.status(201).json({ message: "Admin registered successfully" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+
+
+
+
 // GET /api/admin/users?role=client/contractor/admin (اختياري)
 exports.getAllUsers = async (req, res) => {
   try {

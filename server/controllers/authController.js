@@ -5,6 +5,8 @@ const sendEmail = require("../utils/sendEmail");
 const jwt = require("jsonwebtoken");
 
 // =============== REGISTER ===============
+
+
 exports.register = async (req, res) => {
   try {
     const {
@@ -13,42 +15,56 @@ exports.register = async (req, res) => {
       password,
       phone,
       role,
-      nationalId, // ✅ جديد
-      nationalIdConfidence, // ✅ اختياري
+      nationalId,
+      nationalIdConfidence,
     } = req.body;
 
+    // ✅ 1) Validate required fields (same for all roles)
     if (!name || !email || !password || !phone) {
       return res.status(400).json({ message: "All fields are required" });
     }
 
+    // ✅ 2) normalize role + validate allowed roles
+    const normalizedRole = role || "client";
+    const allowedRoles = ["client", "contractor", "admin"];
+    if (!allowedRoles.includes(normalizedRole)) {
+      return res.status(400).json({ message: "Invalid role" });
+    }
+
+    // ✅ 3) Protect admin registration (VERY IMPORTANT)
+    if (normalizedRole === "admin") {
+      const secret = req.headers["x-admin-secret"];
+      if (!secret || secret !== process.env.ADMIN_REGISTER_SECRET) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+    }
+
+    // ✅ 4) Check email uniqueness
     const exists = await User.findOne({ email });
     if (exists) {
       return res.status(400).json({ message: "Email already exists" });
     }
 
-    // قراءة الملفات المرفوعة من multer
+    // قراءة الملفات المرفوعة من multer (اختيارية)
     const files = req.files || {};
 
-    // ✅ صورة البروفايل (اختيارية)
     const profileImagePath =
       files.profileImage && files.profileImage[0]
         ? files.profileImage[0].path
         : null;
 
-    // الهوية
     const identityDocPath =
       files.identityDocument && files.identityDocument[0]
         ? files.identityDocument[0].path
         : null;
 
-    // وثيقة المقاول
     const contractorDocPath =
       files.contractorDocument && files.contractorDocument[0]
         ? files.contractorDocument[0].path
         : null;
 
-    // الهوية مطلوبة للـ client والـ contractor
-    const normalizedRole = role || "client";
+    // ✅ 5) Role-specific requirements
+    // الهوية مطلوبة فقط للـ client والـ contractor
     if (
       (normalizedRole === "client" || normalizedRole === "contractor") &&
       !identityDocPath
@@ -63,18 +79,18 @@ exports.register = async (req, res) => {
         .json({ message: "Contractor document is required" });
     }
 
-    // ✅ (اختياري لكن مهم): الرقم الوطني مطلوب إذا الهوية موجودة
-    // إذا بدك تخليه إجباري 100% للـ client/contractor، خلي الشرط صارم
+    // الرقم الوطني مطلوب فقط للـ client والـ contractor
     if (
       (normalizedRole === "client" || normalizedRole === "contractor") &&
-      !nationalId
+      (!nationalId || String(nationalId).trim().length === 0)
     ) {
       return res.status(400).json({ message: "National ID is required" });
     }
 
+    // ✅ 6) Hash password
     const hash = await bcrypt.hash(password, 10);
 
-    // ✅ إنشاء المستخدم
+    // ✅ 7) Create user (admin لا يحتاج ملفات/هوية)
     const user = new User({
       name,
       email,
@@ -82,29 +98,39 @@ exports.register = async (req, res) => {
       phone,
       role: normalizedRole,
 
+      // ✅ فقط للـ client/contractor (وحتى لو admin رح يكون null عادي)
       profileImage: profileImagePath,
-      identityDocument: identityDocPath,
-      contractorDocument: contractorDocPath,
+      identityDocument:
+        normalizedRole === "admin" ? null : identityDocPath,
+      contractorDocument:
+        normalizedRole === "contractor" ? contractorDocPath : null,
 
-      // ✅ حفظ الرقم الوطني (من Flutter ML Kit)
-      nationalId: nationalId ? String(nationalId).trim() : null,
+      // ✅ nationalId فقط للـ client/contractor
+      nationalId:
+        normalizedRole === "admin" ? null : String(nationalId || "").trim() || null,
 
-      // ✅ نسبة الثقة (0..1) اختياري
       nationalIdConfidence:
-        nationalIdConfidence !== undefined && nationalIdConfidence !== null && nationalIdConfidence !== ""
-          ? Number(nationalIdConfidence)
-          : null,
+        normalizedRole === "admin"
+          ? null
+          : (nationalIdConfidence !== undefined &&
+             nationalIdConfidence !== null &&
+             nationalIdConfidence !== "")
+            ? Number(nationalIdConfidence)
+            : null,
 
-      // ✅ وقت الاستخراج
       identityExtractedAt:
-        nationalId ? new Date() : null,
+        normalizedRole === "admin"
+          ? null
+          : (nationalId ? new Date() : null),
 
-      // ✅ تثبيت حالات التفعيل صراحة (حتى لو default بالـ model)
+      // ✅ تفعيل ايميل للجميع (حتى admin)
       emailVerified: false,
+
+      // ✅ الحساب مش active إلا بعد تفعيل الإيميل
       isActive: false,
     });
 
-    // ✅ توليد توكن التفعيل (نخزن hash بالـ DB ونرسل raw للمستخدم)
+    // ✅ 8) Create verification token
     const emailTokenRaw = crypto.randomBytes(32).toString("hex");
     const emailTokenHashed = crypto
       .createHash("sha256")
@@ -112,14 +138,13 @@ exports.register = async (req, res) => {
       .digest("hex");
 
     user.emailVerificationToken = emailTokenHashed;
-    user.emailVerificationExpires = Date.now() + 24 * 60 * 60 * 1000; // 24 ساعة
+    user.emailVerificationExpires = Date.now() + 24 * 60 * 60 * 1000;
 
     await user.save();
 
-    // ✅ رابط التفعيل
+    // ✅ 9) Send verify email
     const verifyLink = `${process.env.APP_URL}/api/auth/verify-email/${emailTokenRaw}`;
 
-    // ✅ إرسال الإيميل
     await sendEmail({
       to: user.email,
       subject: "Verify your email",
@@ -148,6 +173,7 @@ exports.register = async (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 };
+
 
 // =============== LOGIN ===============
 exports.login = async (req, res) => {
