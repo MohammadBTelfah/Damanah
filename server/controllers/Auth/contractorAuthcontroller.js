@@ -59,7 +59,7 @@ async function sendVerificationEmailForContractor(contractor) {
   await contractor.save();
 
   // ✅ تأكد المسار هذا يطابق صفحة verify عندك بالفرونت
-  const verifyUrl = `${process.env.APP_URL}/verify-email/${emailToken}`;
+const verifyUrl = `${process.env.API_URL}/api/auth/contractor/verify-email/${emailToken}`;
 
   await sendEmail({
     to: contractor.email,
