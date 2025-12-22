@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import '../services/session_service.dart';
 
-import 'MainShell.dart'; // ✅ بدل ClientHomeScreen
+import 'MainShell.dart';
 import 'client_register_screen.dart';
 import 'contractor_register_screen.dart';
 
@@ -31,7 +31,6 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  // SnackBar من أعلى الشاشة
   void _showTopSnackBar(String message, Color color) {
     final snackBar = SnackBar(
       content: Text(
@@ -56,14 +55,22 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final res = await _authService.login(
-        email: _emailController.text.trim(),
-        password: _passwordController.text.trim(),
-      );
+      // ✅ حسب الرول
+      final Map<String, dynamic> res;
+      if (widget.role == 'client') {
+        res = await _authService.loginClient(
+          email: _emailController.text.trim(),
+          password: _passwordController.text.trim(),
+        );
+      } else {
+        res = await _authService.loginContractor(
+          email: _emailController.text.trim(),
+          password: _passwordController.text.trim(),
+        );
+      }
 
       if (!mounted) return;
 
-      // ✅ احفظ التوكن واليوزر في الجهاز
       final token = res["token"];
       final user = res["user"];
 
@@ -76,7 +83,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
       _showTopSnackBar("Login successful", Colors.green);
 
-      // ✅ روح على MainShell (اللي فيه Bottom Bar)
       Future.delayed(const Duration(milliseconds: 800), () {
         if (!mounted) return;
 
@@ -94,7 +100,6 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  // ================= SIGN UP NAVIGATION =================
   void _goToSignup() {
     if (widget.role == 'client') {
       Navigator.push(
@@ -120,7 +125,6 @@ class _LoginScreenState extends State<LoginScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // AppBar
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: Row(
@@ -147,10 +151,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ],
               ),
             ),
-
             const SizedBox(height: 24),
-
-            // Title
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 24),
               child: Align(
@@ -165,9 +166,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
             ),
-
             const SizedBox(height: 24),
-
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -175,7 +174,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   key: _formKey,
                   child: Column(
                     children: [
-                      // Email
                       TextFormField(
                         controller: _emailController,
                         style: const TextStyle(color: Colors.white),
@@ -204,10 +202,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           return null;
                         },
                       ),
-
                       const SizedBox(height: 16),
-
-                      // Password
                       TextFormField(
                         controller: _passwordController,
                         style: const TextStyle(color: Colors.white),
@@ -236,10 +231,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           return null;
                         },
                       ),
-
                       const SizedBox(height: 24),
-
-                      // Login button
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton(
@@ -271,10 +263,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                         ),
                       ),
-
                       const SizedBox(height: 24),
-
-                      // Sign up
                       GestureDetector(
                         onTap: _goToSignup,
                         child: const Text(
@@ -285,7 +274,6 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         ),
                       ),
-
                       const SizedBox(height: 24),
                     ],
                   ),

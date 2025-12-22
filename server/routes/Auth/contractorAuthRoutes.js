@@ -27,23 +27,21 @@ const storage = multer.diskStorage({
 });
 
 function fileFilter(req, file, cb) {
-  if (file.fieldname === "profileImage" || file.fieldname === "contractorDocument") {
-    if (file.mimetype.startsWith("image/")) return cb(null, true);
-    return cb(new Error(`${file.fieldname} must be an image`), false);
+  const forbidden = [
+    "application/x-msdownload", // exe
+    "application/x-sh",
+    "application/x-bat",
+  ];
+
+  if (forbidden.includes(file.mimetype)) {
+    return cb(new Error("File type not allowed"), false);
   }
 
-  if (file.fieldname === "identityDocument") {
-    const ok =
-      file.mimetype.startsWith("image/") ||
-      file.mimetype === "application/pdf";
-    if (ok) return cb(null, true);
-    return cb(new Error("identityDocument must be image or PDF"), false);
-  }
-
-  cb(new Error("Unexpected file field"), false);
+  cb(null, true);
 }
 
 const upload = multer({ storage, fileFilter });
+
 
 /* ================== ROUTES (NO AUTH) ================== */
 
