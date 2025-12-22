@@ -60,7 +60,7 @@ async function sendVerificationEmailForClient(client) {
   await client.save();
 
   // ✅ تأكد المسار هذا يطابق صفحة verify عندك بالفرونت
-  const verifyUrl = `${process.env.APP_URL}/verify-email/${emailToken}`;
+const verifyUrl = `${process.env.API_URL}/api/auth/client/verify-email/${emailToken}`;
 
   await sendEmail({
     to: client.email,
