@@ -31,6 +31,8 @@ function fileFilter(req, file, cb) {
 const upload = multer({ storage, fileFilter });
 
 // ✅ CRUD for own account
+router.get("/ping", (req, res) => res.json({ ok: true })); // ✅ test
+
 router.get("/me", protect, adminOnly, verifiedAndActive, me.getMe);
 router.put("/me", protect, adminOnly, verifiedAndActive, upload.single("profileImage"), me.updateMe);
 router.delete("/me", protect, adminOnly, verifiedAndActive, me.deleteMe);

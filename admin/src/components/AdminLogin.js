@@ -13,7 +13,6 @@ import {
 } from "@mui/material";
 import Visibility from "@mui/icons-material/Visibility";
 import VisibilityOff from "@mui/icons-material/VisibilityOff";
-import { useNavigate } from "react-router-dom";
 import { adminLogin, adminResendVerification } from "../Service/AuthApi";
 
 // 🎨 Colors
@@ -21,9 +20,11 @@ const bgColor = "#0F261F";
 const inputFill = "#1B3A35";
 const primaryButton = "#8BE3B5";
 
-export default function AdminLogin() {
-  const navigate = useNavigate();
+// ✅ مهم: نفس API_BASE اللي عندك بـ AuthApi.js
+const API_BASE =
+  process.env.REACT_APP_API_BASE_URL || "http://localhost:5000";
 
+export default function AdminLogin({ onLoggedIn }) {
   const [form, setForm] = useState({
     email: "",
     password: "",
@@ -53,17 +54,6 @@ export default function AdminLogin() {
     return msg;
   };
 
-  const saveSession = (data) => {
-    // ✅ Keep it simple. You can swap to localStorage if you want persistence.
-    const token = data?.token || "";
-    const user = data?.user || null;
-    const role = data?.role || "admin";
-
-    sessionStorage.setItem("token", token);
-    sessionStorage.setItem("role", role);
-    sessionStorage.setItem("user", JSON.stringify(user));
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setErrorMsg("");
@@ -77,20 +67,47 @@ export default function AdminLogin() {
 
     setLoading(true);
     try {
+      // ✅ Login API
       const data = await adminLogin({
         email: form.email.trim(),
         password: form.password,
       });
 
-      saveSession(data);
+      const token = data?.token || data?.accessToken || data?.jwt;
+      const admin = data?.admin || data?.user || {};
+
+      if (!token) {
+        throw new Error("Invalid login response (missing token)");
+      }
+
+      // ✅ حل الصورة: profileImage عندك بالـ DB مسار نسبي
+      const rawImage =
+        admin.profileImage || admin.image || admin.avatarUrl || "";
+
+      const imageUrl =
+        rawImage && rawImage.startsWith("http")
+          ? rawImage
+          : rawImage
+          ? `${API_BASE}${rawImage}`
+          : undefined;
+
+      const nextSession = {
+        token,
+        user: {
+          name: admin.name || admin.fullName || admin.email || form.email.trim(),
+          email: admin.email || form.email.trim(),
+          image: imageUrl, // ✅ URL كامل للصورة
+        },
+      };
+
       setSuccessMsg("Logged in successfully. Redirecting...");
 
-      setTimeout(() => navigate("/"), 600);
+      // ✅ ارجعي session للـ Dashboard wrapper
+      onLoggedIn?.(nextSession);
     } catch (err) {
       const msg = normalizeError(err);
       setErrorMsg(msg);
 
-      // ✅ If backend says verify email, show resend button
       if (msg.toLowerCase().includes("verify your email")) {
         setCanResend(true);
       }
