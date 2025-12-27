@@ -6,7 +6,6 @@ const Admin = require("../models/Admin");
 
 const isStrongPassword = require("../utils/checkPassword");
 
-
 function getModelByRole(role) {
   if (role === "client") return Client;
   if (role === "contractor") return Contractor;
@@ -14,8 +13,13 @@ function getModelByRole(role) {
   return null;
 }
 
+// ✅ get user id from token payload (supports multiple keys)
+function getUserId(req) {
+  return req.user?.id || req.user?._id || req.user?.userId || req.user?.uid;
+}
+
 // ✅ ensure phone unique across ALL collections (exclude current user)
-async function ensurePhoneUniqueAcrossAll({ phone, role, userId }) {
+async function ensurePhoneUniqueAcrossAll({ phone, userId }) {
   if (!phone) return;
 
   const queries = [
@@ -24,7 +28,6 @@ async function ensurePhoneUniqueAcrossAll({ phone, role, userId }) {
     Admin.findOne({ phone, _id: { $ne: userId } }),
   ];
 
-  // ما في داعي نستثني نفس الكولكشن لأننا عاملين $ne فوق
   const [c1, c2, c3] = await Promise.all(queries);
   const exists = c1 || c2 || c3;
 
@@ -41,7 +44,12 @@ exports.getMe = async (req, res) => {
     const Model = getModelByRole(req.user?.role);
     if (!Model) return res.status(400).json({ message: "Invalid role" });
 
-    const user = await Model.findById(req.user.id).select("-password");
+    const userId = getUserId(req);
+    if (!userId) {
+      return res.status(401).json({ message: "Invalid token payload (missing user id)" });
+    }
+
+    const user = await Model.findById(userId).select("-password");
     if (!user) return res.status(404).json({ message: "User not found" });
 
     return res.json({ user: { ...user.toObject(), role: req.user.role } });
@@ -60,12 +68,17 @@ exports.updateMe = async (req, res) => {
     const Model = getModelByRole(req.user?.role);
     if (!Model) return res.status(400).json({ message: "Invalid role" });
 
-    const user = await Model.findById(req.user.id);
+    const userId = getUserId(req);
+    if (!userId) {
+      return res.status(401).json({ message: "Invalid token payload (missing user id)" });
+    }
+
+    const user = await Model.findById(userId);
     if (!user) return res.status(404).json({ message: "User not found" });
 
     // ✅ phone uniqueness across all
     if (phone && phone !== user.phone) {
-      await ensurePhoneUniqueAcrossAll({ phone, role: req.user.role, userId: user._id });
+      await ensurePhoneUniqueAcrossAll({ phone, userId: user._id });
       user.phone = phone;
     }
 
@@ -98,11 +111,16 @@ exports.deleteMe = async (req, res) => {
     const Model = getModelByRole(req.user?.role);
     if (!Model) return res.status(400).json({ message: "Invalid role" });
 
-    const user = await Model.findById(req.user.id);
+    const userId = getUserId(req);
+    if (!userId) {
+      return res.status(401).json({ message: "Invalid token payload (missing user id)" });
+    }
+
+    const user = await Model.findById(userId);
     if (!user) return res.status(404).json({ message: "User not found" });
 
     // ✅ HARD DELETE
-    await Model.findByIdAndDelete(req.user.id);
+    await Model.findByIdAndDelete(userId);
 
     return res.json({ message: "Account deleted successfully" });
   } catch (err) {
@@ -132,7 +150,12 @@ exports.changePassword = async (req, res) => {
     const Model = getModelByRole(req.user?.role);
     if (!Model) return res.status(400).json({ message: "Invalid role" });
 
-    const user = await Model.findById(req.user.id);
+    const userId = getUserId(req);
+    if (!userId) {
+      return res.status(401).json({ message: "Invalid token payload (missing user id)" });
+    }
+
+    const user = await Model.findById(userId);
     if (!user) return res.status(404).json({ message: "User not found" });
 
     const ok = await bcrypt.compare(currentPassword, user.password);

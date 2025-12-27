@@ -14,8 +14,8 @@ const {
   getUserIdentityDetails,
 } = require("../../controllers/adminController");
 
-// ✅ تأكد إن اسم الملف مطابق عندك (authMiddleware.js)
-const { protect, adminOnly, verifiedAndActive } = require("../../middleware/authMiddleware");
+// ✅ تأكد إن اسم الملف مطابق عندك (authMiddleWare.js)
+const { protect, adminOnly, verifiedAndActive } = require("../../middleware/authMiddleWare");
 
 // ✅ كل مسارات الأدمن محمية + لازم يكون Verified + Active
 router.use(protect);

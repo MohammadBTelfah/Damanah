@@ -39,8 +39,11 @@ exports.protect = async (req, res, next) => {
     }
 
     // ✅ نخلي role موجود حتى لو مش مخزن بالـ DB
-    req.user = { ...user.toObject(), role: decoded.role };
-
+    req.user = {
+      ...user.toObject(),
+      id: user._id.toString(), // ✅ أضف id
+      role: decoded.role,
+    };
     next();
   } catch (err) {
     console.error("Auth error:", err.message);
