@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../services/auth_service.dart';
 import 'login_screen.dart';
-import 'scan_id_screen.dart'; // ✅ جديد
+import 'scan_id_screen.dart';
 
 class ContractorRegisterScreen extends StatefulWidget {
   const ContractorRegisterScreen({super.key});
@@ -23,26 +23,27 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
 
-  // ✅ الرقم الوطني (auto-filled + editable)
+  // الرقم الوطني (auto-filled + editable)
   final _nationalIdController = TextEditingController();
 
   final AuthService _authService = AuthService();
 
   bool _isLoading = false;
 
+  // 👁️ show/hide password
+  bool _showPass = false;
+  bool _showConfirm = false;
+
   // ---------- Profile Image ----------
   String? _profileImagePath;
-  // ----------------------------------
 
   // ---------- Identity (from Scan) ----------
-  File? _identityImageFile; // ✅ صورة الهوية من الكاميرا
+  File? _identityImageFile; // صورة الهوية من الكاميرا
   double? _nationalIdConfidence;
-  // --------------------------------------
 
   // ---------- Contractor Document ----------
   String? _contractorFilePath;
   String? _contractorFileName;
-  // ----------------------------------------
 
   @override
   void dispose() {
@@ -72,6 +73,11 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
       ..showSnackBar(snackBar);
   }
 
+  bool _isValidPassword(String v) {
+    // حسب طلبك: طويل + يحتوي @
+    return v.length >= 8 && v.contains('@');
+  }
+
   Future<void> _pickProfileImage() async {
     final result = await FilePicker.platform.pickFiles(type: FileType.image);
     if (result != null && result.files.single.path != null) {
@@ -79,7 +85,7 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
     }
   }
 
-  // ✅ Scan ID (Camera + OCR)
+  // Scan ID (Camera + OCR)
   Future<void> _scanNationalId() async {
     final result = await Navigator.push<ScanIdResult>(
       context,
@@ -110,27 +116,29 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
   Future<void> _handleRegister() async {
     if (!_formKey.currentState!.validate()) return;
 
-    // ✅ لازم scan للهوية
+    // لازم scan للهوية
     if (_identityImageFile == null) {
       _showTopSnackBar("Please scan your national ID", Colors.red);
       return;
     }
 
-    // ✅ لازم رقم وطني
+    // لازم رقم وطني
     final nationalId = _nationalIdController.text.trim();
     if (nationalId.isEmpty) {
       _showTopSnackBar("National ID is required", Colors.red);
       return;
     }
 
-    // ✅ لازم وثيقة المقاول
+    // لازم وثيقة المقاول
     if (_contractorFilePath == null) {
       _showTopSnackBar("Please upload contractor document", Colors.red);
       return;
     }
 
-    if (_passwordController.text.trim() !=
-        _confirmPasswordController.text.trim()) {
+    final pass = _passwordController.text.trim();
+    final confirm = _confirmPasswordController.text.trim();
+
+    if (pass != confirm) {
       _showTopSnackBar("Passwords do not match", Colors.red);
       return;
     }
@@ -141,16 +149,16 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
       final res = await _authService.registerContractor(
         name: _nameController.text.trim(),
         email: _emailController.text.trim(),
-        password: _passwordController.text.trim(),
+        password: pass,
         phone: _phoneController.text.trim(),
 
-        // ✅ identityDocument من scan
+        // identityDocument من scan
         identityFilePath: _identityImageFile!.path,
 
-        // ✅ contractor doc
+        // contractor doc
         contractorFilePath: _contractorFilePath!,
 
-        // ✅ جديد
+        // national id
         nationalId: nationalId,
         nationalIdConfidence: _nationalIdConfidence,
 
@@ -253,7 +261,7 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
                   key: _formKey,
                   child: Column(
                     children: [
-                      // ===== Profile Image (centered, tap only) =====
+                      // Profile Image
                       GestureDetector(
                         onTap: _pickProfileImage,
                         child: Stack(
@@ -300,7 +308,7 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
                       Text(
                         "Tap to add profile photo (optional)",
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.7),
+                          color: Colors.white.withAlpha(179),
                           fontSize: 13,
                         ),
                       ),
@@ -386,10 +394,11 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
                       ),
                       const SizedBox(height: 12),
 
-                      // Password
+                      // Password (👁️)
                       TextFormField(
                         controller: _passwordController,
                         style: const TextStyle(color: Colors.white),
+                        obscureText: !_showPass,
                         decoration: InputDecoration(
                           filled: true,
                           fillColor: inputFill,
@@ -403,22 +412,33 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
                             horizontal: 16,
                             vertical: 16,
                           ),
+                          suffixIcon: IconButton(
+                            onPressed: () =>
+                                setState(() => _showPass = !_showPass),
+                            icon: Icon(
+                              _showPass
+                                  ? Icons.visibility_off
+                                  : Icons.visibility,
+                              color: Colors.white70,
+                            ),
+                          ),
                         ),
-                        obscureText: true,
                         validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return "Password is required";
+                          final v = (value ?? "").trim();
+                          if (v.isEmpty) return "Password is required";
+                          if (!_isValidPassword(v)) {
+                            return "Min 8 chars and must include @";
                           }
-                          if (value.length < 6) return "At least 6 characters";
                           return null;
                         },
                       ),
                       const SizedBox(height: 12),
 
-                      // Confirm password
+                      // Confirm password (👁️)
                       TextFormField(
                         controller: _confirmPasswordController,
                         style: const TextStyle(color: Colors.white),
+                        obscureText: !_showConfirm,
                         decoration: InputDecoration(
                           filled: true,
                           fillColor: inputFill,
@@ -432,22 +452,32 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
                             horizontal: 16,
                             vertical: 16,
                           ),
+                          suffixIcon: IconButton(
+                            onPressed: () => setState(
+                                () => _showConfirm = !_showConfirm),
+                            icon: Icon(
+                              _showConfirm
+                                  ? Icons.visibility_off
+                                  : Icons.visibility,
+                              color: Colors.white70,
+                            ),
+                          ),
                         ),
-                        obscureText: true,
-                        validator: (value) => (value == null || value.isEmpty)
-                            ? "Please confirm password"
-                            : null,
+                        validator: (value) =>
+                            (value == null || value.isEmpty)
+                                ? "Please confirm password"
+                                : null,
                       ),
 
                       const SizedBox(height: 16),
 
-                      // ✅ Scan ID
+                      // Scan ID
                       Align(
                         alignment: Alignment.centerLeft,
                         child: Text(
                           "National ID (scan by camera)",
                           style: TextStyle(
-                            color: Colors.white.withOpacity(0.9),
+                            color: Colors.white.withAlpha(230),
                             fontSize: 14,
                             fontWeight: FontWeight.w500,
                           ),
@@ -500,6 +530,7 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
 
                       const SizedBox(height: 12),
 
+                      // National ID
                       TextFormField(
                         controller: _nationalIdController,
                         style: const TextStyle(color: Colors.white),
@@ -534,7 +565,7 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
                         child: Text(
                           "Contractor document (license / record)",
                           style: TextStyle(
-                            color: Colors.white.withOpacity(0.9),
+                            color: Colors.white.withAlpha(230),
                             fontSize: 14,
                             fontWeight: FontWeight.w500,
                           ),
@@ -586,6 +617,7 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
 
                       const SizedBox(height: 24),
 
+                      // Sign up button
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton(
@@ -620,13 +652,13 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
 
                       const SizedBox(height: 16),
 
+                      // Already have account
                       TextButton(
                         onPressed: () {
                           Navigator.pushReplacement(
                             context,
                             MaterialPageRoute(
-                              builder: (_) =>
-                                  const LoginScreen(role: 'contractor'),
+                              builder: (_) => const LoginScreen(role: 'contractor'),
                             ),
                           );
                         },
