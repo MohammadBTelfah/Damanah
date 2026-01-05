@@ -1,10 +1,13 @@
 const bcrypt = require("bcryptjs");
+const crypto = require("crypto");
 
 const Client = require("../models/Client");
 const Contractor = require("../models/Contractor");
 const Admin = require("../models/Admin");
 
 const isStrongPassword = require("../utils/checkPassword");
+
+const sendEmail = require("../utils/sendEmail");
 
 function getModelByRole(role) {
   if (role === "client") return Client;
@@ -46,7 +49,9 @@ exports.getMe = async (req, res) => {
 
     const userId = getUserId(req);
     if (!userId) {
-      return res.status(401).json({ message: "Invalid token payload (missing user id)" });
+      return res
+        .status(401)
+        .json({ message: "Invalid token payload (missing user id)" });
     }
 
     const user = await Model.findById(userId).select("-password");
@@ -70,7 +75,9 @@ exports.updateMe = async (req, res) => {
 
     const userId = getUserId(req);
     if (!userId) {
-      return res.status(401).json({ message: "Invalid token payload (missing user id)" });
+      return res
+        .status(401)
+        .json({ message: "Invalid token payload (missing user id)" });
     }
 
     const user = await Model.findById(userId);
@@ -113,7 +120,9 @@ exports.deleteMe = async (req, res) => {
 
     const userId = getUserId(req);
     if (!userId) {
-      return res.status(401).json({ message: "Invalid token payload (missing user id)" });
+      return res
+        .status(401)
+        .json({ message: "Invalid token payload (missing user id)" });
     }
 
     const user = await Model.findById(userId);
@@ -152,7 +161,9 @@ exports.changePassword = async (req, res) => {
 
     const userId = getUserId(req);
     if (!userId) {
-      return res.status(401).json({ message: "Invalid token payload (missing user id)" });
+      return res
+        .status(401)
+        .json({ message: "Invalid token payload (missing user id)" });
     }
 
     const user = await Model.findById(userId);
@@ -173,3 +184,119 @@ exports.changePassword = async (req, res) => {
     return res.status(500).json({ message: "Server error" });
   }
 };
+// ================== Forget Passowrd ================== //
+exports.forgotPassword = async (req, res) => {
+  try {
+    const { role, email } = req.body;
+
+    // ✅ validate
+    if (!role || !email) {
+      return res.status(400).json({ message: "role & email required" });
+    }
+
+    const Model = getModelByRole(role);
+    if (!Model) return res.status(400).json({ message: "Invalid role" });
+
+    const emailNorm = String(email).trim().toLowerCase();
+    const user = await Model.findOne({ email: emailNorm });
+
+    // ✅ Security: same response whether user exists or not
+    if (!user) {
+      console.log("forgotPassword: email not found:", role, emailNorm);
+      return res.json({ message: "If the email exists, an OTP was sent." });
+    }
+
+    // ✅ OTP 6 digits, never starts with 0
+    const otp = String(Math.floor(100000 + Math.random() * 900000));
+
+    // ✅ hash OTP before storing
+    const otpHash = crypto.createHash("sha256").update(otp).digest("hex");
+
+    user.resetPasswordToken = otpHash;
+    user.resetPasswordExpires = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+    await user.save();
+
+    // ✅ send email
+    try {
+      const info = await sendEmail({
+        to: user.email,
+        subject: "Reset your password (OTP)",
+        html: `
+          <p>You requested to reset your password.</p>
+          <p><b>Your OTP code (valid for 15 minutes):</b></p>
+          <p style="font-size:26px; letter-spacing:4px;"><b>${otp}</b></p>
+          <p>Open the app → enter the OTP → set a new password.</p>
+        `,
+      });
+
+      console.log("✅ OTP email sent to:", user.email);
+      if (info) console.log("Email info:", info);
+    } catch (e) {
+      console.error("❌ sendEmail failed:", e);
+      return res.status(500).json({ message: "Failed to send reset email" });
+    }
+
+    return res.json({ message: "If the email exists, an OTP was sent." });
+  } catch (err) {
+    console.error("forgotPassword server error:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+
+// ================== Reset Passowrd ================== //
+exports.resetPassword = async (req, res) => {
+  try {
+    const { role, otp, newPassword } = req.body;
+
+    // ✅ validate required
+    if (!role || !otp || !newPassword) {
+      return res
+        .status(400)
+        .json({ message: "role, otp, newPassword required" });
+    }
+
+    // ✅ validate OTP format (6 digits and not start with 0)
+    const otpStr = String(otp).trim();
+    if (!/^[1-9]\d{5}$/.test(otpStr)) {
+      return res.status(400).json({ message: "OTP must be 6 digits (no leading 0)" });
+    }
+
+    // ✅ strong password check (same as your backend rules)
+    if (!isStrongPassword(newPassword)) {
+      return res.status(400).json({
+        message:
+          "New password must be at least 8 characters long and include uppercase, lowercase, number, and special character (@$!%*?#&).",
+      });
+    }
+
+    const Model = getModelByRole(role);
+    if (!Model) return res.status(400).json({ message: "Invalid role" });
+
+    // ✅ hash otp and compare
+    const otpHash = crypto.createHash("sha256").update(otpStr).digest("hex");
+
+    const user = await Model.findOne({
+      resetPasswordToken: otpHash,
+      resetPasswordExpires: { $gt: new Date() },
+    });
+
+    if (!user) {
+      return res.status(400).json({ message: "Invalid or expired OTP" });
+    }
+
+    // ✅ update password + clear reset fields
+    user.password = await bcrypt.hash(String(newPassword), 10);
+    user.resetPasswordToken = null;
+    user.resetPasswordExpires = null;
+    await user.save();
+
+    return res.json({ message: "Password reset successfully" });
+  } catch (err) {
+    console.error("resetPassword server error:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+
+// ================== End of File ================== //

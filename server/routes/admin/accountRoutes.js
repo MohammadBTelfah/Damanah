@@ -1,5 +1,6 @@
 const router = require("express").Router();
 const me = require("../../controllers/meController");
+const { forgotPasswordLimiter, resetPasswordLimiter } = require("../../middleware/rateLimiters");
 
 const { protect, adminOnly, verifiedAndActive } = require("../../middleware/authMiddleWare");
 
@@ -39,5 +40,7 @@ router.delete("/me", protect, adminOnly, verifiedAndActive, me.deleteMe);
 
 // ✅ change password
 router.put("/change-password", protect, adminOnly, verifiedAndActive, me.changePassword);
+router.post("/forgot-password", forgotPasswordLimiter, me.forgotPassword);
+router.post("/reset-password", resetPasswordLimiter, me.resetPassword);
 
 module.exports = router;

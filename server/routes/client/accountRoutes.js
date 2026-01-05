@@ -1,6 +1,7 @@
 const router = require("express").Router();
 const me = require("../../controllers/meController");
 const { protect, clientOnly, verifiedAndActive } = require("../../middleware/authMiddleWare");
+const { forgotPasswordLimiter, resetPasswordLimiter } = require("../../middleware/rateLimiters");
 
 const multer = require("multer");
 const path = require("path");
@@ -34,5 +35,8 @@ router.put("/me", protect, clientOnly, verifiedAndActive, upload.single("profile
 router.delete("/me", protect, clientOnly, verifiedAndActive, me.deleteMe);
 
 router.put("/change-password", protect, clientOnly, verifiedAndActive, me.changePassword);
+router.post("/forgot-password", forgotPasswordLimiter, me.forgotPassword);
+router.post("/reset-password", resetPasswordLimiter, me.resetPassword);
+
 
 module.exports = router;
