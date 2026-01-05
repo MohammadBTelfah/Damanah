@@ -6,6 +6,7 @@ import '../services/session_service.dart';
 import 'MainShell.dart';
 import 'client_register_screen.dart';
 import 'contractor_register_screen.dart';
+import 'forgot_password_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   final String role; // 'client' أو 'contractor'
@@ -21,6 +22,9 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
 
   bool _isLoading = false;
+
+  // ✅ show / hide password
+  bool _obscurePassword = true;
 
   final AuthService _authService = AuthService();
 
@@ -55,8 +59,8 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // ✅ حسب الرول
       final Map<String, dynamic> res;
+
       if (widget.role == 'client') {
         res = await _authService.loginClient(
           email: _emailController.text.trim(),
@@ -85,7 +89,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
       Future.delayed(const Duration(milliseconds: 800), () {
         if (!mounted) return;
-
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (_) => const MainShell()),
@@ -94,10 +97,66 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (e) {
       if (!mounted) return;
       _showTopSnackBar("Login failed", Colors.red);
-      debugPrint("Login error: $e");
+      debugPrint("Forgot password error: $e");
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  // ================= FORGOT PASSWORD =================
+  void _showForgotPasswordDialog() {
+    final emailController = TextEditingController(text: _emailController.text);
+
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: const Color(0xFF1B3A35),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          "Forgot Password",
+          style: TextStyle(color: Colors.white),
+        ),
+        content: TextField(
+          controller: emailController,
+          style: const TextStyle(color: Colors.white),
+          keyboardType: TextInputType.emailAddress,
+          decoration: const InputDecoration(
+            hintText: "Enter your email",
+            hintStyle: TextStyle(color: Colors.white54),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Cancel"),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final email = emailController.text.trim();
+
+              if (email.isEmpty || !email.contains('@')) {
+                _showTopSnackBar("Enter a valid email", Colors.red);
+                return;
+              }
+
+              Navigator.pop(context);
+
+              try {
+                if (widget.role == 'client') {
+                  await _authService.forgotPasswordClient(email: email);
+                } else {
+                  await _authService.forgotPasswordContractor(email: email);
+                }
+                _showTopSnackBar("Reset link sent to your email", Colors.green);
+              } catch (e) {
+                _showTopSnackBar("Failed to send reset email", Colors.red);
+              }
+            },
+            child: const Text("Send"),
+          ),
+        ],
+      ),
+    );
   }
 
   void _goToSignup() {
@@ -151,7 +210,9 @@ class _LoginScreenState extends State<LoginScreen> {
                 ],
               ),
             ),
+
             const SizedBox(height: 24),
+
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 24),
               child: Align(
@@ -166,7 +227,9 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
             ),
+
             const SizedBox(height: 24),
+
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -174,6 +237,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   key: _formKey,
                   child: Column(
                     children: [
+                      // Email
                       TextFormField(
                         controller: _emailController,
                         style: const TextStyle(color: Colors.white),
@@ -202,10 +266,14 @@ class _LoginScreenState extends State<LoginScreen> {
                           return null;
                         },
                       ),
+
                       const SizedBox(height: 16),
+
+                      // Password 👁️
                       TextFormField(
                         controller: _passwordController,
                         style: const TextStyle(color: Colors.white),
+                        obscureText: _obscurePassword,
                         decoration: InputDecoration(
                           filled: true,
                           fillColor: inputFill,
@@ -219,19 +287,50 @@ class _LoginScreenState extends State<LoginScreen> {
                             horizontal: 16,
                             vertical: 16,
                           ),
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _obscurePassword
+                                  ? Icons.visibility_off
+                                  : Icons.visibility,
+                              color: Colors.white70,
+                            ),
+                            onPressed: () {
+                              setState(() {
+                                _obscurePassword = !_obscurePassword;
+                              });
+                            },
+                          ),
                         ),
-                        obscureText: true,
                         validator: (value) {
                           if (value == null || value.isEmpty) {
                             return 'Password is required';
                           }
-                          if (value.length < 6) {
-                            return 'At least 6 characters';
-                          }
                           return null;
                         },
                       ),
-                      const SizedBox(height: 24),
+
+                      // Forgot password
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton(
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    ForgotPasswordScreen(role: widget.role),
+                              ),
+                            );
+                          },
+                          child: const Text(
+                            "Forgot password?",
+                            style: TextStyle(color: Colors.white70),
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 8),
+
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton(
@@ -263,7 +362,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                         ),
                       ),
+
                       const SizedBox(height: 24),
+
                       GestureDetector(
                         onTap: _goToSignup,
                         child: const Text(
@@ -274,6 +375,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         ),
                       ),
+
                       const SizedBox(height: 24),
                     ],
                   ),

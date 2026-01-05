@@ -29,6 +29,10 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
 
   bool _isLoading = false;
 
+  // ✅ Show/Hide password
+  bool _obscurePassword = true;
+  bool _obscureConfirmPassword = true;
+
   // ---------- Profile Image ----------
   String? _profileImagePath;
   String? _profileImageName;
@@ -115,8 +119,8 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
       return;
     }
 
-    if (_passwordController.text.trim() !=
-        _confirmPasswordController.text.trim()) {
+    // ✅ (احتياط) تأكيد التطابق
+    if (_passwordController.text.trim() != _confirmPasswordController.text.trim()) {
       _showTopSnackBar("Passwords do not match", Colors.red);
       return;
     }
@@ -273,8 +277,7 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
                                 decoration: BoxDecoration(
                                   color: Colors.black87,
                                   shape: BoxShape.circle,
-                                  border:
-                                      Border.all(color: Colors.white, width: 1),
+                                  border: Border.all(color: Colors.white, width: 1),
                                 ),
                                 child: const Icon(
                                   Icons.camera_alt,
@@ -389,10 +392,11 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
 
                       const SizedBox(height: 12),
 
-                      // Password
+                      // Password ✅ (عين + شروط)
                       TextFormField(
                         controller: _passwordController,
                         style: const TextStyle(color: Colors.white),
+                        obscureText: _obscurePassword,
                         decoration: InputDecoration(
                           filled: true,
                           fillColor: inputFill,
@@ -406,25 +410,34 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
                             horizontal: 16,
                             vertical: 16,
                           ),
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                              color: Colors.white70,
+                            ),
+                            onPressed: () {
+                              setState(() {
+                                _obscurePassword = !_obscurePassword;
+                              });
+                            },
+                          ),
                         ),
-                        obscureText: true,
                         validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Password is required';
-                          }
-                          if (value.length < 6) {
-                            return 'At least 6 characters';
-                          }
+                          final v = value?.trim() ?? '';
+                          if (v.isEmpty) return 'Password is required';
+                          if (v.length < 8) return 'Password must be at least 8 characters';
+                          if (!v.contains('@')) return 'Password must contain @';
                           return null;
                         },
                       ),
 
                       const SizedBox(height: 12),
 
-                      // Confirm Password
+                      // Confirm Password ✅ (عين + تطابق)
                       TextFormField(
                         controller: _confirmPasswordController,
                         style: const TextStyle(color: Colors.white),
+                        obscureText: _obscureConfirmPassword,
                         decoration: InputDecoration(
                           filled: true,
                           fillColor: inputFill,
@@ -438,11 +451,23 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
                             horizontal: 16,
                             vertical: 16,
                           ),
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _obscureConfirmPassword ? Icons.visibility_off : Icons.visibility,
+                              color: Colors.white70,
+                            ),
+                            onPressed: () {
+                              setState(() {
+                                _obscureConfirmPassword = !_obscureConfirmPassword;
+                              });
+                            },
+                          ),
                         ),
-                        obscureText: true,
                         validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Please confirm password';
+                          final v = value?.trim() ?? '';
+                          if (v.isEmpty) return 'Please confirm password';
+                          if (v != _passwordController.text.trim()) {
+                            return 'Passwords do not match';
                           }
                           return null;
                         },
@@ -469,15 +494,12 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
                         borderRadius: BorderRadius.circular(12),
                         child: Container(
                           width: double.infinity,
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 14),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                           decoration: BoxDecoration(
                             color: inputFill,
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                              color: _identityImageFile == null
-                                  ? Colors.white24
-                                  : Colors.green,
+                              color: _identityImageFile == null ? Colors.white24 : Colors.green,
                             ),
                           ),
                           child: Row(
@@ -493,9 +515,7 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
                                       ? "Scan your national ID"
                                       : "ID scanned ✅ (tap to rescan)",
                                   style: TextStyle(
-                                    color: _identityImageFile == null
-                                        ? Colors.white54
-                                        : Colors.white,
+                                    color: _identityImageFile == null ? Colors.white54 : Colors.white,
                                     fontSize: 14,
                                   ),
                                   overflow: TextOverflow.ellipsis,
