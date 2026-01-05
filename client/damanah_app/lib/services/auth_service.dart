@@ -2,19 +2,26 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class AuthService {
-  static const String _clientBaseUrl =
-      'http://192.168.1.14:5000/api/auth/client';
-  static const String _contractorBaseUrl =
-      'http://192.168.1.14:5000/api/auth/contractor';
+  // ✅ خلي كل المشروع يستخدم نفس الـ baseUrl
+  // Emulator: 10.0.2.2
+  static const String _baseUrl = 'http://10.0.2.2:5000';
 
-  // ===================== CLIENT =====================
+  // Auth routes (login/register/verification)
+  static const String _clientAuthBaseUrl = '$_baseUrl/api/auth/client';
+  static const String _contractorAuthBaseUrl = '$_baseUrl/api/auth/contractor';
 
-  // ===== Client Login =====
+  // Account routes (me/change-password/forgot/reset)
+  static const String _clientAccountBaseUrl = '$_baseUrl/api/client/account';
+  static const String _contractorAccountBaseUrl =
+      '$_baseUrl/api/contractor/account';
+
+  /* ===================== CLIENT ===================== */
+
   Future<Map<String, dynamic>> loginClient({
     required String email,
     required String password,
   }) async {
-    final url = Uri.parse('$_clientBaseUrl/login');
+    final url = Uri.parse('$_clientAuthBaseUrl/login');
 
     final response = await http.post(
       url,
@@ -23,27 +30,21 @@ class AuthService {
     );
 
     final data = _safeJson(response.body);
-
     if (response.statusCode == 200) return data;
     throw Exception(data['message'] ?? 'Login failed');
   }
 
-  // ===== Client Register =====
   Future<Map<String, dynamic>> registerClient({
     required String name,
     required String email,
     required String password,
     required String phone,
-
-    // files
-    String? profileImagePath, // profileImage (optional)
-    String? identityFilePath, // identityDocument (optional بالباك اند - بس انتي بتخليها اجباري)
-
-    // بدك يضلوا
+    String? profileImagePath,
+    String? identityFilePath,
     String? nationalId,
     double? nationalIdConfidence,
   }) async {
-    final uri = Uri.parse('$_clientBaseUrl/register');
+    final uri = Uri.parse('$_clientAuthBaseUrl/register');
     final request = http.MultipartRequest('POST', uri);
 
     request.fields['name'] = name;
@@ -51,7 +52,6 @@ class AuthService {
     request.fields['password'] = password;
     request.fields['phone'] = phone;
 
-    // optional fields (backend قد يتجاهلهم إذا OCR فقط)
     if (nationalId != null && nationalId.trim().isNotEmpty) {
       request.fields['nationalId'] = nationalId.trim();
     }
@@ -59,14 +59,12 @@ class AuthService {
       request.fields['nationalIdConfidence'] = nationalIdConfidence.toString();
     }
 
-    // profileImage optional
     if (profileImagePath != null && profileImagePath.isNotEmpty) {
       request.files.add(
         await http.MultipartFile.fromPath('profileImage', profileImagePath),
       );
     }
 
-    // identityDocument optional
     if (identityFilePath != null && identityFilePath.isNotEmpty) {
       request.files.add(
         await http.MultipartFile.fromPath('identityDocument', identityFilePath),
@@ -80,16 +78,14 @@ class AuthService {
 
     if (response.statusCode == 201 || response.statusCode == 200) {
       return data;
-    } else {
-      throw Exception(data['message'] ?? 'Registration failed');
     }
+    throw Exception(data['message'] ?? 'Registration failed');
   }
 
-  // (اختياري) Resend client verification email
   Future<Map<String, dynamic>> resendClientVerificationEmail({
     required String email,
   }) async {
-    final url = Uri.parse('$_clientBaseUrl/resend-verification-email');
+    final url = Uri.parse('$_clientAuthBaseUrl/resend-verification-email');
 
     final response = await http.post(
       url,
@@ -98,19 +94,97 @@ class AuthService {
     );
 
     final data = _safeJson(response.body);
-
     if (response.statusCode == 200) return data;
     throw Exception(data['message'] ?? 'Resend failed');
   }
 
-  // ===================== CONTRACTOR =====================
+  /// ✅ GET /api/client/account/me  (بيرجع user وفيه role)
+  Future<Map<String, dynamic>> getMeClient({required String token}) async {
+    final url = Uri.parse('$_clientAccountBaseUrl/me');
 
-  // ===== Contractor Login =====
+    final res = await http.get(
+      url,
+      headers: {"Authorization": "Bearer $token"},
+    );
+
+    final data = _safeJson(res.body);
+    if (res.statusCode == 200) return data;
+    throw Exception(data["message"] ?? "Get me failed");
+  }
+
+  /// ✅ Login ثم getMe (ترجع token + user جاهزين للحفظ)
+  Future<Map<String, dynamic>> loginAndGetSessionClient({
+    required String email,
+    required String password,
+  }) async {
+    final login = await loginClient(email: email, password: password);
+
+    final token = login["token"];
+    if (token == null || token.toString().isEmpty) {
+      throw Exception("No token returned from login");
+    }
+
+    final me = await getMeClient(token: token.toString());
+    final user = me["user"];
+    if (user == null || user is! Map) {
+      throw Exception("Invalid /me response");
+    }
+
+    return {
+      "token": token.toString(),
+      "user": Map<String, dynamic>.from(user as Map),
+    };
+  }
+
+  // ✅ Forgot Password (Client) - OTP
+  Future<Map<String, dynamic>> forgotPasswordClient({
+    required String email,
+  }) async {
+    final url = Uri.parse('$_clientAccountBaseUrl/forgot-password');
+
+    final response = await http.post(
+      url,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'role': 'client',
+        'email': email,
+      }),
+    );
+
+    final data = _safeJson(response.body);
+    if (response.statusCode == 200) return data;
+    throw Exception(data['message'] ?? 'Forgot password failed');
+  }
+
+  // ✅ Reset Password (Client) - OTP
+  Future<Map<String, dynamic>> resetPasswordClient({
+    required String otp,
+    required String newPassword,
+  }) async {
+    final url = Uri.parse('$_clientAccountBaseUrl/reset-password');
+
+    final response = await http.post(
+      url,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'role': 'client',
+        'otp': otp,
+        'newPassword': newPassword,
+      }),
+    );
+
+    final data = _safeJson(response.body);
+    if (response.statusCode == 200) return data;
+    throw Exception(data['message'] ?? 'Reset password failed');
+  }
+
+  /* ===================== CONTRACTOR ===================== */
+
   Future<Map<String, dynamic>> loginContractor({
     required String email,
     required String password,
   }) async {
-    final url = Uri.parse('$_contractorBaseUrl/login');
+    final url = Uri.parse('$_contractorAuthBaseUrl/login');
 
     final response = await http.post(
       url,
@@ -119,29 +193,22 @@ class AuthService {
     );
 
     final data = _safeJson(response.body);
-
     if (response.statusCode == 200) return data;
     throw Exception(data['message'] ?? 'Login failed');
   }
 
-  // ===== Contractor Register =====
-  // ✅ مطابق للكونترولر اللي عندك (profile + identity + contractorDocument)
   Future<Map<String, dynamic>> registerContractor({
     required String name,
     required String email,
     required String password,
     required String phone,
-
-    // files
-    String? profileImagePath, // profileImage (optional)
-    String? identityFilePath, // identityDocument (optional بالباك اند - بس انتي بتخليها اجباري)
-    required String contractorFilePath, // contractorDocument
-
-    // بدك يضلوا
+    String? profileImagePath,
+    String? identityFilePath,
+    required String contractorFilePath,
     String? nationalId,
     double? nationalIdConfidence,
   }) async {
-    final uri = Uri.parse('$_contractorBaseUrl/register');
+    final uri = Uri.parse('$_contractorAuthBaseUrl/register');
     final request = http.MultipartRequest('POST', uri);
 
     request.fields['name'] = name;
@@ -149,7 +216,6 @@ class AuthService {
     request.fields['password'] = password;
     request.fields['phone'] = phone;
 
-    // optional fields (backend قد يتجاهلهم إذا OCR فقط)
     if (nationalId != null && nationalId.trim().isNotEmpty) {
       request.fields['nationalId'] = nationalId.trim();
     }
@@ -157,26 +223,20 @@ class AuthService {
       request.fields['nationalIdConfidence'] = nationalIdConfidence.toString();
     }
 
-    // profileImage optional
     if (profileImagePath != null && profileImagePath.isNotEmpty) {
       request.files.add(
         await http.MultipartFile.fromPath('profileImage', profileImagePath),
       );
     }
 
-    // identityDocument optional
     if (identityFilePath != null && identityFilePath.isNotEmpty) {
       request.files.add(
         await http.MultipartFile.fromPath('identityDocument', identityFilePath),
       );
     }
 
-    // contractorDocument required
     request.files.add(
-      await http.MultipartFile.fromPath(
-        'contractorDocument',
-        contractorFilePath,
-      ),
+      await http.MultipartFile.fromPath('contractorDocument', contractorFilePath),
     );
 
     final streamed = await request.send();
@@ -186,16 +246,14 @@ class AuthService {
 
     if (response.statusCode == 201 || response.statusCode == 200) {
       return data;
-    } else {
-      throw Exception(data['message'] ?? 'Registration failed');
     }
+    throw Exception(data['message'] ?? 'Registration failed');
   }
 
-  // (اختياري) Resend contractor verification email
   Future<Map<String, dynamic>> resendContractorVerificationEmail({
     required String email,
   }) async {
-    final url = Uri.parse('$_contractorBaseUrl/resend-verification-email');
+    final url = Uri.parse('$_contractorAuthBaseUrl/resend-verification-email');
 
     final response = await http.post(
       url,
@@ -204,12 +262,91 @@ class AuthService {
     );
 
     final data = _safeJson(response.body);
-
     if (response.statusCode == 200) return data;
     throw Exception(data['message'] ?? 'Resend failed');
   }
 
-  // ===================== Helper =====================
+  /// ✅ GET /api/contractor/account/me
+  Future<Map<String, dynamic>> getMeContractor({required String token}) async {
+    final url = Uri.parse('$_contractorAccountBaseUrl/me');
+
+    final res = await http.get(
+      url,
+      headers: {"Authorization": "Bearer $token"},
+    );
+
+    final data = _safeJson(res.body);
+    if (res.statusCode == 200) return data;
+    throw Exception(data["message"] ?? "Get me failed");
+  }
+
+  /// ✅ Login ثم getMe (ترجع token + user جاهزين للحفظ)
+  Future<Map<String, dynamic>> loginAndGetSessionContractor({
+    required String email,
+    required String password,
+  }) async {
+    final login = await loginContractor(email: email, password: password);
+
+    final token = login["token"];
+    if (token == null || token.toString().isEmpty) {
+      throw Exception("No token returned from login");
+    }
+
+    final me = await getMeContractor(token: token.toString());
+    final user = me["user"];
+    if (user == null || user is! Map) {
+      throw Exception("Invalid /me response");
+    }
+
+    return {
+      "token": token.toString(),
+      "user": Map<String, dynamic>.from(user as Map),
+    };
+  }
+
+  // ✅ Forgot Password (Contractor) - OTP
+  Future<Map<String, dynamic>> forgotPasswordContractor({
+    required String email,
+  }) async {
+    final url = Uri.parse('$_contractorAccountBaseUrl/forgot-password');
+
+    final response = await http.post(
+      url,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'role': 'contractor',
+        'email': email,
+      }),
+    );
+
+    final data = _safeJson(response.body);
+    if (response.statusCode == 200) return data;
+    throw Exception(data['message'] ?? 'Forgot password failed');
+  }
+
+  // ✅ Reset Password (Contractor) - OTP
+  Future<Map<String, dynamic>> resetPasswordContractor({
+    required String otp,
+    required String newPassword,
+  }) async {
+    final url = Uri.parse('$_contractorAccountBaseUrl/reset-password');
+
+    final response = await http.post(
+      url,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'role': 'contractor',
+        'otp': otp,
+        'newPassword': newPassword,
+      }),
+    );
+
+    final data = _safeJson(response.body);
+    if (response.statusCode == 200) return data;
+    throw Exception(data['message'] ?? 'Reset password failed');
+  }
+
+  /* ===================== Helper ===================== */
 
   Map<String, dynamic> _safeJson(String body) {
     try {

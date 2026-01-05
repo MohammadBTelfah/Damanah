@@ -6,6 +6,7 @@ import '../services/session_service.dart';
 import 'MainShell.dart';
 import 'client_register_screen.dart';
 import 'contractor_register_screen.dart';
+import 'forgot_password_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   final String role; // 'client' أو 'contractor'
@@ -21,6 +22,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
 
   bool _isLoading = false;
+  bool _obscurePassword = true;
 
   final AuthService _authService = AuthService();
 
@@ -40,12 +42,19 @@ class _LoginScreenState extends State<LoginScreen> {
       backgroundColor: color,
       behavior: SnackBarBehavior.floating,
       margin: const EdgeInsets.only(top: 20, left: 16, right: 16),
-      duration: const Duration(seconds: 2),
+      duration: const Duration(seconds: 3),
     );
 
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(snackBar);
+  }
+
+  String _cleanError(Object e) {
+    // يختصر Exception: ...
+    final s = e.toString();
+    return s.startsWith("Exception: ") ? s.replaceFirst("Exception: ", "") : s;
+    // إذا بدك تخليها مثل ما هي، رجّع e.toString()
   }
 
   // ================= LOGIN =================
@@ -55,53 +64,73 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // ✅ حسب الرول
-      final Map<String, dynamic> res;
-      if (widget.role == 'client') {
-        res = await _authService.loginClient(
+      // ✅ امسح أي توكن/يوزر قديم قبل تسجيل الدخول
+      await SessionService.clear();
+
+      final Map<String, dynamic> session;
+
+      if (widget.role.toLowerCase() == 'client') {
+        session = await _authService.loginAndGetSessionClient(
+          email: _emailController.text.trim(),
+          password: _passwordController.text.trim(),
+        );
+      } else if (widget.role.toLowerCase() == 'contractor') {
+        session = await _authService.loginAndGetSessionContractor(
           email: _emailController.text.trim(),
           password: _passwordController.text.trim(),
         );
       } else {
-        res = await _authService.loginContractor(
-          email: _emailController.text.trim(),
-          password: _passwordController.text.trim(),
-        );
+        throw Exception("Invalid role passed to LoginScreen: ${widget.role}");
       }
 
       if (!mounted) return;
 
-      final token = res["token"];
-      final user = res["user"];
+      final token = session["token"];
+      final user = session["user"];
 
-      if (token != null && user != null) {
-        await SessionService.saveSession(
-          token: token.toString(),
-          user: Map<String, dynamic>.from(user),
-        );
+      if (token == null || user == null) {
+        debugPrint("❌ INVALID SESSION => $session");
+        throw Exception("Invalid session data returned from server");
       }
+
+      final userMap = Map<String, dynamic>.from(user);
+
+      // ✅ إجبار حفظ role داخل user حتى لو السيرفر ما رجعه
+      userMap["role"] = widget.role.toLowerCase().trim();
+
+      await SessionService.saveSession(
+        token: token.toString(),
+        user: userMap,
+      );
+
+      // ✅ تأكيد بالـ logs
+      final saved = await SessionService.getUser();
+      debugPrint("✅ SAVED USER => $saved");
+      debugPrint("✅ SAVED ROLE => ${saved?['role']}");
 
       _showTopSnackBar("Login successful", Colors.green);
 
-      Future.delayed(const Duration(milliseconds: 800), () {
+      Future.delayed(const Duration(milliseconds: 600), () {
         if (!mounted) return;
-
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (_) => const MainShell()),
         );
       });
-    } catch (e) {
+    } catch (e, st) {
       if (!mounted) return;
-      _showTopSnackBar("Login failed", Colors.red);
-      debugPrint("Login error: $e");
+
+      debugPrint("❌ LOGIN ERROR => $e");
+      debugPrint("❌ LOGIN STACK => $st");
+
+      _showTopSnackBar(_cleanError(e), Colors.red);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
   void _goToSignup() {
-    if (widget.role == 'client') {
+    if (widget.role.toLowerCase() == 'client') {
       Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => const ClientRegisterScreen()),
@@ -174,6 +203,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   key: _formKey,
                   child: Column(
                     children: [
+                      // Email
                       TextFormField(
                         controller: _emailController,
                         style: const TextStyle(color: Colors.white),
@@ -202,10 +232,14 @@ class _LoginScreenState extends State<LoginScreen> {
                           return null;
                         },
                       ),
+
                       const SizedBox(height: 16),
+
+                      // Password 👁️
                       TextFormField(
                         controller: _passwordController,
                         style: const TextStyle(color: Colors.white),
+                        obscureText: _obscurePassword,
                         decoration: InputDecoration(
                           filled: true,
                           fillColor: inputFill,
@@ -219,19 +253,50 @@ class _LoginScreenState extends State<LoginScreen> {
                             horizontal: 16,
                             vertical: 16,
                           ),
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _obscurePassword
+                                  ? Icons.visibility_off
+                                  : Icons.visibility,
+                              color: Colors.white70,
+                            ),
+                            onPressed: () {
+                              setState(() {
+                                _obscurePassword = !_obscurePassword;
+                              });
+                            },
+                          ),
                         ),
-                        obscureText: true,
                         validator: (value) {
                           if (value == null || value.isEmpty) {
                             return 'Password is required';
                           }
-                          if (value.length < 6) {
-                            return 'At least 6 characters';
-                          }
                           return null;
                         },
                       ),
-                      const SizedBox(height: 24),
+
+                      // Forgot password
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton(
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    ForgotPasswordScreen(role: widget.role),
+                              ),
+                            );
+                          },
+                          child: const Text(
+                            "Forgot password?",
+                            style: TextStyle(color: Colors.white70),
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 8),
+
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton(
@@ -263,7 +328,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                         ),
                       ),
+
                       const SizedBox(height: 24),
+
                       GestureDetector(
                         onTap: _goToSignup,
                         child: const Text(
@@ -274,6 +341,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         ),
                       ),
+
                       const SizedBox(height: 24),
                     ],
                   ),
