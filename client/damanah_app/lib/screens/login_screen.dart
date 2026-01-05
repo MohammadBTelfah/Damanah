@@ -3,15 +3,13 @@ import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import '../services/session_service.dart';
 
-import 'client_home_screen.dart';
-// import 'contractor_home_screen.dart'; // ✅ إذا عندك صفحة خاصة للمقاول فعلها
-
+import 'MainShell.dart';
 import 'client_register_screen.dart';
 import 'contractor_register_screen.dart';
+import 'forgot_password_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   final String role; // 'client' أو 'contractor'
-
   const LoginScreen({super.key, required this.role});
 
   @override
@@ -25,6 +23,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
   bool _isLoading = false;
 
+  // ✅ show / hide password
+  bool _obscurePassword = true;
+
   final AuthService _authService = AuthService();
 
   @override
@@ -34,7 +35,6 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  // SnackBar من أعلى الشاشة
   void _showTopSnackBar(String message, Color color) {
     final snackBar = SnackBar(
       content: Text(
@@ -59,14 +59,22 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final res = await _authService.login(
-        email: _emailController.text.trim(),
-        password: _passwordController.text.trim(),
-      );
+      final Map<String, dynamic> res;
+
+      if (widget.role == 'client') {
+        res = await _authService.loginClient(
+          email: _emailController.text.trim(),
+          password: _passwordController.text.trim(),
+        );
+      } else {
+        res = await _authService.loginContractor(
+          email: _emailController.text.trim(),
+          password: _passwordController.text.trim(),
+        );
+      }
 
       if (!mounted) return;
 
-      // ✅ احفظ التوكن واليوزر في الجهاز
       final token = res["token"];
       final user = res["user"];
 
@@ -81,37 +89,76 @@ class _LoginScreenState extends State<LoginScreen> {
 
       Future.delayed(const Duration(milliseconds: 800), () {
         if (!mounted) return;
-
-        // ✅ روح على Home حسب الدور
-        if (widget.role == 'client') {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => const ClientHomeScreen()),
-          );
-        } else {
-          // ✅ إذا عندك صفحة ContractorHomeScreen فعّلها
-          // Navigator.pushReplacement(
-          //   context,
-          //   MaterialPageRoute(builder: (_) => const ContractorHomeScreen()),
-          // );
-
-          // مؤقتاً (لحد ما تعمل صفحة المقاول)
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => const ClientHomeScreen()),
-          );
-        }
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const MainShell()),
+        );
       });
     } catch (e) {
       if (!mounted) return;
       _showTopSnackBar("Login failed", Colors.red);
-      debugPrint("Login error: $e");
+      debugPrint("Forgot password error: $e");
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  // ================= SIGN UP NAVIGATION =================
+  // ================= FORGOT PASSWORD =================
+  void _showForgotPasswordDialog() {
+    final emailController = TextEditingController(text: _emailController.text);
+
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: const Color(0xFF1B3A35),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          "Forgot Password",
+          style: TextStyle(color: Colors.white),
+        ),
+        content: TextField(
+          controller: emailController,
+          style: const TextStyle(color: Colors.white),
+          keyboardType: TextInputType.emailAddress,
+          decoration: const InputDecoration(
+            hintText: "Enter your email",
+            hintStyle: TextStyle(color: Colors.white54),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Cancel"),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final email = emailController.text.trim();
+
+              if (email.isEmpty || !email.contains('@')) {
+                _showTopSnackBar("Enter a valid email", Colors.red);
+                return;
+              }
+
+              Navigator.pop(context);
+
+              try {
+                if (widget.role == 'client') {
+                  await _authService.forgotPasswordClient(email: email);
+                } else {
+                  await _authService.forgotPasswordContractor(email: email);
+                }
+                _showTopSnackBar("Reset link sent to your email", Colors.green);
+              } catch (e) {
+                _showTopSnackBar("Failed to send reset email", Colors.red);
+              }
+            },
+            child: const Text("Send"),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _goToSignup() {
     if (widget.role == 'client') {
       Navigator.push(
@@ -137,7 +184,6 @@ class _LoginScreenState extends State<LoginScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // AppBar
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: Row(
@@ -167,7 +213,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
             const SizedBox(height: 24),
 
-            // Title
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 24),
               child: Align(
@@ -212,18 +257,23 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         keyboardType: TextInputType.emailAddress,
                         validator: (value) {
-                          if (value == null || value.isEmpty) return 'Email is required';
-                          if (!value.contains('@')) return 'Enter a valid email';
+                          if (value == null || value.isEmpty) {
+                            return 'Email is required';
+                          }
+                          if (!value.contains('@')) {
+                            return 'Enter a valid email';
+                          }
                           return null;
                         },
                       ),
 
                       const SizedBox(height: 16),
 
-                      // Password
+                      // Password 👁️
                       TextFormField(
                         controller: _passwordController,
                         style: const TextStyle(color: Colors.white),
+                        obscureText: _obscurePassword,
                         decoration: InputDecoration(
                           filled: true,
                           fillColor: inputFill,
@@ -237,18 +287,50 @@ class _LoginScreenState extends State<LoginScreen> {
                             horizontal: 16,
                             vertical: 16,
                           ),
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _obscurePassword
+                                  ? Icons.visibility_off
+                                  : Icons.visibility,
+                              color: Colors.white70,
+                            ),
+                            onPressed: () {
+                              setState(() {
+                                _obscurePassword = !_obscurePassword;
+                              });
+                            },
+                          ),
                         ),
-                        obscureText: true,
                         validator: (value) {
-                          if (value == null || value.isEmpty) return 'Password is required';
-                          if (value.length < 6) return 'At least 6 characters';
+                          if (value == null || value.isEmpty) {
+                            return 'Password is required';
+                          }
                           return null;
                         },
                       ),
 
-                      const SizedBox(height: 24),
+                      // Forgot password
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton(
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    ForgotPasswordScreen(role: widget.role),
+                              ),
+                            );
+                          },
+                          child: const Text(
+                            "Forgot password?",
+                            style: TextStyle(color: Colors.white70),
+                          ),
+                        ),
+                      ),
 
-                      // Login button
+                      const SizedBox(height: 8),
+
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton(
@@ -283,7 +365,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
                       const SizedBox(height: 24),
 
-                      // Sign up
                       GestureDetector(
                         onTap: _goToSignup,
                         child: const Text(
