@@ -2,19 +2,20 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class AuthService {
+  // ✅ خلي كل المشروع يستخدم نفس الـ baseUrl
+  // Emulator: 10.0.2.2
+  static const String _baseUrl = 'http://10.0.2.2:5000';
+
   // Auth routes (login/register/verification)
-  static const String _clientAuthBaseUrl =
-      'http://192.168.1.14:5000/api/auth/client';
-  static const String _contractorAuthBaseUrl =
-      'http://192.168.1.14:5000/api/auth/contractor';
+  static const String _clientAuthBaseUrl = '$_baseUrl/api/auth/client';
+  static const String _contractorAuthBaseUrl = '$_baseUrl/api/auth/contractor';
 
   // Account routes (me/change-password/forgot/reset)
-  static const String _clientAccountBaseUrl =
-      'http://192.168.1.14:5000/api/client/account';
+  static const String _clientAccountBaseUrl = '$_baseUrl/api/client/account';
   static const String _contractorAccountBaseUrl =
-      'http://192.168.1.14:5000/api/contractor/account';
+      '$_baseUrl/api/contractor/account';
 
-  // ===================== CLIENT =====================
+  /* ===================== CLIENT ===================== */
 
   Future<Map<String, dynamic>> loginClient({
     required String email,
@@ -29,7 +30,6 @@ class AuthService {
     );
 
     final data = _safeJson(response.body);
-
     if (response.statusCode == 200) return data;
     throw Exception(data['message'] ?? 'Login failed');
   }
@@ -78,9 +78,8 @@ class AuthService {
 
     if (response.statusCode == 201 || response.statusCode == 200) {
       return data;
-    } else {
-      throw Exception(data['message'] ?? 'Registration failed');
     }
+    throw Exception(data['message'] ?? 'Registration failed');
   }
 
   Future<Map<String, dynamic>> resendClientVerificationEmail({
@@ -95,9 +94,46 @@ class AuthService {
     );
 
     final data = _safeJson(response.body);
-
     if (response.statusCode == 200) return data;
     throw Exception(data['message'] ?? 'Resend failed');
+  }
+
+  /// ✅ GET /api/client/account/me  (بيرجع user وفيه role)
+  Future<Map<String, dynamic>> getMeClient({required String token}) async {
+    final url = Uri.parse('$_clientAccountBaseUrl/me');
+
+    final res = await http.get(
+      url,
+      headers: {"Authorization": "Bearer $token"},
+    );
+
+    final data = _safeJson(res.body);
+    if (res.statusCode == 200) return data;
+    throw Exception(data["message"] ?? "Get me failed");
+  }
+
+  /// ✅ Login ثم getMe (ترجع token + user جاهزين للحفظ)
+  Future<Map<String, dynamic>> loginAndGetSessionClient({
+    required String email,
+    required String password,
+  }) async {
+    final login = await loginClient(email: email, password: password);
+
+    final token = login["token"];
+    if (token == null || token.toString().isEmpty) {
+      throw Exception("No token returned from login");
+    }
+
+    final me = await getMeClient(token: token.toString());
+    final user = me["user"];
+    if (user == null || user is! Map) {
+      throw Exception("Invalid /me response");
+    }
+
+    return {
+      "token": token.toString(),
+      "user": Map<String, dynamic>.from(user as Map),
+    };
   }
 
   // ✅ Forgot Password (Client) - OTP
@@ -116,7 +152,6 @@ class AuthService {
     );
 
     final data = _safeJson(response.body);
-
     if (response.statusCode == 200) return data;
     throw Exception(data['message'] ?? 'Forgot password failed');
   }
@@ -139,12 +174,11 @@ class AuthService {
     );
 
     final data = _safeJson(response.body);
-
     if (response.statusCode == 200) return data;
     throw Exception(data['message'] ?? 'Reset password failed');
   }
 
-  // ===================== CONTRACTOR =====================
+  /* ===================== CONTRACTOR ===================== */
 
   Future<Map<String, dynamic>> loginContractor({
     required String email,
@@ -159,7 +193,6 @@ class AuthService {
     );
 
     final data = _safeJson(response.body);
-
     if (response.statusCode == 200) return data;
     throw Exception(data['message'] ?? 'Login failed');
   }
@@ -203,10 +236,7 @@ class AuthService {
     }
 
     request.files.add(
-      await http.MultipartFile.fromPath(
-        'contractorDocument',
-        contractorFilePath,
-      ),
+      await http.MultipartFile.fromPath('contractorDocument', contractorFilePath),
     );
 
     final streamed = await request.send();
@@ -216,16 +246,14 @@ class AuthService {
 
     if (response.statusCode == 201 || response.statusCode == 200) {
       return data;
-    } else {
-      throw Exception(data['message'] ?? 'Registration failed');
     }
+    throw Exception(data['message'] ?? 'Registration failed');
   }
 
   Future<Map<String, dynamic>> resendContractorVerificationEmail({
     required String email,
   }) async {
-    final url =
-        Uri.parse('$_contractorAuthBaseUrl/resend-verification-email');
+    final url = Uri.parse('$_contractorAuthBaseUrl/resend-verification-email');
 
     final response = await http.post(
       url,
@@ -234,9 +262,46 @@ class AuthService {
     );
 
     final data = _safeJson(response.body);
-
     if (response.statusCode == 200) return data;
     throw Exception(data['message'] ?? 'Resend failed');
+  }
+
+  /// ✅ GET /api/contractor/account/me
+  Future<Map<String, dynamic>> getMeContractor({required String token}) async {
+    final url = Uri.parse('$_contractorAccountBaseUrl/me');
+
+    final res = await http.get(
+      url,
+      headers: {"Authorization": "Bearer $token"},
+    );
+
+    final data = _safeJson(res.body);
+    if (res.statusCode == 200) return data;
+    throw Exception(data["message"] ?? "Get me failed");
+  }
+
+  /// ✅ Login ثم getMe (ترجع token + user جاهزين للحفظ)
+  Future<Map<String, dynamic>> loginAndGetSessionContractor({
+    required String email,
+    required String password,
+  }) async {
+    final login = await loginContractor(email: email, password: password);
+
+    final token = login["token"];
+    if (token == null || token.toString().isEmpty) {
+      throw Exception("No token returned from login");
+    }
+
+    final me = await getMeContractor(token: token.toString());
+    final user = me["user"];
+    if (user == null || user is! Map) {
+      throw Exception("Invalid /me response");
+    }
+
+    return {
+      "token": token.toString(),
+      "user": Map<String, dynamic>.from(user as Map),
+    };
   }
 
   // ✅ Forgot Password (Contractor) - OTP
@@ -255,7 +320,6 @@ class AuthService {
     );
 
     final data = _safeJson(response.body);
-
     if (response.statusCode == 200) return data;
     throw Exception(data['message'] ?? 'Forgot password failed');
   }
@@ -278,12 +342,11 @@ class AuthService {
     );
 
     final data = _safeJson(response.body);
-
     if (response.statusCode == 200) return data;
     throw Exception(data['message'] ?? 'Reset password failed');
   }
 
-  // ===================== Helper =====================
+  /* ===================== Helper ===================== */
 
   Map<String, dynamic> _safeJson(String body) {
     try {
