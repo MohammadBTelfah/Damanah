@@ -132,7 +132,7 @@ class AuthService {
 
     return {
       "token": token.toString(),
-      "user": Map<String, dynamic>.from(user as Map),
+      "user": Map<String, dynamic>.from(user),
     };
   }
 
@@ -300,7 +300,7 @@ class AuthService {
 
     return {
       "token": token.toString(),
-      "user": Map<String, dynamic>.from(user as Map),
+      "user": Map<String, dynamic>.from(user),
     };
   }
 
