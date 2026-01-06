@@ -35,12 +35,12 @@ const storage = multer.diskStorage({
 
 const planUpload = multer({
   storage,
-  fileFilter: (req, file, cb) => {
-    const allowed = ["image/png", "image/jpeg", "application/pdf"];
-    if (allowed.includes(file.mimetype)) cb(null, true);
-    else cb(new Error("Invalid file type"), false);
+  limits: {
+    fileSize: 10 * 1024 * 1024, // الحد الأقصى للحجم 10 ميجابايت
   },
+  // لا حاجة للفحص على MIME type، فقط حجم الملف.
 });
+
 
 // إنشاء مشروع جديد (client فقط)
 router.post("/", protect, clientOnly, createProject);

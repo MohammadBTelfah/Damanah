@@ -101,7 +101,7 @@ class ProjectService {
     request.headers["Authorization"] = "Bearer $token";
 
     // اسم الفيلد لازم يطابق upload.single("plan") بالباك
-    request.files.add(await http.MultipartFile.fromPath("plan", filePath));
+request.files.add(await http.MultipartFile.fromPath("planFile", filePath));
 
     final streamed = await request.send();
     final res = await http.Response.fromStream(streamed);
