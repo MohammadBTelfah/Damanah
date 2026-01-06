@@ -12,6 +12,7 @@ const {
   getProjectOffers,
   acceptOffer,
   uploadPlanAndEstimate,
+  analyzePlanOnly
 } = require("../controllers/projectController");
 
 const {
@@ -59,6 +60,15 @@ router.post("/:projectId/offers", protect, contractorOnly, createOffer);
 
 // العميل يشوف العروض
 router.get("/:projectId/offers", protect, clientOnly, getProjectOffers);
+
+router.post(
+  "/plan/analyze",
+  protect,                  // يفك التوكن ويحط req.user
+  clientOnly,               // يتأكد إنه client
+  planUpload.single("planFile"), // يرفع الملف
+  analyzePlanOnly
+);
+
 
 // العميل يقبل عرض معيّن
 router.patch(

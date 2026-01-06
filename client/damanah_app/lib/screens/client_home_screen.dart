@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/session_service.dart';
 import 'app_drawer.dart';
-import 'NewProjectScreen.dart';
-import 'upload_plan_screen.dart';
+import 'create_project_flow.dart'; // ✅ جديد
 
 String _joinUrl(String base, String path) {
   final b = base.endsWith('/') ? base.substring(0, base.length - 1) : base;
@@ -182,17 +181,17 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                   title: "New Project",
                   subtitle: "Start a new project",
                   onTap: () async {
-                    final result = await showModalBottomSheet<dynamic>(
+                    final done = await showModalBottomSheet<bool>(
                       context: context,
                       isScrollControlled: true,
                       backgroundColor: Colors.transparent,
                       builder: (context) {
                         return DraggableScrollableSheet(
-                          initialChildSize: 0.98,
-                          minChildSize: 0.9,
+                          initialChildSize: 0.92,
+                          minChildSize: 0.7,
                           maxChildSize: 0.98,
                           builder: (context, scrollController) {
-                            return NewProjectScreen(
+                            return CreateProjectFlow(
                               scrollController: scrollController,
                             );
                           },
@@ -200,14 +199,12 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                       },
                     );
 
-                    // ✅ إذا رجع projectId افتح صفحة رفع المخطط
-                    if (result is String && result.isNotEmpty) {
+                    if (done == true) {
                       if (!mounted) return;
-
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => UploadPlanScreen(projectId: result),
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text("Project created successfully"),
+                          backgroundColor: Colors.green,
                         ),
                       );
                     }

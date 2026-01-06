@@ -1,10 +1,19 @@
 import 'dart:convert';
-import 'package:http/http.dart' as http;
+import 'dart:io';
 
-import 'session_service.dart';
+import 'package:http/http.dart' as http;
+import '../services/session_service.dart';
 
 class ProjectService {
-  final String baseUrl = "http://10.0.2.2:5000";
+  static const String baseUrl = "http://10.0.2.2:5000";
+
+  String _join(String path) {
+    final b = baseUrl.endsWith('/')
+        ? baseUrl.substring(0, baseUrl.length - 1)
+        : baseUrl;
+    final p = path.startsWith('/') ? path.substring(1) : path;
+    return "$b/$p";
+  }
 
   Map<String, dynamic> _safeJson(String body) {
     try {
@@ -12,104 +21,154 @@ class ProjectService {
       if (decoded is Map<String, dynamic>) return decoded;
       return {"message": "Invalid server response"};
     } catch (_) {
-      return {"message": "Invalid server response"};
+      return {"message": "Invalid server response", "raw": body};
     }
   }
 
-  // ✅ إنشاء مشروع (بيرجع response كامل: {message, project})
-  Future<Map<String, dynamic>> createProject({
-    required String title,
-    required String description,
-    required String location,
-    required double area,
-    required int floors,
-    required String finishingLevel,
-  }) async {
+  Future<String> _mustToken() async {
     final token = await SessionService.getToken();
     if (token == null || token.isEmpty) {
       throw Exception("No token. Please login again.");
     }
-
-    final url = Uri.parse("$baseUrl/api/projects");
-
-    final res = await http.post(
-      url,
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": "Bearer $token",
-      },
-      body: jsonEncode({
-        "title": title,
-        "description": description,
-        "location": location,
-        "area": area,
-        "floors": floors,
-        "finishingLevel": finishingLevel,
-      }),
-    );
-
-    final data = _safeJson(res.body);
-
-    if (res.statusCode == 201) {
-      return data;
-    }
-
-    throw Exception(data["message"] ?? "Failed to create project");
+    return token;
   }
 
-  // ✅ هاي اللي كانت ناقصتك: ترجع projectId مباشرة
-  Future<String> createProjectAndReturnId({
-    required String title,
-    required String description,
-    required String location,
-    required double area,
-    required int floors,
-    required String finishingLevel,
-  }) async {
-    final data = await createProject(
-      title: title,
-      description: description,
-      location: location,
-      area: area,
-      floors: floors,
-      finishingLevel: finishingLevel,
-    );
+  /// ✅ Step 1: Analyze Plan (بدون مشروع)
+  /// POST /api/projects/plan/analyze  (multipart field name: planFile)
+  /// Response:
+  /// {
+  ///   "analysis": {...}
+  /// }
+  Future<Map<String, dynamic>> analyzePlan({required String filePath}) async {
+    final token = await _mustToken();
 
-    final project = data["project"];
-    final id = (project is Map) ? project["_id"] : null;
+    // ✅ route الجديد
+    final uri = Uri.parse(_join("/api/projects/plan/analyze"));
 
-    if (id == null) {
-      throw Exception("Project created but missing id");
-    }
+    final req = http.MultipartRequest("POST", uri);
 
-    return id.toString();
-  }
+    req.headers.addAll({
+      "Authorization": "Bearer $token",
+      "Accept": "application/json",
+    });
 
-  // ✅ Upload Plan (Multipart) على: /api/projects/:projectId/plan
-  Future<Map<String, dynamic>> uploadPlan({
-    required String projectId,
-    required String filePath,
-  }) async {
-    final token = await SessionService.getToken();
-    if (token == null || token.isEmpty) {
-      throw Exception("No token. Please login again.");
-    }
+    // ✅ لازم يطابق planUpload.single("planFile")
+    req.files.add(await http.MultipartFile.fromPath("planFile", filePath));
 
-    final uri = Uri.parse("$baseUrl/api/projects/$projectId/plan");
-    final request = http.MultipartRequest("POST", uri);
-
-    request.headers["Authorization"] = "Bearer $token";
-
-    // اسم الفيلد لازم يطابق upload.single("plan") بالباك
-request.files.add(await http.MultipartFile.fromPath("planFile", filePath));
-
-    final streamed = await request.send();
+    final streamed = await req.send().timeout(const Duration(seconds: 60));
     final res = await http.Response.fromStream(streamed);
 
     final data = _safeJson(res.body);
 
     if (res.statusCode == 200) return data;
 
-    throw Exception(data["message"] ?? "Upload failed");
+    // ✅ خليه يطلعلك statusCode مع الرسالة
+    throw Exception("(${res.statusCode}) ${data["message"] ?? "Analyze plan failed"}");
+  }
+
+  /// ✅ Step 3: Create Project (يرجع projectId)
+  /// POST /api/projects
+  Future<String> createProjectAndReturnId({
+    required String title,
+    String? description,
+    String? location,
+    required double area,
+    required int floors,
+    required String finishingLevel,
+    Map<String, dynamic>? planAnalysis,
+  }) async {
+    final token = await _mustToken();
+    final uri = Uri.parse(_join("/api/projects"));
+
+    final body = {
+      "title": title,
+      "description": description ?? "",
+      "location": location ?? "",
+      "area": area,
+      "floors": floors,
+      "finishingLevel": finishingLevel,
+      if (planAnalysis != null) "planAnalysis": planAnalysis,
+    };
+
+    final res = await http
+        .post(
+          uri,
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer $token",
+            "Accept": "application/json",
+          },
+          body: jsonEncode(body),
+        )
+        .timeout(const Duration(seconds: 45));
+
+    final data = _safeJson(res.body);
+
+    if (res.statusCode == 200 || res.statusCode == 201) {
+      final project = data["project"];
+      final id = project?["_id"]?.toString();
+      if (id == null || id.isEmpty) {
+        throw Exception("Project created but no _id returned");
+      }
+      return id;
+    }
+
+    throw Exception("(${res.statusCode}) ${data["message"] ?? "Create project failed"}");
+  }
+
+  /// ✅ Step 4: Get Materials
+  /// GET /api/materials
+  Future<List<dynamic>> getMaterials() async {
+    final token = await _mustToken();
+    final uri = Uri.parse(_join("/api/materials"));
+
+    final res = await http
+        .get(
+          uri,
+          headers: {
+            "Authorization": "Bearer $token",
+            "Accept": "application/json",
+          },
+        )
+        .timeout(const Duration(seconds: 30));
+
+    final decoded = jsonDecode(res.body);
+
+    if (res.statusCode == 200 && decoded is List) return decoded;
+
+    if (decoded is Map && decoded["message"] != null) {
+      throw Exception("(${res.statusCode}) ${decoded["message"]}");
+    }
+
+    throw Exception("(${res.statusCode}) Failed to load materials");
+  }
+
+  /// ✅ Step 5: Estimate
+  /// POST /api/projects/:id/estimate
+  /// body: { selections: [{materialId, variantKey}] }
+  Future<Map<String, dynamic>> estimateProject({
+    required String projectId,
+    required List<Map<String, String>> selections,
+  }) async {
+    final token = await _mustToken();
+    final uri = Uri.parse(_join("/api/projects/$projectId/estimate"));
+
+    final res = await http
+        .post(
+          uri,
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer $token",
+            "Accept": "application/json",
+          },
+          body: jsonEncode({"selections": selections}),
+        )
+        .timeout(const Duration(seconds: 60));
+
+    final data = _safeJson(res.body);
+
+    if (res.statusCode == 200) return data;
+
+    throw Exception("(${res.statusCode}) ${data["message"] ?? "Estimate failed"}");
   }
 }
