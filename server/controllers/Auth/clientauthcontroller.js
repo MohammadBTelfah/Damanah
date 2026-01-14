@@ -151,15 +151,17 @@ exports.register = async (req, res) => {
       identityExtractedAt = new Date();
     }
 
-    // ✅ إذا رفع هوية: pending
-    // عدّل "none" إذا نظامك مختلف
+    // ✅ statuses
     const identityStatus = identityDocumentPath ? "pending" : "none";
 
     const client = await Client.create({
       name,
-      email: emailNorm, // ✅ store normalized
-      phone: phoneNorm, // ✅ store normalized
+      email: emailNorm,
+      phone: phoneNorm,
       password: hashed,
+
+      // ✅ force role
+      role: "client",
 
       profileImage: profileImagePath,
       identityDocument: identityDocumentPath,
@@ -167,20 +169,20 @@ exports.register = async (req, res) => {
       nationalId,
       nationalIdConfidence,
       identityExtractedAt,
-
       identityStatus,
 
       emailVerified: false,
       emailVerificationToken: null,
       emailVerificationExpires: null,
 
+      // ✅ حسب نظامك: مش active لحد ما يتوثق ايميل + مراجعة الهوية
       isActive: false,
     });
 
     // ✅ send verification email
     await sendVerificationEmailForClient(client);
 
-    // ✅ if identity pending -> inform user
+    // ✅ identity pending email (only if identity uploaded)
     if (client.identityStatus === "pending") {
       await sendIdentityPendingEmailForClient(client);
     }
@@ -190,14 +192,18 @@ exports.register = async (req, res) => {
     return res.status(201).json({
       message: "Account created. Please check your email to verify your account.",
       token,
-      role: "client",
+      role: client.role,
       user: {
         id: client._id,
         name: client.name,
         email: client.email,
         phone: client.phone,
+
+        role: client.role,
+
         profileImage: client.profileImage,
         identityDocument: client.identityDocument,
+
         emailVerified: client.emailVerified,
         identityStatus: client.identityStatus,
         isActive: client.isActive,
@@ -209,6 +215,7 @@ exports.register = async (req, res) => {
     });
   }
 };
+
 
 exports.verifyEmail = async (req, res) => {
   try {

@@ -3,10 +3,9 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../services/session_service.dart';
+import '../config/api_config.dart';
 
 class UserService {
-  static const String baseUrl = "http://10.0.2.2:5000";
-
   Future<String> _accountBasePath() async {
     final user = await SessionService.getUser();
     final role = (user?["role"] ?? "").toString().trim().toLowerCase();
@@ -25,7 +24,6 @@ class UserService {
 
   Exception _serverException(int status, String body) {
     final firstLine = body.split('\n').first.trim();
-    // اختصر الرسالة إذا كانت HTML
     if (firstLine.startsWith("<!DOCTYPE") || firstLine.startsWith("<html")) {
       return Exception("Server error ($status). (HTML response)");
     }
@@ -40,12 +38,13 @@ class UserService {
   }) async {
     final token = await SessionService.getToken();
     final basePath = await _accountBasePath();
-    final uri = Uri.parse("$baseUrl$basePath/me");
 
-    // ✅ لازم PUT (مش PATCH)
+    // ✅ بدل baseUrl الثابت
+    final uri = Uri.parse(ApiConfig.join("$basePath/me"));
+
     final request = http.MultipartRequest("PUT", uri);
 
-    if (token != null) {
+    if (token != null && token.isNotEmpty) {
       request.headers["Authorization"] = "Bearer $token";
     }
 
@@ -54,10 +53,7 @@ class UserService {
 
     if (profileImagePath != null && profileImagePath.isNotEmpty) {
       request.files.add(
-        await http.MultipartFile.fromPath(
-          "profileImage",
-          profileImagePath,
-        ),
+        await http.MultipartFile.fromPath("profileImage", profileImagePath),
       );
     }
 
@@ -70,14 +66,11 @@ class UserService {
     debugPrint("UPDATE ME STATUS: ${response.statusCode}");
     debugPrint("UPDATE ME BODY: $body");
 
-    // ✅ إذا السيرفر رجّع HTML أو نص غير JSON
     if (!_looksLikeJson(body)) {
       throw _serverException(response.statusCode, body);
     }
 
     final decoded = jsonDecode(body);
-
-    // أغلب ردودك Map
     final data = decoded is Map<String, dynamic> ? decoded : <String, dynamic>{};
 
     if (response.statusCode == 200) return data;
@@ -92,13 +85,15 @@ class UserService {
   }) async {
     final token = await SessionService.getToken();
     final basePath = await _accountBasePath();
-    final uri = Uri.parse("$baseUrl$basePath/change-password");
+
+    // ✅ بدل baseUrl الثابت
+    final uri = Uri.parse(ApiConfig.join("$basePath/change-password"));
 
     final res = await http.put(
       uri,
       headers: {
         "Content-Type": "application/json",
-        if (token != null) "Authorization": "Bearer $token",
+        if (token != null && token.isNotEmpty) "Authorization": "Bearer $token",
       },
       body: jsonEncode({
         "currentPassword": currentPassword,
@@ -114,8 +109,8 @@ class UserService {
       throw _serverException(res.statusCode, res.body);
     }
 
-    final data = jsonDecode(res.body);
-    final map = data is Map<String, dynamic> ? data : <String, dynamic>{};
+    final decoded = jsonDecode(res.body);
+    final map = decoded is Map<String, dynamic> ? decoded : <String, dynamic>{};
 
     if (res.statusCode == 200) return map;
 

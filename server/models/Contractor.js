@@ -8,6 +8,8 @@ const contractorSchema = new mongoose.Schema(
 
     password: { type: String, required: true, minlength: 6 },
 
+    role: { type: String, enum: ["contractor"], default: "contractor" },
+
     profileImage: { type: String, default: null },
 
     phone: { type: String, required: true },

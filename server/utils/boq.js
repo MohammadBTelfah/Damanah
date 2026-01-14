@@ -62,8 +62,6 @@ function buildItem(name, unit, quantity, pricePerUnit, meta = {}) {
 // ======================
 // Presets (Jordan-friendly rough coefficients)
 // ======================
-// الفكرة: كل نوع بناء إله معاملات مختلفة (حديد/خرسانة/تعرض خارجي/نسبة تبليط/دهان)
-// القيم تقريبية لبيئة الأردن (بيوت/شقق RC) وليست BOQ نهائي.
 const PRESETS = {
   apartment: {
     label: "Apartment",
@@ -71,17 +69,14 @@ const PRESETS = {
     coats: 2,
     waste: 1.05,
 
-    // RC typical
-    concrete_m3_per_m2: 0.11, // m3 لكل m2 مبني (تقريبي)
-    rebar_kg_per_m2: 45,      // kg لكل m2 مبني
+    concrete_m3_per_m2: 0.11,
+    rebar_kg_per_m2: 45,
 
-    // exposure (شقق أقل تعرض خارجي)
     wall_exposure_factor: 0.85,
 
-    // finishes coverage
-    tiles_floor_coverage: 0.75, // نسبة مساحة الأرضيات اللي بتبلّط
-    plaster_wall_factor: 1.00,  // مضاعف لمساحة الحيط (لياسة)
-    paint_factor: 0.85,         // تخفيض بسيط لأن مش كل المساحات تندهن بنفس الكثافة
+    tiles_floor_coverage: 0.75,
+    plaster_wall_factor: 1.0,
+    paint_factor: 0.85,
   },
 
   villa: {
@@ -93,11 +88,11 @@ const PRESETS = {
     concrete_m3_per_m2: 0.12,
     rebar_kg_per_m2: 55,
 
-    wall_exposure_factor: 1.00,
+    wall_exposure_factor: 1.0,
 
     tiles_floor_coverage: 0.85,
     plaster_wall_factor: 1.05,
-    paint_factor: 0.90,
+    paint_factor: 0.9,
   },
 
   commercial: {
@@ -109,11 +104,11 @@ const PRESETS = {
     concrete_m3_per_m2: 0.14,
     rebar_kg_per_m2: 70,
 
-    wall_exposure_factor: 1.10,
+    wall_exposure_factor: 1.1,
 
-    tiles_floor_coverage: 0.60,
+    tiles_floor_coverage: 0.6,
     plaster_wall_factor: 0.95,
-    paint_factor: 0.80,
+    paint_factor: 0.8,
   },
 };
 
@@ -143,9 +138,10 @@ async function generateBoqForProject(project, options = {}) {
   );
 
   const presetBase = PRESETS[buildingType] || PRESETS.apartment;
-  const overrides = options.overrides && typeof options.overrides === "object"
-    ? options.overrides
-    : {};
+  const overrides =
+    options.overrides && typeof options.overrides === "object"
+      ? options.overrides
+      : {};
 
   const preset = { ...presetBase, ...overrides };
 
@@ -161,7 +157,7 @@ async function generateBoqForProject(project, options = {}) {
       .map((s) => [String(s.materialId), String(s.variantKey)])
   );
 
-  // ✅ أسماء المواد لازم تطابق DB عندك
+  // ✅ المواد الأساسية اللي إلها معادلات خاصة
   const neededNames = [
     "Concrete",
     "Steel Rebar",
@@ -171,8 +167,22 @@ async function generateBoqForProject(project, options = {}) {
     "Tiles",
   ];
 
-  const materials = await Material.find({ name: { $in: neededNames } }).lean();
-  const byName = new Map(materials.map((m) => [m.name, m]));
+  // ✅ اجمع IDs اللي المستخدم اختارها (عشان نضيف extras تلقائيًا)
+  const selectedIds = [
+    ...new Set(
+      selections
+        .map((s) => (s && s.materialId ? String(s.materialId) : ""))
+        .filter(Boolean)
+    ),
+  ];
+
+  // ✅ هات المواد الأساسية + المواد المختارة دفعة واحدة
+  const mats = await Material.find({
+    $or: [{ name: { $in: neededNames } }, { _id: { $in: selectedIds } }],
+  }).lean();
+
+  const byName = new Map(mats.map((m) => [m.name, m]));
+  const byId = new Map(mats.map((m) => [String(m._id), m]));
 
   function chooseVariant(mat) {
     if (!mat) return null;
@@ -235,7 +245,7 @@ async function generateBoqForProject(project, options = {}) {
     const mat = byName.get("Blocks");
     const variant = chooseVariant(mat);
 
-    const qtyPerM2 = Number(variant?.quantityPerM2 || 12); // لو DB فاضي
+    const qtyPerM2 = Number(variant?.quantityPerM2 || 12);
     const q = wallArea * qtyPerM2 * waste;
 
     if (mat && variant) {
@@ -272,7 +282,7 @@ async function generateBoqForProject(project, options = {}) {
   }
 
   // ======================
-  // 5) Paint (m2 or liter-equivalent based on DB)
+  // 5) Paint
   // ======================
   {
     const mat = byName.get("Paint");
@@ -280,9 +290,7 @@ async function generateBoqForProject(project, options = {}) {
 
     const ceilingArea = area * floors;
     const paintArea =
-      (wallArea + ceilingArea) *
-      coats *
-      Number(preset.paint_factor || 0.85);
+      (wallArea + ceilingArea) * coats * Number(preset.paint_factor || 0.85);
 
     const qtyPerM2 = Number(variant?.quantityPerM2 || 1.0);
     const q = paintArea * qtyPerM2 * waste;
@@ -292,7 +300,9 @@ async function generateBoqForProject(project, options = {}) {
         buildItem("Paint", mat.unit || "m2", q, variant.pricePerUnit, {
           materialId: String(mat._id),
           variantKey: variant.key,
-          calc: { base: "(wallArea+ceilingArea)*coats*paint_factor*qtyPerM2*waste" },
+          calc: {
+            base: "(wallArea+ceilingArea)*coats*paint_factor*qtyPerM2*waste",
+          },
         })
       );
     }
@@ -306,7 +316,7 @@ async function generateBoqForProject(project, options = {}) {
     const variant = chooseVariant(mat);
 
     const cover = Number(preset.tiles_floor_coverage || 0.8);
-    const tilesArea = area * floors * cover * 1.05; // +5% قص/هدر تبليط
+    const tilesArea = area * floors * cover * 1.05;
     const qtyPerM2 = Number(variant?.quantityPerM2 || 1.0);
     const q = tilesArea * qtyPerM2 * waste;
 
@@ -319,6 +329,40 @@ async function generateBoqForProject(project, options = {}) {
         })
       );
     }
+  }
+
+  // ======================
+  // ✅ Extras: أي مادة اختارها المستخدم تنضاف تلقائيًا (إذا إلها quantityPerM2)
+  // ======================
+  for (const s of selections) {
+    const matId = String(s?.materialId || "");
+    const variantKey = String(s?.variantKey || "");
+    if (!matId || !variantKey) continue;
+
+    const mat = byId.get(matId);
+    if (!mat) continue;
+
+    // لا تعيد إضافة المواد الأساسية (لأن انحسبت فوق)
+    if (neededNames.includes(mat.name)) continue;
+
+    const variant = pickVariantByKey(mat, variantKey);
+    if (!variant) continue;
+
+    const qtyPerM2 = Number(variant.quantityPerM2 || 0);
+    if (!(qtyPerM2 > 0)) {
+      // إذا ما عندها كمية/م2، بنتركها (بدك إلها معادلة خاصة لاحقًا)
+      continue;
+    }
+
+    const q = area * floors * qtyPerM2 * waste;
+
+    items.push(
+      buildItem(mat.name, mat.unit || "unit", q, variant.pricePerUnit, {
+        materialId: String(mat._id),
+        variantKey: variant.key,
+        calc: { base: "area*floors*qtyPerM2*waste (extra selected)" },
+      })
+    );
   }
 
   const totalCost = items.reduce((sum, it) => sum + (Number(it.total) || 0), 0);

@@ -120,7 +120,12 @@ async function sendContractorPendingEmail(contractor) {
 
 exports.register = async (req, res) => {
   try {
-    let { name, email, phone, password } = req.body;
+    let { name, email, phone, password, role } = req.body;
+
+    // ✅ Security: لا تسمح لحد يبعث role ثاني
+    if (role && String(role).toLowerCase() !== "contractor") {
+      return res.status(400).json({ message: "Invalid role" });
+    }
 
     // ✅ normalize
     name = String(name || "").trim();
@@ -170,15 +175,18 @@ exports.register = async (req, res) => {
       identityExtractedAt = new Date();
     }
 
-    // ✅ statuses
+    // ✅ statuses: pending only if document exists
     const identityStatus = identityDocumentPath ? "pending" : "none";
-    const contractorStatus = "pending"; // المقاول لازم موافقة أدمن دائماً
+    const contractorStatus = contractorDocumentPath ? "pending" : "none";
 
     const contractor = await Contractor.create({
       name,
       email: emailNorm,
       phone: phoneNorm,
       password: hashed,
+
+      // ✅ force role
+      role: "contractor",
 
       profileImage: profileImagePath,
 
@@ -195,15 +203,17 @@ exports.register = async (req, res) => {
       emailVerificationToken: null,
       emailVerificationExpires: null,
 
-      isActive: false, // ✅ لا يتفعل قبل موافقات الأدمن
+      // ✅ لا يتفعل قبل موافقات الأدمن (وبعد email verify كمان)
+      isActive: false,
     });
 
+    // ✅ send verify email
     await sendVerificationEmailForContractor(contractor);
 
+    // ✅ optional notifications (إذا في ملفات فعلًا)
     if (contractor.identityStatus === "pending") {
       await sendIdentityPendingEmailForContractor(contractor);
     }
-
     if (contractor.contractorStatus === "pending") {
       await sendContractorPendingEmail(contractor);
     }
@@ -214,20 +224,28 @@ exports.register = async (req, res) => {
       message:
         "Contractor account created. Please check your email to verify your account.",
       token,
-      role: "contractor",
+      role: contractor.role,
       user: {
         id: contractor._id,
         name: contractor.name,
         email: contractor.email,
         phone: contractor.phone,
+
+        role: contractor.role,
+
         profileImage: contractor.profileImage,
+
         identityDocument: contractor.identityDocument,
+        nationalId: contractor.nationalId,
+        nationalIdConfidence: contractor.nationalIdConfidence,
+        identityExtractedAt: contractor.identityExtractedAt,
+        identityStatus: contractor.identityStatus,
+
         contractorDocument: contractor.contractorDocument,
+        contractorStatus: contractor.contractorStatus,
 
         emailVerified: contractor.emailVerified,
         isActive: contractor.isActive,
-        identityStatus: contractor.identityStatus,
-        contractorStatus: contractor.contractorStatus,
       },
     });
   } catch (err) {
@@ -236,6 +254,7 @@ exports.register = async (req, res) => {
     });
   }
 };
+
 
 exports.verifyEmail = async (req, res) => {
   try {

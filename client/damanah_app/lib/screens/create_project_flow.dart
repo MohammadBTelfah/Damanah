@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../services/project_service.dart';
+import 'estimate_loading_page.dart'; // ✅ عدّل المسار حسب مكان الملف عندك
 
 class CreateProjectFlow extends StatefulWidget {
   final ScrollController? scrollController;
@@ -33,7 +34,7 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
   String _finishing = "basic";
 
   // ✅ NEW: building type
-  String _buildingType = "house"; // house/apartment/villa/commercial... حسب ما بدك
+  String _buildingType = "house"; // house/apartment/villa/commercial...
 
   List<dynamic> _materials = [];
   final Map<String, String> _selectedVariant = {}; // materialId -> variantKey
@@ -82,6 +83,73 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
     );
   }
 
+  // =========================
+  // ✅ Helpers for planAnalysis sanitization
+  // =========================
+
+  int? _toInt(dynamic v) {
+    if (v == null) return null;
+    if (v is int) return v;
+    if (v is double) return v.toInt();
+    if (v is String) return int.tryParse(v.trim());
+    return null;
+  }
+
+  double? _toDouble(dynamic v) {
+    if (v == null) return null;
+    if (v is double) return v;
+    if (v is int) return v.toDouble();
+    if (v is String) return double.tryParse(v.trim());
+    return null;
+  }
+
+  /// ✅ make sure planAnalysis.rooms/bathrooms are NUMBERS (not list of objects)
+  Map<String, dynamic>? _sanitizePlanAnalysis(Map<String, dynamic>? analysis) {
+    if (analysis == null) return null;
+
+    final a = Map<String, dynamic>.from(analysis);
+
+    // totalArea
+    if (a.containsKey("totalArea")) {
+      final d = _toDouble(a["totalArea"]);
+      if (d != null) a["totalArea"] = d;
+    }
+
+    // floors
+    if (a.containsKey("floors")) {
+      final n = _toInt(a["floors"]);
+      if (n != null) a["floors"] = n;
+    }
+
+    // rooms: if list -> roomsDetails + rooms count
+    final roomsVal = a["rooms"];
+    if (roomsVal is List) {
+      a["roomsDetails"] = roomsVal;
+      a["rooms"] = roomsVal.length;
+    } else if (roomsVal is Map) {
+      a["roomsDetails"] = [roomsVal];
+      a["rooms"] = 1;
+    } else {
+      final n = _toInt(roomsVal);
+      if (n != null) a["rooms"] = n;
+    }
+
+    // bathrooms: if list -> bathroomsDetails + bathrooms count
+    final bathsVal = a["bathrooms"];
+    if (bathsVal is List) {
+      a["bathroomsDetails"] = bathsVal;
+      a["bathrooms"] = bathsVal.length;
+    } else if (bathsVal is Map) {
+      a["bathroomsDetails"] = [bathsVal];
+      a["bathrooms"] = 1;
+    } else {
+      final n = _toInt(bathsVal);
+      if (n != null) a["bathrooms"] = n;
+    }
+
+    return a;
+  }
+
   Future<void> _pickPlan() async {
     if (_loading) return;
 
@@ -99,20 +167,14 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
   // ✅ fallback manual review (Step 2)
   void _goManualReview({String? msg}) {
     _analysis = {}; // فاضي
-
     if (_floorsCtrl.text.trim().isEmpty) _floorsCtrl.text = "1";
-
     setState(() => _step = 1);
-
-    if (msg != null) {
-      _snack(msg, color: Colors.orange);
-    }
+    if (msg != null) _snack(msg, color: Colors.orange);
   }
 
   Future<void> _analyzePlan() async {
     if (_loading) return;
 
-    // إذا ما في ملف، خليه يدخل manual
     if (_planFile == null) {
       _goManualReview(
         msg: "Auto analysis unavailable. Please fill details manually.",
@@ -131,14 +193,31 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
 
       final area = (analysis["totalArea"] ?? analysis["area"] ?? "").toString();
       final floors = (analysis["floors"] ?? "").toString();
-      final rooms = (analysis["rooms"] ?? "").toString();
-      final baths = (analysis["bathrooms"] ?? "").toString();
+
+      // ✅ rooms/baths could be list => show count in controllers
+      final roomsVal = analysis["rooms"];
+      final bathsVal = analysis["bathrooms"];
+
+      String roomsText = "";
+      if (roomsVal is List) {
+        roomsText = roomsVal.length.toString();
+      } else {
+        roomsText = (roomsVal ?? "").toString();
+      }
+
+      String bathsText = "";
+      if (bathsVal is List) {
+        bathsText = bathsVal.length.toString();
+      } else {
+        bathsText = (bathsVal ?? "").toString();
+      }
+
       final loc = (analysis["locationGuess"] ?? "").toString();
 
       _areaCtrl.text = area;
       _floorsCtrl.text = floors.isEmpty ? "1" : floors;
-      _roomsCtrl.text = rooms;
-      _bathsCtrl.text = baths;
+      _roomsCtrl.text = roomsText;
+      _bathsCtrl.text = bathsText;
       if (loc.trim().isNotEmpty) _locationCtrl.text = loc;
 
       setState(() {
@@ -148,8 +227,9 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
     } catch (e) {
       final msg = e.toString();
 
-      final shouldManual =
-          msg.contains("AI_UNAVAILABLE") || msg.contains("(503)") || msg.contains("(429)");
+      final shouldManual = msg.contains("AI_UNAVAILABLE") ||
+          msg.contains("(503)") ||
+          msg.contains("(429)");
 
       if (shouldManual) {
         _goManualReview(
@@ -211,6 +291,9 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
       return;
     }
 
+    // ✅ IMPORTANT: sanitize analysis (rooms/bathrooms must be numbers)
+    final sanitizedAnalysis = _sanitizePlanAnalysis(_analysis);
+
     setState(() => _loading = true);
 
     try {
@@ -221,8 +304,8 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
         area: area,
         floors: floors,
         finishingLevel: _finishing,
-        buildingType: _buildingType, // ✅ NEW
-        planAnalysis: _analysis,
+        buildingType: _buildingType,
+        planAnalysis: sanitizedAnalysis,
       );
 
       final mats = await _service.getMaterials();
@@ -239,7 +322,7 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
     }
   }
 
-  // ✅ مسموح Estimate بدون اختيار مواد
+  // ✅ UPDATED: show EstimateLoadingPage before estimate
   Future<void> _runEstimate() async {
     if (_loading) return;
 
@@ -252,29 +335,35 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
         .map((e) => {"materialId": e.key, "variantKey": e.value})
         .toList();
 
-    setState(() => _loading = true);
+    final ok = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => EstimateLoadingPage(
+          task: () async {
+            final data = await _service.estimateProject(
+              projectId: _projectId!,
+              selections: selections,
+            );
 
-    try {
-      final data = await _service.estimateProject(
-        projectId: _projectId!,
-        selections: selections,
-      );
+            _estimate = data;
+            _step = 4;
+          },
+        ),
+      ),
+    );
 
-      setState(() {
-        _estimate = data;
-        _step = 4;
-      });
-    } catch (e) {
-      _snack("Estimate failed: ${e.toString()}");
-    } finally {
-      if (mounted) setState(() => _loading = false);
+    if (ok == true) {
+      if (mounted) setState(() {});
+    } else {
+      _snack("Estimate failed");
     }
   }
 
   // =============================
-  // ✅ NEW: Step 5 actions
+  // ✅ Step 5 actions
   // =============================
 
+  // ✅ UPDATED: after saving, close flow and return true
   Future<void> _saveProject() async {
     if (_projectId == null) {
       _snack("No projectId");
@@ -283,7 +372,12 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
     setState(() => _loading = true);
     try {
       await _service.saveProject(projectId: _projectId!);
+      if (!mounted) return;
+
       _snack("Project saved ✅", color: Colors.green);
+
+      // ✅ close this sheet flow after save
+      Navigator.pop(context, true);
     } catch (e) {
       _snack("Save failed: $e");
     } finally {
@@ -298,7 +392,8 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
     }
     setState(() => _loading = true);
     try {
-      final filePath = await _service.downloadEstimateToFile(projectId: _projectId!);
+      final filePath =
+          await _service.downloadEstimateToFile(projectId: _projectId!);
       _snack("Downloaded ✅\n$filePath", color: Colors.green);
     } catch (e) {
       _snack("Download failed: $e");
@@ -371,7 +466,8 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
                   child: ListView.separated(
                     shrinkWrap: true,
                     itemCount: _contractors.length,
-                    separatorBuilder: (_, __) => Divider(color: Colors.white.withOpacity(0.06)),
+                    separatorBuilder: (_, __) =>
+                        Divider(color: Colors.white.withOpacity(0.06)),
                     itemBuilder: (_, i) {
                       final c = (_contractors[i] is Map)
                           ? Map<String, dynamic>.from(_contractors[i])
@@ -384,18 +480,30 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
                           "Contractor";
 
                       return ListTile(
-                        title: Text(name, style: const TextStyle(color: Colors.white)),
-                        subtitle: Text(id, style: const TextStyle(color: Colors.white38), maxLines: 1, overflow: TextOverflow.ellipsis),
+                        title: Text(name,
+                            style: const TextStyle(color: Colors.white)),
+                        subtitle: Text(
+                          id,
+                          style: const TextStyle(color: Colors.white38),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                         onTap: () async {
                           Navigator.pop(context);
 
                           setState(() => _loading = true);
                           try {
                             if (assign) {
-                              await _service.assignContractor(projectId: _projectId!, contractorId: id);
+                              await _service.assignContractor(
+                                projectId: _projectId!,
+                                contractorId: id,
+                              );
                               _snack("Assigned ✅", color: Colors.green);
                             } else {
-                              await _service.shareProject(projectId: _projectId!, contractorId: id);
+                              await _service.shareProject(
+                                projectId: _projectId!,
+                                contractorId: id,
+                              );
                               _snack("Shared ✅", color: Colors.green);
                             }
                           } catch (e) {
@@ -473,7 +581,9 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
                       margin: EdgeInsets.only(right: i == 4 ? 0 : 8),
                       height: 6,
                       decoration: BoxDecoration(
-                        color: active ? const Color(0xFF9EE7B7) : Colors.white10,
+                        color: active
+                            ? const Color(0xFF9EE7B7)
+                            : Colors.white10,
                         borderRadius: BorderRadius.circular(99),
                       ),
                     ),
@@ -491,7 +601,7 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
                   if (_step == 1) _buildStepReview(),
                   if (_step == 2) _buildStepProjectInfo(),
                   if (_step == 3) _buildStepMaterials(),
-                  if (_step == 4) _buildStepEstimate(), // ✅ updated
+                  if (_step == 4) _buildStepEstimate(),
                 ],
               ),
             ),
@@ -530,12 +640,14 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
     );
   }
 
-  Widget _buildSecondaryButton(String text, VoidCallback onPressed, {IconData? icon}) {
+  Widget _buildSecondaryButton(String text, VoidCallback onPressed,
+      {IconData? icon}) {
     return SizedBox(
       height: 48,
       child: OutlinedButton.icon(
         onPressed: _loading ? null : onPressed,
-        icon: Icon(icon ?? Icons.circle_outlined, color: Colors.white70, size: 18),
+        icon: Icon(icon ?? Icons.circle_outlined,
+            color: Colors.white70, size: 18),
         label: Text(text, style: const TextStyle(color: Colors.white)),
         style: OutlinedButton.styleFrom(
           side: BorderSide(color: Colors.white.withOpacity(0.2)),
@@ -546,6 +658,10 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
       ),
     );
   }
+
+  // -----------------
+  // Steps UI builders
+  // -----------------
 
   Widget _buildStepUpload() {
     return Column(
@@ -643,7 +759,7 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
         TextFormField(
           controller: _roomsCtrl,
           style: const TextStyle(color: Colors.white),
-          keyboardType: TextInputType.text,
+          keyboardType: TextInputType.number,
           decoration: _dec("Rooms (optional)"),
         ),
         const SizedBox(height: 12),
@@ -677,7 +793,6 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
     );
   }
 
-  // ✅ Step 3 updated: add Building Type dropdown
   Widget _buildStepProjectInfo() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -713,8 +828,6 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
           decoration: _dec("Location"),
         ),
         const SizedBox(height: 12),
-
-        // ✅ NEW: Building Type
         DropdownButtonFormField<String>(
           value: _buildingType,
           decoration: _dec("Building Type"),
@@ -729,7 +842,6 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
           ],
           onChanged: (v) => setState(() => _buildingType = v ?? "house"),
         ),
-
         const SizedBox(height: 12),
         TextFormField(
           controller: _areaCtrl,
@@ -776,10 +888,7 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
             ),
             const SizedBox(width: 10),
             Expanded(
-              child: _buildPrimaryButton(
-                "Next",
-                _createProjectThenLoadMaterials,
-              ),
+              child: _buildPrimaryButton("Next", _createProjectThenLoadMaterials),
             ),
           ],
         ),
@@ -806,18 +915,20 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
         ),
         const SizedBox(height: 12),
         if (_materials.isEmpty) ...[
-          const Text(
-            "No materials found",
-            style: TextStyle(color: Colors.white60),
-          ),
+          const Text("No materials found",
+              style: TextStyle(color: Colors.white60)),
           const SizedBox(height: 12),
           _buildPrimaryButton("Estimate (Skip)", _runEstimate),
         ] else
           ..._materials.map((m) {
-            final mat = (m is Map) ? Map<String, dynamic>.from(m) : <String, dynamic>{};
+            final mat = (m is Map)
+                ? Map<String, dynamic>.from(m)
+                : <String, dynamic>{};
             final id = mat["_id"]?.toString() ?? "";
             final name = mat["name"]?.toString() ?? "Material";
-            final variants = (mat["variants"] is List) ? List.from(mat["variants"]) : <dynamic>[];
+            final variants = (mat["variants"] is List)
+                ? List.from(mat["variants"])
+                : <dynamic>[];
 
             final fallbackVariants = [
               {"key": "basic", "label": "Basic"},
@@ -857,17 +968,24 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
                       isExpanded: true,
                       decoration: _dec(
                         "Type",
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
                       ),
                       dropdownColor: const Color(0xFF2F463D),
                       iconEnabledColor: Colors.white,
                       style: const TextStyle(color: Colors.white),
                       items: list.map((v) {
-                        final vm = (v is Map) ? Map<String, dynamic>.from(v) : <String, dynamic>{};
+                        final vm = (v is Map)
+                            ? Map<String, dynamic>.from(v)
+                            : <String, dynamic>{};
                         return DropdownMenuItem<String>(
                           value: vm["key"]?.toString(),
                           child: Text(
-                            vm["label"]?.toString() ?? vm["key"]?.toString() ?? "",
+                            vm["label"]?.toString() ??
+                                vm["key"]?.toString() ??
+                                "",
                             overflow: TextOverflow.ellipsis,
                           ),
                         );
@@ -882,8 +1000,11 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
                     const SizedBox(width: 6),
                     IconButton(
                       tooltip: "Clear",
-                      onPressed: _loading ? null : () => setState(() => _selectedVariant.remove(id)),
-                      icon: const Icon(Icons.close, color: Colors.white70, size: 18),
+                      onPressed: _loading
+                          ? null
+                          : () => setState(() => _selectedVariant.remove(id)),
+                      icon: const Icon(Icons.close,
+                          color: Colors.white70, size: 18),
                     ),
                   ],
                 ],
@@ -916,9 +1037,10 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
     );
   }
 
-  // ✅ Step 5 updated: buttons for Download/Save/Share/Assign + Finish
   Widget _buildStepEstimate() {
-    final items = (_estimate?["items"] is List) ? List.from(_estimate?["items"]) : <dynamic>[];
+    final items = (_estimate?["items"] is List)
+        ? List.from(_estimate?["items"])
+        : <dynamic>[];
     final total = _estimate?["totalCost"] ?? _estimate?["total"] ?? "";
 
     return Column(
@@ -933,7 +1055,6 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
           ),
         ),
         const SizedBox(height: 12),
-
         if (_estimate == null)
           const Text("No estimate yet", style: TextStyle(color: Colors.white60))
         else ...[
@@ -957,7 +1078,9 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
                 ),
                 const SizedBox(height: 10),
                 ...items.take(8).map((it) {
-                  final m = (it is Map) ? Map<String, dynamic>.from(it) : <String, dynamic>{};
+                  final m = (it is Map)
+                      ? Map<String, dynamic>.from(it)
+                      : <String, dynamic>{};
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 6),
                     child: Text(
@@ -967,21 +1090,18 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
                   );
                 }).toList(),
                 if (items.length > 8)
-                  const Text("...more items", style: TextStyle(color: Colors.white38)),
+                  const Text("...more items",
+                      style: TextStyle(color: Colors.white38)),
               ],
             ),
           ),
-
           const SizedBox(height: 14),
-
-          _buildSecondaryButton("Download details", _downloadEstimate, icon: Icons.download),
-
+          _buildSecondaryButton("Download details", _downloadEstimate,
+              icon: Icons.download),
           const SizedBox(height: 10),
-
-          _buildSecondaryButton("Save project", _saveProject, icon: Icons.bookmark_add_outlined),
-
+          _buildSecondaryButton("Save project", _saveProject,
+              icon: Icons.bookmark_add_outlined),
           const SizedBox(height: 10),
-
           Row(
             children: [
               Expanded(
@@ -1001,9 +1121,7 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
               ),
             ],
           ),
-
           const SizedBox(height: 12),
-
           _buildPrimaryButton("Finish", () => Navigator.pop(context, true)),
         ],
       ],

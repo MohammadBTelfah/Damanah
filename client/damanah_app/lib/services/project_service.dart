@@ -5,26 +5,35 @@ import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
 import '../services/session_service.dart';
+import '../config/api_config.dart';
 
 class ProjectService {
-  static const String baseUrl = "http://10.0.2.2:5000";
+  // =========================
+  // Helpers
+  // =========================
 
-  String _join(String path) {
-    final b = baseUrl.endsWith('/')
-        ? baseUrl.substring(0, baseUrl.length - 1)
-        : baseUrl;
-    final p = path.startsWith('/') ? path.substring(1) : path;
-    return "$b/$p";
-  }
-
-  Map<String, dynamic> _safeJson(String body) {
+  dynamic _safeDecode(String body) {
     try {
-      final decoded = jsonDecode(body);
-      if (decoded is Map<String, dynamic>) return decoded;
-      return {"message": "Invalid server response"};
+      return jsonDecode(body);
     } catch (_) {
       return {"message": "Invalid server response", "raw": body};
     }
+  }
+
+  Map<String, dynamic> _safeJsonMap(String body) {
+    final decoded = _safeDecode(body);
+    if (decoded is Map<String, dynamic>) return decoded;
+    return {"message": "Invalid server response"};
+  }
+
+  String _errMsg(http.Response res) {
+    final decoded = _safeDecode(res.body);
+
+    if (decoded is Map && decoded["message"] != null) {
+      return decoded["message"].toString();
+    }
+
+    return "Request failed (${res.statusCode})";
   }
 
   Future<String> _mustToken() async {
@@ -35,6 +44,14 @@ class ProjectService {
     return token;
   }
 
+  Map<String, String> _authHeaders(String token, {bool json = false}) {
+    return {
+      if (json) "Content-Type": "application/json",
+      "Authorization": "Bearer $token",
+      "Accept": "application/json",
+    };
+  }
+
   // =========================
   // Plan analyze
   // =========================
@@ -42,30 +59,27 @@ class ProjectService {
   /// POST /api/projects/plan/analyze (multipart planFile)
   Future<Map<String, dynamic>> analyzePlan({required String filePath}) async {
     final token = await _mustToken();
-    final uri = Uri.parse(_join("/api/projects/plan/analyze"));
+    final uri = Uri.parse(ApiConfig.join("/api/projects/plan/analyze"));
 
     final req = http.MultipartRequest("POST", uri);
-    req.headers.addAll({
-      "Authorization": "Bearer $token",
-      "Accept": "application/json",
-    });
+    req.headers.addAll(_authHeaders(token));
 
     req.files.add(await http.MultipartFile.fromPath("planFile", filePath));
 
     final streamed = await req.send().timeout(const Duration(seconds: 60));
     final res = await http.Response.fromStream(streamed);
 
-    final data = _safeJson(res.body);
+    final map = _safeJsonMap(res.body);
 
-    if (res.statusCode == 200) return data;
+    if (res.statusCode == 200) return map;
 
-    final code = data["code"]?.toString();
+    final code = map["code"]?.toString();
     if (code == "AI_UNAVAILABLE") {
       throw Exception("AI_UNAVAILABLE");
     }
 
     throw Exception(
-      "(${res.statusCode}) ${data["message"] ?? "Analyze plan failed"}",
+      "(${res.statusCode}) ${map["message"] ?? "Analyze plan failed"}",
     );
   }
 
@@ -81,11 +95,11 @@ class ProjectService {
     required double area,
     required int floors,
     required String finishingLevel,
-    required String buildingType, // ✅ NEW
+    required String buildingType,
     Map<String, dynamic>? planAnalysis,
   }) async {
     final token = await _mustToken();
-    final uri = Uri.parse(_join("/api/projects"));
+    final uri = Uri.parse(ApiConfig.join("/api/projects"));
 
     final body = {
       "title": title,
@@ -94,23 +108,19 @@ class ProjectService {
       "area": area,
       "floors": floors,
       "finishingLevel": finishingLevel,
-      "buildingType": buildingType, // ✅ NEW
+      "buildingType": buildingType,
       if (planAnalysis != null) "planAnalysis": planAnalysis,
     };
 
     final res = await http
         .post(
           uri,
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": "Bearer $token",
-            "Accept": "application/json",
-          },
+          headers: _authHeaders(token, json: true),
           body: jsonEncode(body),
         )
         .timeout(const Duration(seconds: 45));
 
-    final data = _safeJson(res.body);
+    final data = _safeJsonMap(res.body);
 
     if (res.statusCode == 200 || res.statusCode == 201) {
       final project = data["project"];
@@ -133,19 +143,13 @@ class ProjectService {
   /// GET /api/materials
   Future<List<dynamic>> getMaterials() async {
     final token = await _mustToken();
-    final uri = Uri.parse(_join("/api/materials"));
+    final uri = Uri.parse(ApiConfig.join("/api/materials"));
 
     final res = await http
-        .get(
-          uri,
-          headers: {
-            "Authorization": "Bearer $token",
-            "Accept": "application/json",
-          },
-        )
+        .get(uri, headers: _authHeaders(token))
         .timeout(const Duration(seconds: 30));
 
-    final decoded = jsonDecode(res.body);
+    final decoded = _safeDecode(res.body);
 
     if (res.statusCode == 200 && decoded is List) return decoded;
 
@@ -166,21 +170,17 @@ class ProjectService {
     required List<Map<String, String>> selections,
   }) async {
     final token = await _mustToken();
-    final uri = Uri.parse(_join("/api/projects/$projectId/estimate"));
+    final uri = Uri.parse(ApiConfig.join("/api/projects/$projectId/estimate"));
 
     final res = await http
         .post(
           uri,
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": "Bearer $token",
-            "Accept": "application/json",
-          },
+          headers: _authHeaders(token, json: true),
           body: jsonEncode({"selections": selections}),
         )
         .timeout(const Duration(seconds: 60));
 
-    final data = _safeJson(res.body);
+    final data = _safeJsonMap(res.body);
 
     if (res.statusCode == 200) return data;
 
@@ -190,56 +190,38 @@ class ProjectService {
   }
 
   // =========================
-  // ✅ NEW: Save / Download / Share / Assign
+  // Save / Download
   // =========================
 
   /// PATCH /api/projects/:id/save
   Future<void> saveProject({required String projectId}) async {
     final token = await _mustToken();
-    final uri = Uri.parse(_join("/api/projects/$projectId/save"));
+    final uri = Uri.parse(ApiConfig.join("/api/projects/$projectId/save"));
 
     final res = await http
-        .patch(
-          uri,
-          headers: {
-            "Authorization": "Bearer $token",
-            "Accept": "application/json",
-          },
-        )
+        .patch(uri, headers: _authHeaders(token))
         .timeout(const Duration(seconds: 30));
 
     if (res.statusCode == 200) return;
 
-    final data = _safeJson(res.body);
-    throw Exception(
-      "(${res.statusCode}) ${data["message"] ?? "Save project failed"}",
-    );
+    throw Exception("(${res.statusCode}) ${_errMsg(res)}");
   }
 
   /// GET /api/projects/:id/estimate/download
-  /// يرجّع ملف JSON (bytes) - نحفظه في Documents
   Future<String> downloadEstimateToFile({required String projectId}) async {
     final token = await _mustToken();
-    final uri = Uri.parse(_join("/api/projects/$projectId/estimate/download"));
+    final uri = Uri.parse(
+      ApiConfig.join("/api/projects/$projectId/estimate/download"),
+    );
 
     final res = await http
-        .get(
-          uri,
-          headers: {
-            "Authorization": "Bearer $token",
-            "Accept": "application/json",
-          },
-        )
+        .get(uri, headers: _authHeaders(token))
         .timeout(const Duration(seconds: 60));
 
     if (res.statusCode != 200) {
-      final data = _safeJson(res.body);
-      throw Exception(
-        "(${res.statusCode}) ${data["message"] ?? "Download failed"}",
-      );
+      throw Exception("(${res.statusCode}) ${_errMsg(res)}");
     }
 
-    // res.bodyBytes contains the JSON file bytes
     final dir = await getApplicationDocumentsDirectory();
     final file = File("${dir.path}/estimate_$projectId.json");
     await file.writeAsBytes(res.bodyBytes, flush: true);
@@ -247,30 +229,29 @@ class ProjectService {
     return file.path;
   }
 
+  // =========================
+  // Share / Assign
+  // =========================
+
   /// POST /api/projects/:id/share  body { contractorId }
   Future<void> shareProject({
     required String projectId,
     required String contractorId,
   }) async {
     final token = await _mustToken();
-    final uri = Uri.parse(_join("/api/projects/$projectId/share"));
+    final uri = Uri.parse(ApiConfig.join("/api/projects/$projectId/share"));
 
     final res = await http
         .post(
           uri,
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": "Bearer $token",
-            "Accept": "application/json",
-          },
+          headers: _authHeaders(token, json: true),
           body: jsonEncode({"contractorId": contractorId}),
         )
         .timeout(const Duration(seconds: 30));
 
     if (res.statusCode == 200) return;
 
-    final data = _safeJson(res.body);
-    throw Exception("(${res.statusCode}) ${data["message"] ?? "Share failed"}");
+    throw Exception("(${res.statusCode}) ${_errMsg(res)}");
   }
 
   /// PATCH /api/projects/:id/assign  body { contractorId }
@@ -279,61 +260,48 @@ class ProjectService {
     required String contractorId,
   }) async {
     final token = await _mustToken();
-    final uri = Uri.parse(_join("/api/projects/$projectId/assign"));
+    final uri = Uri.parse(ApiConfig.join("/api/projects/$projectId/assign"));
 
     final res = await http
         .patch(
           uri,
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": "Bearer $token",
-            "Accept": "application/json",
-          },
+          headers: _authHeaders(token, json: true),
           body: jsonEncode({"contractorId": contractorId}),
         )
         .timeout(const Duration(seconds: 30));
 
     if (res.statusCode == 200) return;
 
-    final data = _safeJson(res.body);
-    throw Exception(
-      "(${res.statusCode}) ${data["message"] ?? "Assign failed"}",
-    );
+    throw Exception("(${res.statusCode}) ${_errMsg(res)}");
   }
 
   // =========================
-  // ✅ NEW: Contractors list (for picker)
+  // Contractors list (✅ endpoint الصحيح)
   // =========================
 
-  /// GET /api/contractors
-  /// عدّل endpoint إذا عندك اسم مختلف
+  /// GET /api/projects/contractors/available
   Future<List<dynamic>> getContractors() async {
     final token = await _mustToken();
-    final uri = Uri.parse(_join("/api/contractors"));
+    final uri = Uri.parse(
+      ApiConfig.join("/api/projects/contractors/available"),
+    );
 
     final res = await http
-        .get(
-          uri,
-          headers: {
-            "Authorization": "Bearer $token",
-            "Accept": "application/json",
-          },
-        )
+        .get(uri, headers: _authHeaders(token))
         .timeout(const Duration(seconds: 30));
 
-    final decoded = jsonDecode(res.body);
+    final decoded = _safeDecode(res.body);
 
     if (res.statusCode == 200) {
       if (decoded is List) return decoded;
       if (decoded is Map && decoded["contractors"] is List) {
         return List.from(decoded["contractors"]);
       }
+      // لو رجّع شكل ثاني
+      return [];
     }
 
-    if (decoded is Map && decoded["message"] != null) {
-      throw Exception("(${res.statusCode}) ${decoded["message"]}");
-    }
-
-    throw Exception("(${res.statusCode}) Failed to load contractors");
+    // مهم: اعرض سبب 401/403 بدل "no contractors"
+    throw Exception("(${res.statusCode}) ${_errMsg(res)}");
   }
 }
