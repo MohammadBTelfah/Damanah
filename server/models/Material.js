@@ -1,18 +1,26 @@
 const mongoose = require("mongoose");
 
+const variantSchema = new mongoose.Schema(
+  {
+    key: { type: String, required: true },         // basic / medium / premium OR local / saudi / turkish ...
+    label: { type: String, required: true },       // اسم يظهر بالـ UI
+    pricePerUnit: { type: Number, required: true },// سعر الوحدة لهذا النوع
+    quantityPerM2: { type: Number, required: true },// استهلاك/م2 لهذا النوع
+  },
+  { _id: false }
+);
+
 const materialSchema = new mongoose.Schema(
   {
-    name: { type: String, required: true },
-    unit: { type: String, required: true }, // طن، م2، م3 ...
-    pricePerUnit: { type: Number, required: true },
+    name: { type: String, required: true },        // Cement / Blocks ...
+    unit: { type: String, required: true },        // bag, block, m3, ton...
 
-    quantityPerM2: { type: Number, required: true }, // استهلاك لكل متر مربع
+    // ✅ legacy (اختياري) لو بدك تضل تدعم القديم
+    pricePerUnit: { type: Number },
+    quantityPerM2: { type: Number },
 
-    factors: {
-      basic: { type: Number, default: 1 },
-      medium: { type: Number, default: 1.2 },
-      premium: { type: Number, default: 1.5 },
-    },
+    // ✅ الجديد: انواع متعددة
+    variants: { type: [variantSchema], default: [] },
   },
   { timestamps: true }
 );

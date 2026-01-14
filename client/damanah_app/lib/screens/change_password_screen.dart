@@ -17,6 +17,11 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
   bool _loading = false;
   final _service = UserService();
 
+  // ✅ show/hide لكل حقل
+  bool _obscureCurrent = true;
+  bool _obscureNew = true;
+  bool _obscureConfirm = true;
+
   @override
   void dispose() {
     _current.dispose();
@@ -33,6 +38,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
+
     if (_newP.text.trim() != _confirm.text.trim()) {
       _snack("Passwords do not match", Colors.red);
       return;
@@ -47,6 +53,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
 
       if (!mounted) return;
       _snack("Password changed successfully", Colors.green);
+
       Future.delayed(const Duration(milliseconds: 600), () {
         if (mounted) Navigator.pop(context);
       });
@@ -68,7 +75,10 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
-        title: const Text("Change Password", style: TextStyle(color: Colors.white)),
+        title: const Text(
+          "Change Password",
+          style: TextStyle(color: Colors.white),
+        ),
       ),
       body: Padding(
         padding: const EdgeInsets.all(24),
@@ -76,12 +86,33 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
           key: _formKey,
           child: Column(
             children: [
-              _field("Current password", _current, fill, obscure: true),
+              _field(
+                hint: "Current password",
+                c: _current,
+                fill: fill,
+                obscure: _obscureCurrent,
+                onToggle: () => setState(() => _obscureCurrent = !_obscureCurrent),
+              ),
               const SizedBox(height: 12),
-              _field("New password", _newP, fill, obscure: true),
+
+              _field(
+                hint: "New password",
+                c: _newP,
+                fill: fill,
+                obscure: _obscureNew,
+                onToggle: () => setState(() => _obscureNew = !_obscureNew),
+              ),
               const SizedBox(height: 12),
-              _field("Confirm new password", _confirm, fill, obscure: true),
+
+              _field(
+                hint: "Confirm new password",
+                c: _confirm,
+                fill: fill,
+                obscure: _obscureConfirm,
+                onToggle: () => setState(() => _obscureConfirm = !_obscureConfirm),
+              ),
               const SizedBox(height: 24),
+
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
@@ -90,16 +121,24 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                     backgroundColor: const Color(0xFF8BE3B5),
                     foregroundColor: Colors.black,
                     padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(40)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(40),
+                    ),
                     elevation: 0,
                   ),
                   child: _loading
                       ? const SizedBox(
                           height: 18,
                           width: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.black,
+                          ),
                         )
-                      : const Text("Update Password", style: TextStyle(fontWeight: FontWeight.w700)),
+                      : const Text(
+                          "Update Password",
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
                 ),
               ),
             ],
@@ -109,7 +148,13 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
     );
   }
 
-  Widget _field(String hint, TextEditingController c, Color fill, {bool obscure = false}) {
+  Widget _field({
+    required String hint,
+    required TextEditingController c,
+    required Color fill,
+    required bool obscure,
+    required VoidCallback onToggle,
+  }) {
     return TextFormField(
       controller: c,
       obscureText: obscure,
@@ -124,10 +169,21 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
           borderSide: BorderSide.none,
         ),
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+
+        // ✅ العين
+        suffixIcon: IconButton(
+          onPressed: onToggle,
+          icon: Icon(
+            obscure ? Icons.visibility_off : Icons.visibility,
+            color: Colors.white70,
+          ),
+        ),
       ),
       validator: (v) {
         if (v == null || v.isEmpty) return "Required";
-        if (hint.contains("New") && v.length < 6) return "At least 6 characters";
+        if (hint.toLowerCase().contains("new") && v.length < 6) {
+          return "At least 6 characters";
+        }
         return null;
       },
     );

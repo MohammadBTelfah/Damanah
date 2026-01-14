@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+
 import '../services/session_service.dart';
+
 import 'client_home_screen.dart';
 import 'profile_screen.dart';
 
@@ -24,49 +26,52 @@ class _MainShellState extends State<MainShell> {
 
   Future<void> _loadUser() async {
     final u = await SessionService.getUser();
-    if (mounted) setState(() => _user = u);
+    if (!mounted) return;
+    setState(() => _user = u);
   }
 
-  Future<void> _openProfile() async {
-    if (_user == null) return;
-
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ProfileScreen(
-          user: _user!,
-          baseUrl: baseUrl,
-          onRefreshUser: _loadUser,
-        ),
-      ),
-    );
-
-    await _loadUser();
+  void _goToProfileTab() {
+    setState(() => _index = 3);
   }
 
   @override
   Widget build(BuildContext context) {
-    final pages = [
+    final pages = <Widget>[
+      // HOME
       ClientHomeScreen(
         user: _user,
         baseUrl: baseUrl,
         onRefreshUser: _loadUser,
-        onOpenProfile: _openProfile,
+        onOpenProfile: _goToProfileTab, // ✅ بدل push
       ),
+
+      // PROJECTS
       const _Placeholder(title: "Projects"),
+
+      // MESSAGES
       const _Placeholder(title: "Messages"),
-      const _Placeholder(title: "Profile"),
+
+      // PROFILE (داخل التاب)
+      if (_user != null)
+        ProfileScreen(
+          user: _user!,
+          baseUrl: baseUrl,
+          isRoot: true, // ✅ مهم عشان ما يعمل pop ويضل البار ثابت
+          onRefreshUser: _loadUser,
+        )
+      else
+        const _LoadingPage(),
     ];
 
     return Scaffold(
       backgroundColor: const Color(0xFF0F261F),
       body: IndexedStack(index: _index, children: pages),
 
-      // ✅ منع الوميض/التضوية عند الضغط على عناصر البار
+      // ✅ ثابت بكل الصفحات
       bottomNavigationBar: Theme(
         data: Theme.of(context).copyWith(
-          splashFactory: NoSplash.splashFactory, // ❌ لا splash
-          highlightColor: Colors.transparent,    // ❌ لا highlight
+          splashFactory: NoSplash.splashFactory,
+          highlightColor: Colors.transparent,
         ),
         child: BottomNavigationBar(
           backgroundColor: const Color(0xFF0F261F),
@@ -74,13 +79,7 @@ class _MainShellState extends State<MainShell> {
           selectedItemColor: Colors.white,
           unselectedItemColor: Colors.white60,
           currentIndex: _index,
-          onTap: (i) async {
-            if (i == 3) {
-              await _openProfile(); // ✅ يفتح شاشة البروفايل بدون ما يغير التاب
-              return;
-            }
-            setState(() => _index = i);
-          },
+          onTap: (i) => setState(() => _index = i),
           items: const [
             BottomNavigationBarItem(
               icon: Icon(Icons.home_filled),
@@ -105,17 +104,30 @@ class _MainShellState extends State<MainShell> {
   }
 }
 
+class _LoadingPage extends StatelessWidget {
+  const _LoadingPage();
+
+  @override
+  Widget build(BuildContext context) {
+    return const SafeArea(
+      child: Center(
+        child: CircularProgressIndicator(),
+      ),
+    );
+  }
+}
+
 class _Placeholder extends StatelessWidget {
   final String title;
   const _Placeholder({required this.title});
 
   @override
   Widget build(BuildContext context) {
-    return const SafeArea(
+    return SafeArea(
       child: Center(
         child: Text(
-          "Coming Soon",
-          style: TextStyle(color: Colors.white),
+          "$title (Coming Soon)",
+          style: const TextStyle(color: Colors.white),
         ),
       ),
     );
