@@ -60,6 +60,9 @@ router.post(
   projectController.analyzePlanOnly
 );
 
+// ========= Plan upload =========
+
+
 // ========= Estimate =========
 router.post("/:id/estimate", protect, clientOnly, projectController.estimateProject);
 
