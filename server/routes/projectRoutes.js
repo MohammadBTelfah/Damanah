@@ -4,7 +4,11 @@ const path = require("path");
 const multer = require("multer");
 
 const projectController = require("../controllers/projectController");
-const { protect, clientOnly, contractorOnly } = require("../middleware/authMiddleWare");
+const {
+  protect,
+  clientOnly,
+  contractorOnly,
+} = require("../middleware/authMiddleWare");
 
 // ========= multer for plans =========
 const storage = multer.diskStorage({
@@ -12,7 +16,10 @@ const storage = multer.diskStorage({
   filename: (req, file, cb) =>
     cb(
       null,
-      Date.now() + "-" + Math.round(Math.random() * 1e9) + path.extname(file.originalname)
+      Date.now() +
+        "-" +
+        Math.round(Math.random() * 1e9) +
+        path.extname(file.originalname)
     ),
 });
 
@@ -21,7 +28,9 @@ const planUpload = multer({
   limits: { fileSize: 10 * 1024 * 1024 },
 });
 
-// ========= Project CRUD =========
+// ================================
+// Project CRUD
+// ================================
 
 // create project (client)
 router.post("/", protect, clientOnly, projectController.createProject);
@@ -32,16 +41,36 @@ router.get("/my", protect, clientOnly, projectController.getMyProjects);
 // open projects (contractor)
 router.get("/open", protect, contractorOnly, projectController.getOpenProjects);
 
+// ✅ IMPORTANT: Contractors list for picker (MUST be before "/:projectId")
+router.get(
+  "/contractors/available",
+  protect,
+  clientOnly,
+  projectController.getAvailableContractors
+);
+
 // get project by id
 router.get("/:projectId", protect, projectController.getProjectById);
 
-// ========= Offers =========
+// ================================
+// Offers
+// ================================
 
 // contractor create offer
-router.post("/:projectId/offers", protect, contractorOnly, projectController.createOffer);
+router.post(
+  "/:projectId/offers",
+  protect,
+  contractorOnly,
+  projectController.createOffer
+);
 
 // client get offers
-router.get("/:projectId/offers", protect, clientOnly, projectController.getProjectOffers);
+router.get(
+  "/:projectId/offers",
+  protect,
+  clientOnly,
+  projectController.getProjectOffers
+);
 
 // client accept offer
 router.patch(
@@ -51,7 +80,9 @@ router.patch(
   projectController.acceptOffer
 );
 
-// ========= Plan analyze =========
+// ================================
+// Plan analyze
+// ================================
 router.post(
   "/plan/analyze",
   protect,
@@ -60,19 +91,30 @@ router.post(
   projectController.analyzePlanOnly
 );
 
-// ========= Plan upload =========
-
-
-// ========= Estimate =========
+// ================================
+// Estimate
+// ================================
 router.post("/:id/estimate", protect, clientOnly, projectController.estimateProject);
 
-// ========= NEW: Save / Download / Share / Assign =========
+// ================================
+// Save / Download / Share / Assign
+// ================================
+
+// save project
 router.patch("/:id/save", protect, clientOnly, projectController.saveProject);
 
-router.get("/:id/estimate/download", protect, clientOnly, projectController.downloadEstimate);
+// download estimate JSON
+router.get(
+  "/:id/estimate/download",
+  protect,
+  clientOnly,
+  projectController.downloadEstimate
+);
 
+// share with contractor
 router.post("/:id/share", protect, clientOnly, projectController.shareProject);
 
+// assign contractor
 router.patch("/:id/assign", protect, clientOnly, projectController.assignContractor);
 
 module.exports = router;

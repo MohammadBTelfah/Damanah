@@ -1,19 +1,16 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
+import '../config/api_config.dart';
+
 class AuthService {
-  // ✅ خلي كل المشروع يستخدم نفس الـ baseUrl
-  // Emulator: 10.0.2.2
-  static const String _baseUrl = 'http://10.0.2.2:5000';
+  // ✅ Auth routes (login/register/verification)
+  static String get _clientAuthBaseUrl => ApiConfig.join('/api/auth/client');
+  static String get _contractorAuthBaseUrl => ApiConfig.join('/api/auth/contractor');
 
-  // Auth routes (login/register/verification)
-  static const String _clientAuthBaseUrl = '$_baseUrl/api/auth/client';
-  static const String _contractorAuthBaseUrl = '$_baseUrl/api/auth/contractor';
-
-  // Account routes (me/change-password/forgot/reset)
-  static const String _clientAccountBaseUrl = '$_baseUrl/api/client/account';
-  static const String _contractorAccountBaseUrl =
-      '$_baseUrl/api/contractor/account';
+  // ✅ Account routes (me/change-password/forgot/reset)
+  static String get _clientAccountBaseUrl => ApiConfig.join('/api/client/account');
+  static String get _contractorAccountBaseUrl => ApiConfig.join('/api/contractor/account');
 
   /* ===================== CLIENT ===================== */
 
@@ -98,7 +95,7 @@ class AuthService {
     throw Exception(data['message'] ?? 'Resend failed');
   }
 
-  /// ✅ GET /api/client/account/me  (بيرجع user وفيه role)
+  /// ✅ GET /api/client/account/me
   Future<Map<String, dynamic>> getMeClient({required String token}) async {
     final url = Uri.parse('$_clientAccountBaseUrl/me');
 
@@ -236,7 +233,10 @@ class AuthService {
     }
 
     request.files.add(
-      await http.MultipartFile.fromPath('contractorDocument', contractorFilePath),
+      await http.MultipartFile.fromPath(
+        'contractorDocument',
+        contractorFilePath,
+      ),
     );
 
     final streamed = await request.send();

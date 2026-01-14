@@ -8,6 +8,8 @@ const clientSchema = new mongoose.Schema(
 
     password: { type: String, required: true, minlength: 6 },
 
+    role: { type: String, enum: ["client"], default: "client" },
+
     profileImage: { type: String, default: null },
 
     phone: { type: String, required: true },

@@ -122,6 +122,9 @@ exports.register = async (req, res) => {
       password: hashed,
       profileImage: profileImagePath,
 
+      // ✅ force role
+      role: "admin",
+
       isActive: false,
       emailVerified: false,
       emailVerificationToken: null,
@@ -135,13 +138,16 @@ exports.register = async (req, res) => {
     return res.status(201).json({
       message: "Admin created. Please verify email to activate.",
       token,
-      role: "admin",
+      role: admin.role,
       user: {
         id: admin._id,
         name: admin.name,
         email: admin.email,
         phone: admin.phone,
         profileImage: admin.profileImage,
+
+        role: admin.role,
+
         isActive: admin.isActive,
         emailVerified: admin.emailVerified,
       },
@@ -152,6 +158,7 @@ exports.register = async (req, res) => {
     });
   }
 };
+
 
 // ✅ verify admin email
 exports.verifyEmail = async (req, res) => {
