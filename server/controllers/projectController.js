@@ -1,47 +1,11 @@
 const Project = require("../models/Project");
 const Contract = require("../models/Contract");
-const { generateBoqForProject } = require("../utils/boq."); // ✅ FIX
+const { generateBoqForProject } = require("../utils/boq"); // ✅ FIX
 const { analyzeFloorPlanImage } = require("../utils/plan_vision");
 
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // retry wrapper
-async function analyzeWithRetry(imagePath, maxRetries = 2) {
-  let attempt = 0;
-
-  while (true) {
-    try {
-      return await analyzeFloorPlanImage(imagePath);
-    } catch (e) {
-      const isRateLimit =
-        e?.status === 429 ||
-        e?.code === "rate_limit_exceeded" ||
-        e?.error?.code === "rate_limit_exceeded";
-
-      if (!isRateLimit || attempt >= maxRetries) {
-        throw e;
-      }
-
-      // retry-after (إن وجد)
-      const retryAfterHeader =
-        e?.headers?.get?.("retry-after") || e?.headers?.["retry-after"];
-
-      const retryAfterSeconds =
-        retryAfterHeader && Number(retryAfterHeader)
-          ? Number(retryAfterHeader)
-          : 20;
-
-      console.warn(
-        `Rate limit hit. Retry ${attempt + 1}/${maxRetries} after ${retryAfterSeconds}s`
-      );
-
-      await sleep((retryAfterSeconds + 1) * 1000);
-      attempt++;
-    }
-  }
-}
-
 
 
 // =======================
@@ -49,21 +13,60 @@ async function analyzeWithRetry(imagePath, maxRetries = 2) {
 // =======================
 exports.createProject = async (req, res) => {
   try {
-    const { title, description, location, area, floors, finishingLevel } =
-      req.body;
+    const {
+      title,
+      description,
+      location,
+      area,
+      floors,
+      finishingLevel,
+      buildingType,   // ✅ جديد
+      planAnalysis,   // ✅ جديد (اختياري)
+    } = req.body;
 
-    if (!title || String(title).trim().isEmpty) {
+    if (!title || String(title).trim().length === 0) {
       return res.status(400).json({ message: "Title is required" });
     }
+
+    // ✅ sanitize numbers
+    const areaNum =
+      area === null || area === undefined || area === ""
+        ? null
+        : Number(area);
+
+    const floorsNum =
+      floors === null || floors === undefined || floors === ""
+        ? null
+        : Number(floors);
+
+    if (areaNum !== null && (!Number.isFinite(areaNum) || areaNum <= 0)) {
+      return res.status(400).json({ message: "Invalid area" });
+    }
+
+    if (floorsNum !== null && (!Number.isFinite(floorsNum) || floorsNum <= 0)) {
+      return res.status(400).json({ message: "Invalid floors" });
+    }
+
+    // ✅ normalize finishingLevel
+    const level = String(finishingLevel || "basic").toLowerCase().trim();
+    const allowedLevels = ["basic", "medium", "premium"];
+    const safeLevel = allowedLevels.includes(level) ? level : "basic";
+
+    // ✅ normalize buildingType
+    const bt = String(buildingType || "apartment").toLowerCase().trim();
+    const allowedTypes = ["apartment", "villa", "commercial"];
+    const safeBuildingType = allowedTypes.includes(bt) ? bt : "apartment";
 
     const project = new Project({
       owner: req.user._id,
       title: String(title).trim(),
       description: description ? String(description).trim() : "",
       location: location ? String(location).trim() : "",
-      area: area ?? null,
-      floors: floors ?? null,
-      finishingLevel: finishingLevel ?? "basic",
+      area: areaNum,
+      floors: floorsNum,
+      finishingLevel: safeLevel,
+      buildingType: safeBuildingType, // ✅ جديد
+      planAnalysis: planAnalysis && typeof planAnalysis === "object" ? planAnalysis : undefined, // ✅ اختياري
     });
 
     await project.save();
@@ -77,6 +80,7 @@ exports.createProject = async (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 };
+
 
 // =======================
 // مشاريعي (client)
@@ -261,23 +265,20 @@ exports.analyzePlanOnly = async (req, res) => {
 
     const mime = req.file.mimetype || "";
     const name = (req.file.originalname || "").toLowerCase();
-
     const isImage =
       mime.startsWith("image/") ||
       [".png", ".jpg", ".jpeg", ".webp"].some((e) => name.endsWith(e));
 
     if (!isImage) {
       return res.status(400).json({
-        message:
-          "Vision analysis requires an IMAGE (png/jpg/webp). Convert PDF to image first.",
+        message: "Vision analysis requires an IMAGE (png/jpg/webp). Convert PDF to image first.",
         mimetype: mime,
       });
     }
 
-    let analysis;
     try {
-      // ✅ analyze مع retry تلقائي
-      analysis = await analyzeWithRetry(req.file.path, 2);
+      const analysis = await analyzeFloorPlanImage(req.file.path);
+      return res.json({ message: "Plan analyzed successfully", analysis });
     } catch (e) {
       console.error("Vision analyze error:", e);
 
@@ -287,32 +288,183 @@ exports.analyzePlanOnly = async (req, res) => {
         e?.error?.code === "rate_limit_exceeded";
 
       if (isRateLimit) {
-        return res.status(429).json({
-          message: "AI is busy right now. Please try again shortly.",
-          code: "RATE_LIMIT",
+        return res.status(503).json({
+          message: "AI is unavailable now. Fill details manually.",
+          code: "AI_UNAVAILABLE",
           retryAfterSeconds: 20,
         });
       }
 
       return res.status(502).json({
         message: "Vision analysis failed",
+        code: "VISION_FAILED",
         error: e?.message || "Unknown error",
       });
     }
-
-    return res.json({
-      message: "Plan analyzed successfully",
-      analysis,
-    });
   } catch (err) {
     console.error("analyzePlanOnly error:", err);
-    return res.status(500).json({
-      message: "Server error",
-      error: err.message,
-    });
+    return res.status(500).json({ message: "Server error", error: err.message });
   }
 };
 
+// =======================
+// Estimate (BOQ real) + save into project
+
+// =======================
+
+
+exports.estimateProject = async (req, res) => {
+  try {
+    const projectId = req.params.id || req.params.projectId;
+
+    // selections ممكن تكون []
+    const selections = Array.isArray(req.body.selections) ? req.body.selections : [];
+
+    console.log("ESTIMATE projectId:", projectId);
+    console.log("ESTIMATE selections:", selections);
+
+    const project = await Project.findById(projectId);
+    if (!project) return res.status(404).json({ message: "Project not found" });
+
+    // ✅ لازم تتأكد من protect موجود في الراوت (عشان req.user)
+    if (!req.user?._id) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    // ✅ owner check
+    if (String(project.owner) !== String(req.user._id)) {
+      return res.status(403).json({ message: "Not owner of this project" });
+    }
+
+    // ✅ BOQ الحقيقي (حتى لو selections = [])
+    const estimation = await generateBoqForProject(project, { selections });
+
+    // ✅ خزّن النتيجة
+    project.estimation = estimation;
+    await project.save();
+
+    return res.json({
+      message: "Estimate generated",
+      items: estimation.items,
+      totalCost: estimation.totalCost,
+      currency: estimation.currency,
+      finishingLevel: estimation.finishingLevel,
+    });
+  } catch (err) {
+    console.error("estimateProject error:", err);
+    return res.status(500).json({ message: "Estimate failed", error: err.message });
+  }
+};
+
+//======================= ======
+// حفظ المشروع (isSaved = true)
+// =======================
+// ✅ حفظ المشروع
+exports.saveProject = async (req, res) => {
+  try {
+    const project = await Project.findById(req.params.id);
+    if (!project) return res.status(404).json({ message: "Project not found" });
+
+    if (String(project.owner) !== String(req.user._id)) {
+      return res.status(403).json({ message: "Not owner of this project" });
+    }
+
+    project.isSaved = true;
+    await project.save();
+
+    return res.json({ message: "Project saved", project });
+  } catch (err) {
+    console.error("saveProject error:", err);
+    return res.status(500).json({ message: "Save failed", error: err.message });
+  }
+};
+
+// ✅ تنزيل التقدير JSON
+exports.downloadEstimate = async (req, res) => {
+  try {
+    const project = await Project.findById(req.params.id);
+    if (!project) return res.status(404).json({ message: "Project not found" });
+
+    if (String(project.owner) !== String(req.user._id)) {
+      return res.status(403).json({ message: "Not owner of this project" });
+    }
+
+    const estimation =
+      project.estimation || { items: [], totalCost: 0, currency: "JOD" };
+
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="estimate-${project._id}.json"`
+    );
+
+    return res.json(estimation);
+  } catch (err) {
+    console.error("downloadEstimate error:", err);
+    return res
+      .status(500)
+      .json({ message: "Download failed", error: err.message });
+  }
+};
+
+// ✅ مشاركة مشروع مع مقاول
+exports.shareProject = async (req, res) => {
+  try {
+    const { contractorId } = req.body;
+    if (!contractorId) {
+      return res.status(400).json({ message: "contractorId is required" });
+    }
+
+    const project = await Project.findById(req.params.id);
+    if (!project) return res.status(404).json({ message: "Project not found" });
+
+    if (String(project.owner) !== String(req.user._id)) {
+      return res.status(403).json({ message: "Not owner of this project" });
+    }
+
+    // ✅ sharedWithModel حاليا Contractor
+    project.sharedWithModel = "Contractor";
+    project.sharedWith = project.sharedWith || [];
+
+    const exists = project.sharedWith.some(
+      (id) => String(id) === String(contractorId)
+    );
+    if (!exists) project.sharedWith.push(contractorId);
+
+    await project.save();
+
+    return res.json({ message: "Project shared", project });
+  } catch (err) {
+    console.error("shareProject error:", err);
+    return res.status(500).json({ message: "Share failed", error: err.message });
+  }
+};
+
+// ✅ تعيين مقاول (اختيار مقاول معيّن)
+exports.assignContractor = async (req, res) => {
+  try {
+    const { contractorId } = req.body;
+    if (!contractorId) {
+      return res.status(400).json({ message: "contractorId is required" });
+    }
+
+    const project = await Project.findById(req.params.id);
+    if (!project) return res.status(404).json({ message: "Project not found" });
+
+    if (String(project.owner) !== String(req.user._id)) {
+      return res.status(403).json({ message: "Not owner of this project" });
+    }
+
+    project.contractor = contractorId;
+    await project.save();
+
+    return res.json({ message: "Contractor assigned", project });
+  } catch (err) {
+    console.error("assignContractor error:", err);
+    return res
+      .status(500)
+      .json({ message: "Assign failed", error: err.message });
+  }
+};
 
 
 
@@ -325,10 +477,17 @@ exports.uploadPlanAndEstimate = async (req, res) => {
   try {
     const { projectId } = req.params;
 
+    // selections اختياري (عشان لو بدك تستخدم نفس endpoint)
+    const selections = Array.isArray(req.body?.selections) ? req.body.selections : [];
+
     const project = await Project.findById(projectId);
     if (!project) return res.status(404).json({ message: "Project not found" });
 
-    if (project.owner.toString() !== req.user._id.toString()) {
+    if (!req.user?._id) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    if (String(project.owner) !== String(req.user._id)) {
       return res.status(403).json({ message: "Not owner of this project" });
     }
 
@@ -336,65 +495,68 @@ exports.uploadPlanAndEstimate = async (req, res) => {
       return res.status(400).json({ message: "Plan file is required" });
     }
 
-    // ✅ احفظ المسار
     project.planFile = req.file.path;
 
-    // ✅ إذا الملف PDF وانت ما بتحوله لصورة: رجّع رسالة واضحة
     const mime = req.file.mimetype || "";
+    const name = (req.file.originalname || "").toLowerCase();
     const isImage =
       mime.startsWith("image/") ||
-      [".png", ".jpg", ".jpeg", ".webp"].some((e) =>
-        String(req.file.originalname || "").toLowerCase().endsWith(e)
-      );
+      [".png", ".jpg", ".jpeg", ".webp"].some((e) => name.endsWith(e));
 
     if (!isImage) {
       return res.status(400).json({
-        message:
-          "Currently Vision analysis expects an IMAGE (png/jpg/webp). Convert PDF to image first.",
+        message: "Currently Vision analysis expects an IMAGE (png/jpg/webp). Convert PDF to image first.",
         mimetype: mime,
       });
     }
 
-    // (اختياري) إذا بدك تمنع إعادة التحليل لو موجود:
-    // if (project.planAnalysis) {
-    //   return res.json({
-    //     message: "Plan already analyzed",
-    //     planAnalysis: project.planAnalysis,
-    //     estimation: project.estimation,
-    //     planFileUrl: project.planFile,
-    //   });
-    // }
-
-    // ✅ Vision AI الحقيقي
-    let analysis;
+    // ✅ حاول تعمل تحليل، وإذا AI مش متاح خليه manual
+    let analysis = null;
     try {
       analysis = await analyzeFloorPlanImage(req.file.path);
+      project.planAnalysis = analysis;
+
+      if (analysis?.totalArea && Number(analysis.totalArea) > 0) {
+        project.area = Number(analysis.totalArea);
+      }
+      if (analysis?.floors && Number(analysis.floors) > 0) {
+        project.floors = Number(analysis.floors);
+      }
     } catch (e) {
       console.error("Vision analyze error:", e);
+
+      const isRateLimit =
+        e?.status === 429 ||
+        e?.code === "rate_limit_exceeded" ||
+        e?.error?.code === "rate_limit_exceeded";
+
+      if (isRateLimit) {
+        // ✅ لا تضيّع وقت المستخدم — رجّعله manual mode
+        await project.save();
+        return res.status(503).json({
+          message: "AI is unavailable now. Continue manually (area/floors).",
+          code: "AI_UNAVAILABLE",
+          planFileUrl: project.planFile,
+          projectId: project._id,
+        });
+      }
+
+      // أي خطأ ثاني
       return res.status(502).json({
         message: "Vision analysis failed",
-        error: e.message,
+        code: "VISION_FAILED",
+        error: e?.message || "Unknown error",
       });
     }
 
-    project.planAnalysis = analysis;
-
-    // ✅ تحديث area/floors بعقلانية
-    if (analysis && typeof analysis.totalArea === "number" && analysis.totalArea > 0) {
-      project.area = analysis.totalArea;
-    }
-    if (analysis && typeof analysis.floors === "number" && analysis.floors > 0) {
-      project.floors = analysis.floors;
-    }
-
-    // ✅ BOQ
-    const estimation = generateBoqForProject(project);
+    // ✅ BOQ (always) — لازم await
+    const estimation = await generateBoqForProject(project, { selections });
     project.estimation = estimation;
 
     await project.save();
 
     return res.json({
-      message: "Plan uploaded and analyzed with Vision AI, BOQ generated.",
+      message: "Plan uploaded, estimate generated.",
       planAnalysis: project.planAnalysis,
       estimation: project.estimation,
       planFileUrl: project.planFile,

@@ -1,42 +1,42 @@
+// models/Project.js
 const mongoose = require("mongoose");
 
 const projectSchema = new mongoose.Schema(
   {
     owner: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      required: true, // صاحب المشروع (العميل)
+      ref: "Client", // ✅ بما إن صاحب المشروع عميل
+      required: true,
     },
 
     contractor: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      default: null, // يتحدد بعد قبول عرض
+      ref: "Contractor", // ✅ المقاول المختار
+      default: null,
     },
 
     title: { type: String, required: true },
-    description: { type: String },
-    location: { type: String },
+    description: { type: String, default: "" },
+    location: { type: String, default: "" },
 
-    // بيانات هندسية أساسية
-    area: { type: Number }, // مساحة البناء بالمتر المربع
-    floors: { type: Number }, // عدد الطوابق
-    finishingLevel: { type: String }, // عادي / متوسط / فاخر ... الخ
+    area: { type: Number },
+    floors: { type: Number },
+    finishingLevel: { type: String, default: "basic" },
 
-    // حالة المشروع
+    buildingType: {
+      type: String,
+      enum: ["apartment", "villa", "commercial"],
+      default: "apartment",
+    },
+
     status: {
       type: String,
       enum: ["open", "in_progress", "completed", "cancelled"],
       default: "open",
     },
 
-    // ملف مخطط البيت (صورة / PDF)
-    planFile: {
-      type: String,
-      default: null,
-    },
+    planFile: { type: String, default: null },
 
-    // نتيجة تحليل المخطط (من الـ AI أو Mock)
     planAnalysis: {
       totalArea: Number,
       floors: Number,
@@ -44,31 +44,50 @@ const projectSchema = new mongoose.Schema(
       bathrooms: Number,
     },
 
-    // نتيجة حساب الكميات (BOQ)
     estimation: {
       items: [
         {
-          name: String, // steel, paint, blocks...
+          name: String,
           quantity: Number,
           unit: String,
           pricePerUnit: Number,
           total: Number,
+
+          // ✅ optional: عشان تربط الاختيار بالمادة والـ variant
+          materialId: String,
+          variantKey: String,
         },
       ],
       totalCost: { type: Number, default: 0 },
       currency: { type: String, default: "JOD" },
+      finishingLevel: { type: String, default: "basic" },
     },
 
-    // عروض المقاولين على المشروع
+    // ✅ زر "Save project"
+    isSaved: { type: Boolean, default: false },
+
+    // ✅ مشاركة المشروع
+    sharedWith: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        refPath: "sharedWithModel", // ✅ ديناميكي
+      },
+    ],
+    sharedWithModel: {
+      type: String,
+      enum: ["Contractor"], // ✅ حاليا فقط مقاولين
+      default: "Contractor",
+    },
+
     offers: [
       {
         contractor: {
           type: mongoose.Schema.Types.ObjectId,
-          ref: "User",
+          ref: "Contractor", // ✅ عندك Contractor موديل
           required: true,
         },
         price: { type: Number, required: true },
-        message: { type: String },
+        message: { type: String, default: "" },
         status: {
           type: String,
           enum: ["pending", "accepted", "rejected"],

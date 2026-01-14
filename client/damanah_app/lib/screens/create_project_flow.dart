@@ -19,27 +19,22 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
   int _step = 0;
   bool _loading = false;
 
-  // Step 1 file
   File? _planFile;
 
-  // Step 2 analysis editable
   Map<String, dynamic>? _analysis;
   final _areaCtrl = TextEditingController();
   final _floorsCtrl = TextEditingController();
   final _roomsCtrl = TextEditingController();
   final _bathsCtrl = TextEditingController();
 
-  // Step 3 project info
   final _titleCtrl = TextEditingController();
   final _descCtrl = TextEditingController();
   final _locationCtrl = TextEditingController();
   String _finishing = "basic";
 
-  // Step 4 materials
   List<dynamic> _materials = [];
   final Map<String, String> _selectedVariant = {}; // materialId -> variantKey
 
-  // Step 5
   Map<String, dynamic>? _estimate;
   String? _projectId;
 
@@ -81,6 +76,8 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
   }
 
   Future<void> _pickPlan() async {
+    if (_loading) return;
+
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['png', 'jpg', 'jpeg', 'webp', 'pdf'],
@@ -92,14 +89,35 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
     });
   }
 
+  // ✅ fallback manual review (Step 2)
+  void _goManualReview({String? msg}) {
+    _analysis = {}; // فاضي
+
+    if (_floorsCtrl.text.trim().isEmpty) _floorsCtrl.text = "1";
+
+    setState(() => _step = 1);
+
+    if (msg != null) {
+      _snack(msg, color: Colors.orange);
+    }
+  }
+
   Future<void> _analyzePlan() async {
+    if (_loading) return;
+
     if (_planFile == null) {
-      _snack("Please upload a plan first");
+      _goManualReview(
+        msg: "Auto analysis unavailable. Please fill details manually.",
+      );
       return;
     }
+
     setState(() => _loading = true);
+
     try {
+      debugPrint("[Analyze] uploading file: ${_planFile!.path}");
       final data = await _service.analyzePlan(filePath: _planFile!.path);
+
       final analysis = (data["analysis"] is Map)
           ? Map<String, dynamic>.from(data["analysis"])
           : <String, dynamic>{};
@@ -121,13 +139,28 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
         _step = 1;
       });
     } catch (e) {
-      _snack(e.toString());
+      final msg = e.toString();
+
+      final shouldManual =
+          msg.contains("AI_UNAVAILABLE") ||
+          msg.contains("(503)") ||
+          msg.contains("(429)");
+
+      if (shouldManual) {
+        _goManualReview(
+          msg: "Auto analysis failed. Please fill details manually.",
+        );
+      } else {
+        _snack(msg);
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
   }
 
   Future<void> _goProjectInfo() async {
+    if (_loading) return;
+
     final area = double.tryParse(_areaCtrl.text.trim());
     final floors = int.tryParse(_floorsCtrl.text.trim());
 
@@ -153,6 +186,8 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
   }
 
   Future<void> _createProjectThenLoadMaterials() async {
+    if (_loading) return;
+
     final title = _titleCtrl.text.trim();
     if (title.isEmpty) {
       _snack("Title is required");
@@ -162,11 +197,19 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
     final area = double.tryParse(_areaCtrl.text.trim());
     final floors = int.tryParse(_floorsCtrl.text.trim());
 
-    if (area == null || area <= 0) return _snack("Invalid area");
-    if (floors == null || floors <= 0) return _snack("Invalid floors");
+    if (area == null || area <= 0) {
+      _snack("Invalid area");
+      return;
+    }
+    if (floors == null || floors <= 0) {
+      _snack("Invalid floors");
+      return;
+    }
 
     setState(() => _loading = true);
+
     try {
+      debugPrint("[CreateProject] sending createProject...");
       final id = await _service.createProjectAndReturnId(
         title: title,
         description: _descCtrl.text.trim(),
@@ -177,7 +220,10 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
         planAnalysis: _analysis,
       );
 
+      debugPrint("[CreateProject] projectId = $id");
+
       final mats = await _service.getMaterials();
+      debugPrint("[Materials] loaded = ${mats.length}");
 
       setState(() {
         _projectId = id;
@@ -185,16 +231,18 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
         _step = 3;
       });
     } catch (e) {
-      _snack(e.toString());
+      _snack("Create/load failed: ${e.toString()}");
     } finally {
       if (mounted) setState(() => _loading = false);
     }
   }
 
-  // ✅ تعديل: صار مسموح تعمل Estimate بدون ما تختار أي مادة
+  // ✅ مسموح Estimate بدون اختيار مواد
   Future<void> _runEstimate() async {
-    if (_projectId == null) {
-      _snack("No projectId");
+    if (_loading) return;
+
+    if (_projectId == null || _projectId!.isEmpty) {
+      _snack("No projectId (Project was not created)");
       return;
     }
 
@@ -202,19 +250,26 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
         .map((e) => {"materialId": e.key, "variantKey": e.value})
         .toList();
 
+    debugPrint(
+      "[Estimate] projectId=$_projectId selections=${selections.length}",
+    );
+
     setState(() => _loading = true);
+
     try {
       final data = await _service.estimateProject(
         projectId: _projectId!,
-        selections: selections, // ممكن تكون []
+        selections: selections,
       );
+
+      debugPrint("[Estimate] success keys=${data.keys.toList()}");
 
       setState(() {
         _estimate = data;
         _step = 4;
       });
     } catch (e) {
-      _snack(e.toString());
+      _snack("Estimate failed: ${e.toString()}");
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -291,7 +346,7 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
                   if (_step == 0) _buildStepUpload(),
                   if (_step == 1) _buildStepReview(),
                   if (_step == 2) _buildStepProjectInfo(),
-                  if (_step == 3) _buildStepMaterials(), // ✅ معدل
+                  if (_step == 3) _buildStepMaterials(),
                   if (_step == 4) _buildStepEstimate(),
                 ],
               ),
@@ -301,8 +356,6 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
       ),
     );
   }
-
-  // ---------------- Steps UI ----------------
 
   Widget _buildPrimaryButton(String text, VoidCallback onPressed) {
     return SizedBox(
@@ -344,6 +397,11 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
             fontSize: 16,
             fontWeight: FontWeight.w700,
           ),
+        ),
+        const SizedBox(height: 6),
+        const Text(
+          "Optional: If auto-analysis fails, you can enter details manually.",
+          style: TextStyle(color: Colors.white60, fontSize: 12),
         ),
         const SizedBox(height: 10),
         Container(
@@ -394,31 +452,33 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const Text(
-          "Step 2: Review & edit extracted data",
+          "Step 2: Review & edit data",
           style: TextStyle(
             color: Colors.white,
             fontSize: 16,
             fontWeight: FontWeight.w700,
           ),
         ),
+        const SizedBox(height: 6),
+        const Text(
+          "If auto-analysis is unavailable, fill these fields manually.",
+          style: TextStyle(color: Colors.white60, fontSize: 12),
+        ),
         const SizedBox(height: 12),
-
         TextFormField(
           controller: _areaCtrl,
           style: const TextStyle(color: Colors.white),
           keyboardType: TextInputType.number,
-          decoration: _dec("Area (m²)"),
+          decoration: _dec("Area (m²) *"),
         ),
         const SizedBox(height: 12),
-
         TextFormField(
           controller: _floorsCtrl,
           style: const TextStyle(color: Colors.white),
           keyboardType: TextInputType.number,
-          decoration: _dec("Floors"),
+          decoration: _dec("Floors *"),
         ),
         const SizedBox(height: 12),
-
         TextFormField(
           controller: _roomsCtrl,
           style: const TextStyle(color: Colors.white),
@@ -426,7 +486,6 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
           decoration: _dec("Rooms (optional)"),
         ),
         const SizedBox(height: 12),
-
         TextFormField(
           controller: _bathsCtrl,
           style: const TextStyle(color: Colors.white),
@@ -434,7 +493,6 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
           decoration: _dec("Bathrooms (optional)"),
         ),
         const SizedBox(height: 16),
-
         Row(
           children: [
             Expanded(
@@ -471,14 +529,12 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
           ),
         ),
         const SizedBox(height: 12),
-
         TextFormField(
           controller: _titleCtrl,
           style: const TextStyle(color: Colors.white),
-          decoration: _dec("Project Title"),
+          decoration: _dec("Project Title *"),
         ),
         const SizedBox(height: 12),
-
         TextFormField(
           controller: _descCtrl,
           style: const TextStyle(color: Colors.white),
@@ -489,31 +545,27 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
           ),
         ),
         const SizedBox(height: 12),
-
         TextFormField(
           controller: _locationCtrl,
           style: const TextStyle(color: Colors.white),
           decoration: _dec("Location"),
         ),
-        const SizedBox(height: 12),
-
         TextFormField(
           controller: _areaCtrl,
-          readOnly: false,
+          readOnly: true,
           style: const TextStyle(color: Colors.white),
-          keyboardType: TextInputType.number,
           decoration: _dec("Area (m²)"),
         ),
-        const SizedBox(height: 12),
 
+        const SizedBox(height: 12),
         TextFormField(
           controller: _floorsCtrl,
+          readOnly: true,
           style: const TextStyle(color: Colors.white),
-          keyboardType: TextInputType.number,
           decoration: _dec("Floors"),
         ),
-        const SizedBox(height: 12),
 
+        const SizedBox(height: 12),
         DropdownButtonFormField<String>(
           value: _finishing,
           decoration: _dec("Finishing Level"),
@@ -527,9 +579,7 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
           ],
           onChanged: (v) => setState(() => _finishing = v ?? "basic"),
         ),
-
         const SizedBox(height: 16),
-
         Row(
           children: [
             Expanded(
@@ -547,7 +597,10 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
             ),
             const SizedBox(width: 10),
             Expanded(
-              child: _buildPrimaryButton("Next", _createProjectThenLoadMaterials),
+              child: _buildPrimaryButton(
+                "Next",
+                _createProjectThenLoadMaterials,
+              ),
             ),
           ],
         ),
@@ -555,7 +608,6 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
     );
   }
 
-  // ✅ تعديل Step 4: حل overflow + اختيار اختياري + زر clear
   Widget _buildStepMaterials() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -574,21 +626,20 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
           style: TextStyle(color: Colors.white60, fontSize: 12),
         ),
         const SizedBox(height: 12),
-
-        if (_materials.isEmpty)
+        if (_materials.isEmpty) ...[
           const Text(
             "No materials found",
             style: TextStyle(color: Colors.white60),
-          )
-        else
+          ),
+          const SizedBox(height: 12),
+          _buildPrimaryButton("Estimate (Skip)", _runEstimate),
+        ] else
           ..._materials.map((m) {
             final mat = (m is Map)
                 ? Map<String, dynamic>.from(m)
                 : <String, dynamic>{};
-
             final id = mat["_id"]?.toString() ?? "";
             final name = mat["name"]?.toString() ?? "Material";
-
             final variants = (mat["variants"] is List)
                 ? List.from(mat["variants"])
                 : <dynamic>[];
@@ -612,7 +663,6 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
               ),
               child: Row(
                 children: [
-                  // ✅ name
                   Expanded(
                     child: Text(
                       name,
@@ -625,8 +675,6 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
                     ),
                   ),
                   const SizedBox(width: 10),
-
-                  // ✅ dropdown مرن (حل overflow)
                   Flexible(
                     flex: 2,
                     child: DropdownButtonFormField<String>(
@@ -657,52 +705,51 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
                         );
                       }).toList(),
                       onChanged: (v) {
-                        if (id.isEmpty) return;
-                        if (v == null) return;
+                        if (id.isEmpty || v == null) return;
                         setState(() => _selectedVariant[id] = v);
                       },
                     ),
                   ),
-
-                  // ✅ clear selection
                   if (current != null) ...[
                     const SizedBox(width: 6),
                     IconButton(
                       tooltip: "Clear",
                       onPressed: _loading
                           ? null
-                          : () {
-                              setState(() => _selectedVariant.remove(id));
-                            },
-                      icon: const Icon(Icons.close, color: Colors.white70, size: 18),
+                          : () => setState(() => _selectedVariant.remove(id)),
+                      icon: const Icon(
+                        Icons.close,
+                        color: Colors.white70,
+                        size: 18,
+                      ),
                     ),
                   ],
                 ],
               ),
             );
           }).toList(),
-
-        const SizedBox(height: 8),
-
-        Row(
-          children: [
-            Expanded(
-              child: OutlinedButton(
-                onPressed: _loading ? null : () => setState(() => _step = 2),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.white,
-                  side: BorderSide(color: Colors.white.withOpacity(0.2)),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
+        if (_materials.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: _loading ? null : () => setState(() => _step = 2),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    side: BorderSide(color: Colors.white.withOpacity(0.2)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
                   ),
+                  child: const Text("Back"),
                 ),
-                child: const Text("Back"),
               ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(child: _buildPrimaryButton("Estimate", _runEstimate)),
-          ],
-        ),
+              const SizedBox(width: 10),
+              Expanded(child: _buildPrimaryButton("Estimate", _runEstimate)),
+            ],
+          ),
+        ],
       ],
     );
   }
@@ -725,7 +772,6 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
           ),
         ),
         const SizedBox(height: 12),
-
         if (_estimate == null)
           const Text("No estimate yet", style: TextStyle(color: Colors.white60))
         else ...[

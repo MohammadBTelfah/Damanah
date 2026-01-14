@@ -1,6 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
-
 import 'package:http/http.dart' as http;
 import '../services/session_service.dart';
 
@@ -33,26 +31,17 @@ class ProjectService {
     return token;
   }
 
-  /// ✅ Step 1: Analyze Plan (بدون مشروع)
-  /// POST /api/projects/plan/analyze  (multipart field name: planFile)
-  /// Response:
-  /// {
-  ///   "analysis": {...}
-  /// }
+  /// POST /api/projects/plan/analyze (multipart planFile)
   Future<Map<String, dynamic>> analyzePlan({required String filePath}) async {
     final token = await _mustToken();
-
-    // ✅ route الجديد
     final uri = Uri.parse(_join("/api/projects/plan/analyze"));
 
     final req = http.MultipartRequest("POST", uri);
-
     req.headers.addAll({
       "Authorization": "Bearer $token",
       "Accept": "application/json",
     });
 
-    // ✅ لازم يطابق planUpload.single("planFile")
     req.files.add(await http.MultipartFile.fromPath("planFile", filePath));
 
     final streamed = await req.send().timeout(const Duration(seconds: 60));
@@ -62,11 +51,16 @@ class ProjectService {
 
     if (res.statusCode == 200) return data;
 
-    // ✅ خليه يطلعلك statusCode مع الرسالة
-    throw Exception("(${res.statusCode}) ${data["message"] ?? "Analyze plan failed"}");
+    final code = data["code"]?.toString();
+    if (code == "AI_UNAVAILABLE") {
+      throw Exception("AI_UNAVAILABLE");
+    }
+
+    throw Exception(
+      "(${res.statusCode}) ${data["message"] ?? "Analyze plan failed"}",
+    );
   }
 
-  /// ✅ Step 3: Create Project (يرجع projectId)
   /// POST /api/projects
   Future<String> createProjectAndReturnId({
     required String title,
@@ -113,10 +107,11 @@ class ProjectService {
       return id;
     }
 
-    throw Exception("(${res.statusCode}) ${data["message"] ?? "Create project failed"}");
+    throw Exception(
+      "(${res.statusCode}) ${data["message"] ?? "Create project failed"}",
+    );
   }
 
-  /// ✅ Step 4: Get Materials
   /// GET /api/materials
   Future<List<dynamic>> getMaterials() async {
     final token = await _mustToken();
@@ -143,9 +138,7 @@ class ProjectService {
     throw Exception("(${res.statusCode}) Failed to load materials");
   }
 
-  /// ✅ Step 5: Estimate
   /// POST /api/projects/:id/estimate
-  /// body: { selections: [{materialId, variantKey}] }
   Future<Map<String, dynamic>> estimateProject({
     required String projectId,
     required List<Map<String, String>> selections,
@@ -169,6 +162,8 @@ class ProjectService {
 
     if (res.statusCode == 200) return data;
 
-    throw Exception("(${res.statusCode}) ${data["message"] ?? "Estimate failed"}");
+    throw Exception(
+      "(${res.statusCode}) ${data["message"] ?? "Estimate failed"}",
+    );
   }
 }

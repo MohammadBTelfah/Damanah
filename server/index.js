@@ -29,16 +29,7 @@ app.use(express.json());
 // 🔥 مهم جداً: عرض ملفّات الرفع
 
 const UPLOADS_DIR = path.join(__dirname, "uploads");
-const PROFILES_DIR = path.join(UPLOADS_DIR, "profiles");
 
-console.log("✅ USING THIS INDEX.JS FILE");
-console.log("✅ UPLOADS_DIR =>", UPLOADS_DIR);
-console.log("✅ PROFILES_DIR =>", PROFILES_DIR);
-console.log("✅ PROFILES_DIR EXISTS =>", fs.existsSync(PROFILES_DIR));
-
-if (fs.existsSync(PROFILES_DIR)) {
-  console.log("✅ PROFILES SAMPLE =>", fs.readdirSync(PROFILES_DIR).slice(0, 5));
-}
 
 app.use("/uploads", express.static(UPLOADS_DIR));
 
