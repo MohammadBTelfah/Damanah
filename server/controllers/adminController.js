@@ -1,6 +1,7 @@
 const Client = require("../models/Client");
 const Contractor = require("../models/Contractor");
 const Admin = require("../models/Admin");
+const sendEmail = require("../utils/sendEmail");
 
 /* ===================== Helpers ===================== */
 
@@ -52,6 +53,76 @@ async function ensureUniqueAcrossAllExcept({ email, phone, excludeId }) {
   }
 }
 
+/* ===================== Emails ===================== */
+
+async function sendIdentityApprovedEmail(user) {
+  await sendEmail({
+    to: user.email,
+    subject: "Your identity has been approved ✅",
+    html: `
+      <h2>Hello ${user.name},</h2>
+      <p>Your identity has been <b>approved</b> ✅</p>
+      <p>You can now use all features that require a verified identity.</p>
+      <br />
+      <p>— Damana Team</p>
+    `,
+  });
+}
+
+async function sendIdentityRejectedEmail(user) {
+  await sendEmail({
+    to: user.email,
+    subject: "Your identity verification was rejected ❌",
+    html: `
+      <h2>Hello ${user.name},</h2>
+      <p>Your identity verification was <b>rejected</b> ❌</p>
+      <p>Please upload a clearer identity document and try again.</p>
+      <br />
+      <p>— Damana Team</p>
+    `,
+  });
+}
+
+async function sendContractorApprovedEmail(user) {
+  await sendEmail({
+    to: user.email,
+    subject: "Your contractor account has been approved ✅",
+    html: `
+      <h2>Hello ${user.name},</h2>
+      <p>Your contractor documents have been <b>approved</b> ✅</p>
+      <p>You can now use your contractor dashboard.</p>
+      <br />
+      <p>— Damana Team</p>
+    `,
+  });
+}
+
+async function sendContractorRejectedEmail(user) {
+  await sendEmail({
+    to: user.email,
+    subject: "Your contractor verification was rejected ❌",
+    html: `
+      <h2>Hello ${user.name},</h2>
+      <p>Your contractor verification was <b>rejected</b> ❌</p>
+      <p>Please upload valid/clear contractor documents and try again.</p>
+      <br />
+      <p>— Damana Team</p>
+    `,
+  });
+}
+
+/* ===================== Activation Logic ===================== */
+
+function computeContractorActive(contractor) {
+  // ✅ active only if email verified + statuses ok
+  const identityOk =
+    contractor.identityStatus === "verified" || contractor.identityStatus === "none";
+  const contractorOk =
+    contractor.contractorStatus === "verified" || contractor.contractorStatus === "none";
+
+  return contractor.emailVerified === true && identityOk && contractorOk;
+}
+
 /* ===================== Users ===================== */
 
 // GET /api/admin/users?role=client/contractor/admin (اختياري)
@@ -59,7 +130,6 @@ exports.getAllUsers = async (req, res) => {
   try {
     const role = req.query.role;
 
-    // ✅ لو طلب role محدد
     if (role) {
       const Model = getModelByRole(role);
       if (!Model) return res.status(400).json({ message: "Invalid role" });
@@ -69,14 +139,13 @@ exports.getAllUsers = async (req, res) => {
 
       const mapped = users.map((u) => {
         const out = toPublicUrls(u, baseUrl);
-        out.role = role; // لأن role مش موجود بالـ DB
+        out.role = role;
         return out;
       });
 
       return res.json(mapped);
     }
 
-    // ✅ لو ما حدد role: رجّع الكل من الثلاث collections
     const [clients, contractors, admins] = await Promise.all([
       Client.find({}).select("-password"),
       Contractor.find({}).select("-password"),
@@ -167,7 +236,9 @@ exports.updateUserByAdmin = async (req, res) => {
       });
     }
 
-    const user = await Model.findByIdAndUpdate(id, updates, { new: true }).select("-password");
+    const user = await Model.findByIdAndUpdate(id, updates, { new: true }).select(
+      "-password"
+    );
     if (!user) return res.status(404).json({ message: "User not found" });
 
     const baseUrl = getBaseUrl(req);
@@ -187,9 +258,10 @@ exports.deleteUserByAdmin = async (req, res) => {
     const Model = getModelByRole(role);
     if (!Model) return res.status(400).json({ message: "Invalid role" });
 
-    // ✅ منع الأدمن يحذف نفسه
     if (role === "admin" && req.user?.id?.toString() === id.toString()) {
-      return res.status(400).json({ message: "You cannot delete your own admin account" });
+      return res
+        .status(400)
+        .json({ message: "You cannot delete your own admin account" });
     }
 
     const user = await Model.findByIdAndDelete(id);
@@ -208,7 +280,6 @@ exports.toggleUserActiveStatus = async (req, res) => {
     const Model = getModelByRole(role);
     if (!Model) return res.status(400).json({ message: "Invalid role" });
 
-    // ✅ منع الأدمن يعطّل نفسه
     if (role === "admin" && req.user?.id?.toString() === id.toString()) {
       return res.status(400).json({ message: "You cannot disable your own admin account" });
     }
@@ -264,8 +335,11 @@ exports.getPendingIdentities = async (req, res) => {
 exports.updateIdentityStatus = async (req, res) => {
   try {
     const { role, id } = req.params;
+
     if (!["client", "contractor"].includes(role)) {
-      return res.status(400).json({ message: "Identity exists only for client/contractor" });
+      return res.status(400).json({
+        message: "Identity exists only for client/contractor",
+      });
     }
 
     const { status, nationalId } = req.body;
@@ -275,24 +349,35 @@ exports.updateIdentityStatus = async (req, res) => {
 
     const Model = role === "client" ? Client : Contractor;
 
-    const updates = { identityStatus: status };
-
-    if (typeof nationalId === "string" && nationalId.trim().length > 0) {
-      updates.nationalId = nationalId.trim();
-      updates.identityExtractedAt = new Date();
-      updates.nationalIdConfidence = null;
-    }
-
-    const user = await Model.findByIdAndUpdate(id, updates, { new: true }).select("-password");
+    const user = await Model.findById(id).select("-password");
     if (!user) return res.status(404).json({ message: "User not found" });
 
-    const baseUrl = getBaseUrl(req);
-    const out = toPublicUrls(user, baseUrl);
-    out.role = role;
+    const prevStatus = user.identityStatus;
 
-    res.json({ message: "Identity status updated", user: out });
+    user.identityStatus = status;
+
+    if (typeof nationalId === "string" && nationalId.trim().length > 0) {
+      user.nationalId = nationalId.trim();
+      user.identityExtractedAt = new Date();
+      user.nationalIdConfidence = null;
+    }
+
+    // ✅ للمقاول: فعّل فقط إذا كل الشروط تمام
+    if (role === "contractor") {
+      user.isActive = computeContractorActive(user);
+    }
+
+    await user.save();
+
+    // ✅ Send email only if status changed
+    if (prevStatus !== status) {
+      if (status === "verified") await sendIdentityApprovedEmail(user);
+      if (status === "rejected") await sendIdentityRejectedEmail(user);
+    }
+
+    return res.json({ message: "Identity status updated", user });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: err.message });
   }
 };
 
@@ -330,7 +415,10 @@ exports.getPendingContractors = async (req, res) => {
     }).select("-password");
 
     const baseUrl = getBaseUrl(req);
-    const mapped = contractors.map((u) => ({ ...toPublicUrls(u, baseUrl), role: "contractor" }));
+    const mapped = contractors.map((u) => ({
+      ...toPublicUrls(u, baseUrl),
+      role: "contractor",
+    }));
 
     res.json(mapped);
   } catch (err) {
@@ -347,23 +435,25 @@ exports.updateContractorStatus = async (req, res) => {
       return res.status(400).json({ message: "Invalid contractor status" });
     }
 
-    const contractor = await Contractor.findById(req.params.id);
+    const contractor = await Contractor.findById(req.params.id).select("-password");
     if (!contractor) {
       return res.status(404).json({ message: "Contractor not found" });
     }
 
+    const prev = contractor.contractorStatus;
+
     contractor.contractorStatus = status;
 
-    // ✅ (اختياري/مفيد) ربط isActive بالستاتس
-    if (status === "verified") {
-      // فعّل فقط إذا الإيميل متحقق
-      contractor.isActive = contractor.emailVerified === true;
-    }
-    if (status === "rejected") {
-      contractor.isActive = false;
-    }
+    // ✅ حساب isActive الصحيح للمقاول
+    contractor.isActive = computeContractorActive(contractor);
 
     await contractor.save();
+
+    // ✅ Send email only if status changed
+    if (prev !== status) {
+      if (status === "verified") await sendContractorApprovedEmail(contractor);
+      if (status === "rejected") await sendContractorRejectedEmail(contractor);
+    }
 
     const baseUrl = getBaseUrl(req);
     const out = toPublicUrls(contractor, baseUrl);

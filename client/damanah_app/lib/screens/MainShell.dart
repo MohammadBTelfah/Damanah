@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
+
 import '../services/session_service.dart';
+import '../config/api_config.dart'; // ✅ ADD THIS
+
 import 'client_home_screen.dart';
 import 'profile_screen.dart';
+import 'contractor_home_screen.dart';
 
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
@@ -14,7 +18,8 @@ class _MainShellState extends State<MainShell> {
   int _index = 0;
   Map<String, dynamic>? _user;
 
-  static const String baseUrl = "http://10.0.2.2:5000";
+  // ✅ FIX: استخدم الرابط الحقيقي
+  String get baseUrl => ApiConfig.baseUrl;
 
   @override
   void initState() {
@@ -24,49 +29,53 @@ class _MainShellState extends State<MainShell> {
 
   Future<void> _loadUser() async {
     final u = await SessionService.getUser();
-    if (mounted) setState(() => _user = u);
+    if (!mounted) return;
+    setState(() => _user = u);
   }
 
-  Future<void> _openProfile() async {
-    if (_user == null) return;
-
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ProfileScreen(
-          user: _user!,
-          baseUrl: baseUrl,
-          onRefreshUser: _loadUser,
-        ),
-      ),
-    );
-
-    await _loadUser();
+  void _goToProfileTab() {
+    setState(() => _index = 3);
   }
 
   @override
   Widget build(BuildContext context) {
-    final pages = [
-      ClientHomeScreen(
-        user: _user,
-        baseUrl: baseUrl,
-        onRefreshUser: _loadUser,
-        onOpenProfile: _openProfile,
-      ),
+    final role = (_user?["role"] ?? "client").toString().toLowerCase().trim();
+
+    final home = role == "contractor"
+        ? ContractorHomeScreen(
+            user: _user,
+            baseUrl: baseUrl, // ✅ now real url
+            onRefreshUser: _loadUser,
+          )
+        : ClientHomeScreen(
+            user: _user,
+            baseUrl: baseUrl, // ✅ now real url
+            onRefreshUser: _loadUser,
+            onOpenProfile: _goToProfileTab,
+          );
+
+    final pages = <Widget>[
+      home,
       const _Placeholder(title: "Projects"),
       const _Placeholder(title: "Messages"),
-      const _Placeholder(title: "Profile"),
+      if (_user != null)
+        ProfileScreen(
+          user: _user!,
+          baseUrl: baseUrl, // ✅ now real url
+          isRoot: true,
+          onRefreshUser: _loadUser,
+        )
+      else
+        const _LoadingPage(),
     ];
 
     return Scaffold(
       backgroundColor: const Color(0xFF0F261F),
       body: IndexedStack(index: _index, children: pages),
-
-      // ✅ منع الوميض/التضوية عند الضغط على عناصر البار
       bottomNavigationBar: Theme(
         data: Theme.of(context).copyWith(
-          splashFactory: NoSplash.splashFactory, // ❌ لا splash
-          highlightColor: Colors.transparent,    // ❌ لا highlight
+          splashFactory: NoSplash.splashFactory,
+          highlightColor: Colors.transparent,
         ),
         child: BottomNavigationBar(
           backgroundColor: const Color(0xFF0F261F),
@@ -74,33 +83,26 @@ class _MainShellState extends State<MainShell> {
           selectedItemColor: Colors.white,
           unselectedItemColor: Colors.white60,
           currentIndex: _index,
-          onTap: (i) async {
-            if (i == 3) {
-              await _openProfile(); // ✅ يفتح شاشة البروفايل بدون ما يغير التاب
-              return;
-            }
-            setState(() => _index = i);
-          },
+          onTap: (i) => setState(() => _index = i),
           items: const [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.home_filled),
-              label: "Home",
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.list_alt_outlined),
-              label: "Projects",
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.chat_bubble_outline),
-              label: "Messages",
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.person_outline),
-              label: "Profile",
-            ),
+            BottomNavigationBarItem(icon: Icon(Icons.home_filled), label: "Home"),
+            BottomNavigationBarItem(icon: Icon(Icons.list_alt_outlined), label: "Projects"),
+            BottomNavigationBarItem(icon: Icon(Icons.chat_bubble_outline), label: "Messages"),
+            BottomNavigationBarItem(icon: Icon(Icons.person_outline), label: "Profile"),
           ],
         ),
       ),
+    );
+  }
+}
+
+class _LoadingPage extends StatelessWidget {
+  const _LoadingPage();
+
+  @override
+  Widget build(BuildContext context) {
+    return const SafeArea(
+      child: Center(child: CircularProgressIndicator()),
     );
   }
 }
@@ -111,11 +113,11 @@ class _Placeholder extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const SafeArea(
+    return SafeArea(
       child: Center(
         child: Text(
-          "Coming Soon",
-          style: TextStyle(color: Colors.white),
+          "$title (Coming Soon)",
+          style: const TextStyle(color: Colors.white),
         ),
       ),
     );

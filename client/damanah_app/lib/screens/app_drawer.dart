@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import '../services/session_service.dart';
-import 'login_screen.dart';
 import 'profile_screen.dart';
+import 'role_selection_screen.dart'; // ✅ بدل LoginScreen
 
-class AppDrawer extends StatelessWidget {
-  final Map<String, dynamic> user;
+class AppDrawer extends StatefulWidget {
+  final Map<String, dynamic> user; // fallback فقط
   final String baseUrl;
   final Future<void> Function() onRefreshUser;
 
@@ -15,29 +15,71 @@ class AppDrawer extends StatelessWidget {
     required this.onRefreshUser,
   });
 
+  @override
+  State<AppDrawer> createState() => _AppDrawerState();
+}
+
+class _AppDrawerState extends State<AppDrawer> {
+  Map<String, dynamic>? _user;
+  int _bust = DateTime.now().millisecondsSinceEpoch;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUser();
+  }
+
+  Future<void> _loadUser() async {
+    final sessionUser = await SessionService.getUser();
+    if (!mounted) return;
+    setState(() {
+      _user = sessionUser != null
+          ? Map<String, dynamic>.from(sessionUser)
+          : Map<String, dynamic>.from(widget.user);
+
+      // ✅ اكسر كاش الصورة
+      _bust = DateTime.now().millisecondsSinceEpoch;
+    });
+  }
+
+  String _joinUrl(String base, String path) {
+    final b = base.endsWith('/') ? base.substring(0, base.length - 1) : base;
+    final p = path.startsWith('/') ? path.substring(1) : path;
+    return '$b/$p';
+  }
+
+  String? _profileUrl(Map<String, dynamic> u) {
+    final p = u["profileImage"];
+    if (p == null) return null;
+
+    final s = p.toString().trim();
+    if (s.isEmpty) return null;
+
+    final clean = _joinUrl(widget.baseUrl, s);
+    return "$clean?t=$_bust"; // ✅ cache bust
+  }
+
   Future<void> _logout(BuildContext context) async {
+    // ✅ سكّر الـ Drawer أولاً (اختياري بس ممتاز)
+    Navigator.of(context).pop();
+
     await SessionService.clear();
     if (!context.mounted) return;
 
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(
-        builder: (_) => LoginScreen(role: user["role"] ?? "client"),
-      ),
+    // ✅ امسح كل الستاك وارجع للبداية (RoleSelection)
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const RoleSelectionScreen()),
       (route) => false,
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final role = (user["role"] ?? "client").toString();
-    final name = (user["name"] ?? "User").toString();
-    final profileImage = user["profileImage"];
+    final u = _user ?? widget.user;
 
-    final String? profileUrl =
-        (profileImage != null && profileImage.toString().isNotEmpty)
-            ? "$baseUrl/${profileImage.toString()}"
-            : null;
+    final role = (u["role"] ?? "client").toString().trim().toLowerCase();
+    final name = (u["name"] ?? "User").toString();
+    final url = _profileUrl(u);
 
     final isClient = role == "client";
     final isContractor = role == "contractor";
@@ -51,9 +93,8 @@ class AppDrawer extends StatelessWidget {
               leading: CircleAvatar(
                 radius: 26,
                 backgroundColor: Colors.white12,
-                backgroundImage:
-                    profileUrl != null ? NetworkImage(profileUrl) : null,
-                child: profileUrl == null
+                backgroundImage: url != null ? NetworkImage(url) : null,
+                child: url == null
                     ? const Icon(Icons.person, color: Colors.white70)
                     : null,
               ),
@@ -75,14 +116,16 @@ class AppDrawer extends StatelessWidget {
                   context,
                   MaterialPageRoute(
                     builder: (_) => ProfileScreen(
-                      user: user,
-                      baseUrl: baseUrl,
-                      onRefreshUser: onRefreshUser, // ✅ مهم
+                      user: u,
+                      baseUrl: widget.baseUrl,
+                      onRefreshUser: widget.onRefreshUser,
                     ),
                   ),
                 );
 
-                await onRefreshUser(); // ✅ تحديث الدروار بعد الرجوع
+                // ✅ بعد الرجوع: حدث session + drawer
+                await widget.onRefreshUser();
+                await _loadUser();
               },
             ),
 
@@ -94,45 +137,16 @@ class AppDrawer extends StatelessWidget {
               await Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => FutureBuilder<Map<String, dynamic>?>(
-                    future: SessionService.getUser(),
-                    builder: (context, snapshot) {
-                      // ✅ لا ترجع null أبداً
-                      if (snapshot.connectionState == ConnectionState.waiting) {
-                        return const Scaffold(
-                          body: Center(child: CircularProgressIndicator()),
-                        );
-                      }
-
-                      if (snapshot.hasError) {
-                        return Scaffold(
-                          body: Center(
-                            child: Text(
-                              "Error: ${snapshot.error}",
-                              style: const TextStyle(color: Colors.red),
-                            ),
-                          ),
-                        );
-                      }
-
-                      final data = snapshot.data;
-                      if (data == null) {
-                        return const Scaffold(
-                          body: Center(child: Text("No user data found.")),
-                        );
-                      }
-
-                      return ProfileScreen(
-                        user: data,
-                        baseUrl: baseUrl,
-                        onRefreshUser: onRefreshUser, // ✅ مهم
-                      );
-                    },
+                  builder: (_) => ProfileScreen(
+                    user: u,
+                    baseUrl: widget.baseUrl,
+                    onRefreshUser: widget.onRefreshUser,
                   ),
                 ),
               );
 
-              await onRefreshUser(); // ✅
+              await widget.onRefreshUser();
+              await _loadUser();
             }),
 
             if (isClient) ...[
@@ -157,6 +171,7 @@ class AppDrawer extends StatelessWidget {
               () => _logout(context),
               color: Colors.redAccent,
             ),
+
             const SizedBox(height: 10),
           ],
         ),

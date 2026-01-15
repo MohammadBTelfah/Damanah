@@ -1,16 +1,25 @@
 import 'package:flutter/material.dart';
 import '../services/session_service.dart';
+import '../services/notification_service.dart'; // ✅ NEW
 import 'app_drawer.dart';
+import 'create_project_flow.dart';
+import 'my_projects_page.dart';
+import 'contractors_page.dart';
+import 'notifications_page.dart';
+import 'settings_page.dart';
+
+String _joinUrl(String base, String path) {
+  final b = base.endsWith('/') ? base.substring(0, base.length - 1) : base;
+  final p = path.startsWith('/') ? path.substring(1) : path;
+  return '$b/$p';
+}
 
 class ClientHomeScreen extends StatefulWidget {
   final Map<String, dynamic>? user;
   final String baseUrl;
 
-  /// يعيد تحميل المستخدم من Session داخل MainShell
   final Future<void> Function() onRefreshUser;
-
-  /// (اختياري) إذا بدك تفتح Profile من MainShell
-  final Future<void> Function() onOpenProfile;
+  final VoidCallback onOpenProfile;
 
   const ClientHomeScreen({
     super.key,
@@ -26,13 +35,17 @@ class ClientHomeScreen extends StatefulWidget {
 
 class _ClientHomeScreenState extends State<ClientHomeScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  Map<String, dynamic>? _userLocal;
 
-  Map<String, dynamic>? _userLocal; // fallback لو widget.user null
+  // ✅ Notifications
+  final _notifService = NotificationService();
+  int _unreadCount = 0;
 
   @override
   void initState() {
     super.initState();
     _syncUser();
+    _loadUnread(); // ✅ load badge on start
   }
 
   @override
@@ -52,49 +65,61 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
     if (mounted) setState(() => _userLocal = u);
   }
 
+  Future<void> _loadUnread() async {
+    try {
+      final c = await _notifService.getUnreadCount();
+      if (mounted) setState(() => _unreadCount = c);
+    } catch (_) {
+      // ignore to keep UI smooth
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    const bgColor = Color(0xFF0F261F);
-    const cardColor = Color(0xFF0F261F);
+    const bgTop = Color(0xFF0E221C);
+    const bgBottom = Color(0xFF0A1511);
 
     final user = _userLocal;
     final name = (user?["name"] ?? "User").toString();
     final profileImage = user?["profileImage"];
 
     final String? profileUrl =
-        (profileImage != null && profileImage.toString().isNotEmpty)
-            ? "${widget.baseUrl}/${profileImage.toString()}"
+        (profileImage != null && profileImage.toString().trim().isNotEmpty)
+            ? _joinUrl(widget.baseUrl, profileImage.toString().trim())
             : null;
 
     return Scaffold(
       key: _scaffoldKey,
-      backgroundColor: bgColor,
-
-      // ✅ Drawer (موجود فقط إذا user موجود)
+      backgroundColor: bgTop,
       drawer: user == null
           ? null
           : AppDrawer(
               user: user,
               baseUrl: widget.baseUrl,
-
-              // ✅ أهم تعديل: لازم ترجع Future<void>
               onRefreshUser: () async {
-                await widget.onRefreshUser(); // يحدث Session داخل MainShell
-                await _syncUser();            // يحدث واجهة Home
+                await widget.onRefreshUser();
+                await _syncUser();
+                await _loadUnread(); // ✅ also refresh notifications
               },
             ),
-
       body: SafeArea(
-        child: RefreshIndicator(
-          onRefresh: () async {
-            await widget.onRefreshUser();
-            await _syncUser();
-          },
-          child: SingleChildScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+        child: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [bgTop, bgBottom],
+            ),
+          ),
+          child: RefreshIndicator(
+            onRefresh: () async {
+              await widget.onRefreshUser();
+              await _syncUser();
+              await _loadUnread(); // ✅ refresh badge
+            },
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
               children: [
                 // ===== Top Bar =====
                 Row(
@@ -106,7 +131,7 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                       },
                       child: CircleAvatar(
                         radius: 18,
-                        backgroundColor: Colors.white24,
+                        backgroundColor: Colors.white12,
                         backgroundImage:
                             profileUrl != null ? NetworkImage(profileUrl) : null,
                         child: profileUrl == null
@@ -114,36 +139,86 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                             : null,
                       ),
                     ),
-                    const Spacer(),
-                    const Text(
-                      'Home',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
+                    const Expanded(
+                      child: Center(
+                        child: Text(
+                          'Home',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                       ),
                     ),
-                    const Spacer(),
+
+                    // 🔔 Notifications (badge number)
+                    Stack(
+                      children: [
+                        IconButton(
+                          onPressed: () async {
+                            await Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => const NotificationsPage(),
+                              ),
+                            );
+                            await _loadUnread(); // ✅ refresh after returning
+                          },
+                          icon: const Icon(
+                            Icons.notifications_none,
+                            color: Colors.white,
+                          ),
+                        ),
+                        if (_unreadCount > 0)
+                          Positioned(
+                            right: 8,
+                            top: 8,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.redAccent,
+                                borderRadius: BorderRadius.circular(99),
+                              ),
+                              child: Text(
+                                _unreadCount > 99 ? "99+" : "$_unreadCount",
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+
+                    // ⚙️ Settings
                     IconButton(
-                      onPressed: () {},
+                      onPressed: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => const SettingsPage()),
+                        );
+                      },
                       icon: const Icon(Icons.settings_outlined, color: Colors.white),
                     ),
                   ],
                 ),
 
-                const SizedBox(height: 24),
+                const SizedBox(height: 22),
 
                 // ===== Welcome =====
                 Text(
-                  "Welcome back, $name",
+                  "Welcome back,\n$name",
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 26,
-                    fontWeight: FontWeight.bold,
+                    fontSize: 28,
+                    fontWeight: FontWeight.w800,
+                    height: 1.1,
                   ),
                 ),
 
-                const SizedBox(height: 24),
+                const SizedBox(height: 18),
 
                 // ===== Quick Actions =====
                 const Text(
@@ -151,52 +226,86 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 20,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
+                const SizedBox(height: 14),
 
-                const SizedBox(height: 16),
+                _ActionTile(
+                  icon: Icons.add,
+                  title: "New Project",
+                  subtitle: "Start a new project",
+                  onTap: () async {
+                    final done = await showModalBottomSheet<bool>(
+                      context: context,
+                      isScrollControlled: true,
+                      backgroundColor: Colors.transparent,
+                      builder: (context) {
+                        return DraggableScrollableSheet(
+                          initialChildSize: 0.92,
+                          minChildSize: 0.7,
+                          maxChildSize: 0.98,
+                          builder: (context, scrollController) {
+                            return CreateProjectFlow(
+                              scrollController: scrollController,
+                            );
+                          },
+                        );
+                      },
+                    );
 
-                Row(
-                  children: const [
-                    Expanded(
-                      child: _QuickActionCard(
-                        icon: Icons.add,
-                        title: "New Project",
-                        subtitle: "Start a new project",
-                      ),
-                    ),
-                    SizedBox(width: 12),
-                    Expanded(
-                      child: _QuickActionCard(
-                        icon: Icons.list_alt_outlined,
-                        title: "My Projects",
-                        subtitle: "Track your ongoing projects",
-                      ),
-                    ),
-                  ],
+                    if (done == true) {
+                      if (!mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text("Project created successfully"),
+                          backgroundColor: Colors.green,
+                        ),
+                      );
+
+                      // ✅ project_created notification from backend → refresh badge
+                      await _loadUnread();
+                    }
+                  },
                 ),
 
                 const SizedBox(height: 12),
 
-                Row(
-                  children: const [
-                    Expanded(
-                      child: _QuickActionCard(
-                        icon: Icons.insert_drive_file_outlined,
-                        title: "Contracts",
-                        subtitle: "Manage your contracts",
-                      ),
-                    ),
-                    SizedBox(width: 12),
-                    Expanded(
-                      child: _QuickActionCard(
-                        icon: Icons.groups_outlined,
-                        title: "Contractors",
-                        subtitle: "View and manage contractors",
-                      ),
-                    ),
-                  ],
+                _ActionTile(
+                  icon: Icons.list_alt_outlined,
+                  title: "My Projects",
+                  subtitle: "Track your ongoing projects",
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const MyProjectsPage()),
+                    );
+                  },
+                ),
+
+                const SizedBox(height: 12),
+
+                _ActionTile(
+                  icon: Icons.insert_drive_file_outlined,
+                  title: "Contracts",
+                  subtitle: "Manage your contracts",
+                  onTap: () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text("Contracts page (TODO)")),
+                    );
+                  },
+                ),
+
+                const SizedBox(height: 12),
+
+                _ActionTile(
+                  icon: Icons.groups_outlined,
+                  title: "Contractors",
+                  subtitle: "View and manage contractors",
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const ContractorsPage()),
+                    );
+                  },
                 ),
 
                 const SizedBox(height: 24),
@@ -207,64 +316,55 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 20,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
-
                 const SizedBox(height: 12),
 
-                Container(
-                  decoration: BoxDecoration(
-                    color: cardColor,
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  padding: const EdgeInsets.all(16),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: const [
-                            Text(
-                              "Offer from BuildRight",
-                              style: TextStyle(color: Colors.white70, fontSize: 13),
-                            ),
-                            SizedBox(height: 6),
-                            Text(
-                              "Kitchen Remodel",
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            SizedBox(height: 4),
-                            Text(
-                              "View offer details",
-                              style: TextStyle(color: Colors.white54, fontSize: 13),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Container(
-                        height: 70,
-                        width: 90,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(12),
-                          color: Colors.green,
-                        ),
-                        child: const Icon(
-                          Icons.kitchen_outlined,
-                          color: Colors.white,
-                          size: 32,
-                        ),
-                      ),
-                    ],
-                  ),
+                _ProjectOfferCard(
+                  from: "Offer from BuildRight",
+                  title: "Kitchen Remodel",
+                  subtitle: "View offer details",
+                  imageUrl:
+                      "https://images.unsplash.com/photo-1556912172-45b7abe8b7e1?auto=format&fit=crop&w=800&q=60",
+                  onTap: () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text("Offer details (TODO)")),
+                    );
+                  },
                 ),
 
                 const SizedBox(height: 24),
+
+                // ===== Community =====
+                const Text(
+                  "Community",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                SizedBox(
+                  height: 170,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    physics: const BouncingScrollPhysics(),
+                    itemCount: _communityItems.length,
+                    separatorBuilder: (_, __) => const SizedBox(width: 12),
+                    itemBuilder: (context, i) {
+                      final item = _communityItems[i];
+                      return _CommunityCard(
+                        imageUrl: item.imageUrl,
+                        title: item.title,
+                        subtitle: item.subtitle,
+                        onTap: () {},
+                      );
+                    },
+                  ),
+                ),
               ],
             ),
           ),
@@ -274,67 +374,301 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
   }
 }
 
-// ===== Widget لبطاقات Quick Actions =====
-class _QuickActionCard extends StatelessWidget {
+/* ===================== Widgets ===================== */
+
+class _ActionTile extends StatelessWidget {
   final IconData icon;
   final String title;
   final String subtitle;
+  final VoidCallback? onTap;
 
-  const _QuickActionCard({
+  const _ActionTile({
     required this.icon,
     required this.title,
     required this.subtitle,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    const cardColor = Color(0xFF1B3A35);
+    const tileColor = Color(0xFF0F261F);
+    const iconBox = Color(0xFF17362F);
 
-    return Container(
-      decoration: BoxDecoration(
-        color: cardColor,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      padding: const EdgeInsets.all(14),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            height: 36,
-            width: 36,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(10),
-              color: Colors.white10,
-            ),
-            child: Icon(icon, color: Colors.white, size: 22),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: onTap,
+        child: Container(
+          decoration: BoxDecoration(
+            color: tileColor.withOpacity(0.55),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: Colors.white.withOpacity(0.06)),
           ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 14.5,
-                    fontWeight: FontWeight.w600,
-                  ),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          child: Row(
+            children: [
+              Container(
+                height: 44,
+                width: 44,
+                decoration: BoxDecoration(
+                  color: iconBox.withOpacity(0.9),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: Colors.white.withOpacity(0.06)),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  subtitle,
-                  style: const TextStyle(
-                    color: Colors.white60,
-                    fontSize: 12,
-                    height: 1.3,
-                  ),
+                child: Icon(icon, color: Colors.white, size: 22),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        color: Colors.white60,
+                        fontSize: 13,
+                        height: 1.25,
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
 }
+
+class _ProjectOfferCard extends StatelessWidget {
+  final String from;
+  final String title;
+  final String subtitle;
+  final String? imageUrl;
+  final VoidCallback? onTap;
+
+  const _ProjectOfferCard({
+    required this.from,
+    required this.title,
+    required this.subtitle,
+    this.imageUrl,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    const cardColor = Color(0xFF0F261F);
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: onTap,
+        child: Container(
+          decoration: BoxDecoration(
+            color: cardColor.withOpacity(0.55),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: Colors.white.withOpacity(0.06)),
+          ),
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      from,
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        color: Colors.white54,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(14),
+                child: Container(
+                  height: 62,
+                  width: 98,
+                  color: Colors.white10,
+                  child: (imageUrl != null && imageUrl!.trim().isNotEmpty)
+                      ? Image.network(
+                          imageUrl!,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => const Center(
+                            child: Icon(
+                              Icons.image_not_supported_outlined,
+                              color: Colors.white54,
+                            ),
+                          ),
+                        )
+                      : const Center(
+                          child: Icon(
+                            Icons.kitchen_outlined,
+                            color: Colors.white,
+                            size: 28,
+                          ),
+                        ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CommunityCard extends StatelessWidget {
+  final String imageUrl;
+  final String title;
+  final String subtitle;
+  final VoidCallback? onTap;
+
+  const _CommunityCard({
+    required this.imageUrl,
+    required this.title,
+    required this.subtitle,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    const cardColor = Color(0xFF0F261F);
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: onTap,
+        child: Container(
+          width: 190,
+          decoration: BoxDecoration(
+            color: cardColor.withOpacity(0.55),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: Colors.white.withOpacity(0.06)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ClipRRect(
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(18)),
+                child: Image.network(
+                  imageUrl,
+                  height: 105,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => Container(
+                    height: 105,
+                    color: Colors.white10,
+                    child: const Center(
+                      child: Icon(
+                        Icons.image_not_supported_outlined,
+                        color: Colors.white54,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white60,
+                        fontSize: 12.5,
+                        height: 1.25,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/* ===================== Demo Data ===================== */
+
+class _CommunityItem {
+  final String imageUrl;
+  final String title;
+  final String subtitle;
+  const _CommunityItem({
+    required this.imageUrl,
+    required this.title,
+    required this.subtitle,
+  });
+}
+
+const _communityItems = <_CommunityItem>[
+  _CommunityItem(
+    imageUrl:
+        "https://images.unsplash.com/photo-1503387762-592deb58ef4e?auto=format&fit=crop&w=800&q=60",
+    title: "Tips for Home Renovation",
+    subtitle: "Learn how to plan your renovation",
+  ),
+  _CommunityItem(
+    imageUrl:
+        "https://images.unsplash.com/photo-1562259949-1f7bd7689f5b?auto=format&fit=crop&w=800&q=60",
+    title: "Choosing the Right Contractor",
+    subtitle: "Find the best contractor for your needs",
+  ),
+  _CommunityItem(
+    imageUrl:
+        "https://images.unsplash.com/photo-1505691938895-1758d7feb511?auto=format&fit=crop&w=800&q=60",
+    title: "Maintenance Checklist",
+    subtitle: "Keep your home in top shape",
+  ),
+];

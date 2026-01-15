@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Box,
   Container,
@@ -24,7 +25,12 @@ const primaryButton = "#8BE3B5";
 const API_BASE =
   process.env.REACT_APP_API_BASE_URL || "http://localhost:5000";
 
+// ✅ غيرها حسب الراوت عندك
+const ADMIN_AFTER_LOGIN_PATH = "/"; // أو "/admin/dashboard"
+
 export default function AdminLogin({ onLoggedIn }) {
+  const navigate = useNavigate();
+
   const [form, setForm] = useState({
     email: "",
     password: "",
@@ -34,7 +40,6 @@ export default function AdminLogin({ onLoggedIn }) {
   const [loading, setLoading] = useState(false);
   const [successMsg, setSuccessMsg] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
-
   const [canResend, setCanResend] = useState(false);
 
   const canSubmit = useMemo(() => {
@@ -100,10 +105,19 @@ export default function AdminLogin({ onLoggedIn }) {
         },
       };
 
+      // ✅ (اختياري) خزّن السيشن محلياً عشان ProtectedRoute يقرأه
+      localStorage.setItem("adminSession", JSON.stringify(nextSession));
+
       setSuccessMsg("Logged in successfully. Redirecting...");
 
-      // ✅ ارجعي session للـ Dashboard wrapper
+      // ✅ ارجعي session للـ Dashboard wrapper (إذا بدك)
       onLoggedIn?.(nextSession);
+
+      // ✅ Redirect فعلي
+      // لو بدك تشوف الرسالة شوي:
+      setTimeout(() => {
+        navigate(ADMIN_AFTER_LOGIN_PATH, { replace: true });
+      }, 600);
     } catch (err) {
       const msg = normalizeError(err);
       setErrorMsg(msg);
@@ -152,7 +166,10 @@ export default function AdminLogin({ onLoggedIn }) {
             backdropFilter: "blur(6px)",
           }}
         >
-          <Typography variant="h5" sx={{ color: "white", fontWeight: 700, mb: 1 }}>
+          <Typography
+            variant="h5"
+            sx={{ color: "white", fontWeight: 700, mb: 1 }}
+          >
             Admin Login
           </Typography>
           <Typography sx={{ color: "rgba(255,255,255,0.7)", mb: 3 }}>
@@ -270,7 +287,9 @@ export default function AdminLogin({ onLoggedIn }) {
               </Button>
             ) : null}
 
-            <Typography sx={{ mt: 2, color: "rgba(255,255,255,0.55)", fontSize: 13 }}>
+            <Typography
+              sx={{ mt: 2, color: "rgba(255,255,255,0.55)", fontSize: 13 }}
+            >
               If you just verified your email, refresh and try login again.
             </Typography>
           </Box>
