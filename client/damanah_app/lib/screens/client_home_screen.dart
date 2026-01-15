@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 import '../services/session_service.dart';
+import '../services/notification_service.dart'; // ✅ NEW
 import 'app_drawer.dart';
-import 'create_project_flow.dart'; // ✅ جديد
+import 'create_project_flow.dart';
+import 'my_projects_page.dart';
+import 'contractors_page.dart';
+import 'notifications_page.dart';
+import 'settings_page.dart';
 
 String _joinUrl(String base, String path) {
   final b = base.endsWith('/') ? base.substring(0, base.length - 1) : base;
@@ -13,11 +18,8 @@ class ClientHomeScreen extends StatefulWidget {
   final Map<String, dynamic>? user;
   final String baseUrl;
 
-  /// يعيد تحميل المستخدم من Session داخل MainShell
   final Future<void> Function() onRefreshUser;
-
-  /// (اختياري) إذا بدك تفتح Profile من MainShell
-  final VoidCallback onOpenProfile; // ✅ هيك
+  final VoidCallback onOpenProfile;
 
   const ClientHomeScreen({
     super.key,
@@ -33,13 +35,17 @@ class ClientHomeScreen extends StatefulWidget {
 
 class _ClientHomeScreenState extends State<ClientHomeScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
-
   Map<String, dynamic>? _userLocal;
+
+  // ✅ Notifications
+  final _notifService = NotificationService();
+  int _unreadCount = 0;
 
   @override
   void initState() {
     super.initState();
     _syncUser();
+    _loadUnread(); // ✅ load badge on start
   }
 
   @override
@@ -59,6 +65,15 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
     if (mounted) setState(() => _userLocal = u);
   }
 
+  Future<void> _loadUnread() async {
+    try {
+      final c = await _notifService.getUnreadCount();
+      if (mounted) setState(() => _unreadCount = c);
+    } catch (_) {
+      // ignore to keep UI smooth
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     const bgTop = Color(0xFF0E221C);
@@ -70,14 +85,12 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
 
     final String? profileUrl =
         (profileImage != null && profileImage.toString().trim().isNotEmpty)
-        ? _joinUrl(widget.baseUrl, profileImage.toString().trim())
-        : null;
+            ? _joinUrl(widget.baseUrl, profileImage.toString().trim())
+            : null;
 
     return Scaffold(
       key: _scaffoldKey,
       backgroundColor: bgTop,
-
-      // ✅ Drawer
       drawer: user == null
           ? null
           : AppDrawer(
@@ -86,9 +99,9 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
               onRefreshUser: () async {
                 await widget.onRefreshUser();
                 await _syncUser();
+                await _loadUnread(); // ✅ also refresh notifications
               },
             ),
-
       body: SafeArea(
         child: Container(
           decoration: const BoxDecoration(
@@ -102,12 +115,13 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
             onRefresh: () async {
               await widget.onRefreshUser();
               await _syncUser();
+              await _loadUnread(); // ✅ refresh badge
             },
             child: ListView(
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
               children: [
-                // ===== Top Bar (مثل الصورة الثانية) =====
+                // ===== Top Bar =====
                 Row(
                   children: [
                     GestureDetector(
@@ -118,9 +132,8 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                       child: CircleAvatar(
                         radius: 18,
                         backgroundColor: Colors.white12,
-                        backgroundImage: profileUrl != null
-                            ? NetworkImage(profileUrl)
-                            : null,
+                        backgroundImage:
+                            profileUrl != null ? NetworkImage(profileUrl) : null,
                         child: profileUrl == null
                             ? const Icon(Icons.person, color: Colors.white)
                             : null,
@@ -138,14 +151,56 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                         ),
                       ),
                     ),
+
+                    // 🔔 Notifications (badge number)
+                    Stack(
+                      children: [
+                        IconButton(
+                          onPressed: () async {
+                            await Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => const NotificationsPage(),
+                              ),
+                            );
+                            await _loadUnread(); // ✅ refresh after returning
+                          },
+                          icon: const Icon(
+                            Icons.notifications_none,
+                            color: Colors.white,
+                          ),
+                        ),
+                        if (_unreadCount > 0)
+                          Positioned(
+                            right: 8,
+                            top: 8,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.redAccent,
+                                borderRadius: BorderRadius.circular(99),
+                              ),
+                              child: Text(
+                                _unreadCount > 99 ? "99+" : "$_unreadCount",
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+
+                    // ⚙️ Settings
                     IconButton(
                       onPressed: () {
-                        // TODO: افتح settings screen
+                        Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => const SettingsPage()),
+                        );
                       },
-                      icon: const Icon(
-                        Icons.settings_outlined,
-                        color: Colors.white,
-                      ),
+                      icon: const Icon(Icons.settings_outlined, color: Colors.white),
                     ),
                   ],
                 ),
@@ -154,7 +209,7 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
 
                 // ===== Welcome =====
                 Text(
-                  "Welcome back, $name",
+                  "Welcome back,\n$name",
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 28,
@@ -165,7 +220,7 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
 
                 const SizedBox(height: 18),
 
-                // ===== Quick Actions (تحويلها لستايل List مثل الصورة الثانية) =====
+                // ===== Quick Actions =====
                 const Text(
                   "Quick Actions",
                   style: TextStyle(
@@ -207,35 +262,55 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                           backgroundColor: Colors.green,
                         ),
                       );
+
+                      // ✅ project_created notification from backend → refresh badge
+                      await _loadUnread();
                     }
                   },
                 ),
 
                 const SizedBox(height: 12),
+
                 _ActionTile(
                   icon: Icons.list_alt_outlined,
                   title: "My Projects",
                   subtitle: "Track your ongoing projects",
-                  onTap: () {},
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const MyProjectsPage()),
+                    );
+                  },
                 ),
+
                 const SizedBox(height: 12),
+
                 _ActionTile(
                   icon: Icons.insert_drive_file_outlined,
                   title: "Contracts",
                   subtitle: "Manage your contracts",
-                  onTap: () {},
+                  onTap: () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text("Contracts page (TODO)")),
+                    );
+                  },
                 ),
+
                 const SizedBox(height: 12),
+
                 _ActionTile(
                   icon: Icons.groups_outlined,
                   title: "Contractors",
                   subtitle: "View and manage contractors",
-                  onTap: () {},
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const ContractorsPage()),
+                    );
+                  },
                 ),
 
                 const SizedBox(height: 24),
 
-                // ===== Project Offers (صارت فيها صورة/ثَمبنيل يمين مثل الصورة الثانية) =====
+                // ===== Project Offers =====
                 const Text(
                   "Project Offers",
                   style: TextStyle(
@@ -250,15 +325,18 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                   from: "Offer from BuildRight",
                   title: "Kitchen Remodel",
                   subtitle: "View offer details",
-                  // حط رابط صورة حقيقي إذا عندك
                   imageUrl:
                       "https://images.unsplash.com/photo-1556912172-45b7abe8b7e1?auto=format&fit=crop&w=800&q=60",
-                  onTap: () {},
+                  onTap: () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text("Offer details (TODO)")),
+                    );
+                  },
                 ),
 
                 const SizedBox(height: 24),
 
-                // ===== Community (قسم جديد مثل الصورة الثانية) =====
+                // ===== Community =====
                 const Text(
                   "Community",
                   style: TextStyle(
@@ -313,7 +391,7 @@ class _ActionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const tileColor = Color(0xFF0F261F); // قريب جداً من ستايل الصورة
+    const tileColor = Color(0xFF0F261F);
     const iconBox = Color(0xFF17362F);
 
     return Material(
@@ -505,9 +583,8 @@ class _CommunityCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               ClipRRect(
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(18),
-                ),
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(18)),
                 child: Image.network(
                   imageUrl,
                   height: 105,
@@ -562,7 +639,7 @@ class _CommunityCard extends StatelessWidget {
   }
 }
 
-/* ===================== Demo Data (بدّلها من API) ===================== */
+/* ===================== Demo Data ===================== */
 
 class _CommunityItem {
   final String imageUrl;

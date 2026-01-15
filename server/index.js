@@ -19,6 +19,8 @@ const clientAccountRoutes = require("./routes/client/accountRoutes");
 const adminAccountRoutes = require("./routes/admin/accountRoutes");
 const healthRoutes = require("./routes/healthRoutes");
 const materialRoutes = require("./routes/materialRoutes");
+const notificationRoutes = require("./routes/notificationRoutes");
+
 
 // Middlewares
 app.use(cors());
@@ -51,6 +53,8 @@ app.use("/api/projects", projectRoutes);
 app.use("/api/contractor/account", contractorAccountRoutes);
 app.use("/api/client/account", clientAccountRoutes);
 app.use("/api/materials", materialRoutes);
+
+app.use("/api/notifications", notificationRoutes);
 
 // MongoDB connection
 const PORT = process.env.PORT || 5000;
