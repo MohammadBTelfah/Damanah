@@ -267,6 +267,54 @@ Future<Map<String, dynamic>> getProjectById(String projectId) async {
     final dir = await getApplicationDocumentsDirectory();
     final file = File("${dir.path}/estimate_$projectId.json");
     await file.writeAsBytes(res.bodyBytes, flush: true);
+    // =========================
+// Contractor Projects
+// =========================
+
+/// GET /api/projects/contractor/available
+Future<List<dynamic>> getAvailableProjectsForContractor() async {
+  final token = await _mustToken();
+  final uri = Uri.parse(ApiConfig.join("/api/projects/contractor/available"));
+
+  final res = await http
+      .get(uri, headers: _authHeaders(token))
+      .timeout(const Duration(seconds: 30));
+
+  final decoded = _safeDecode(res.body);
+
+  if (res.statusCode == 200) {
+    if (decoded is List) return decoded;
+    if (decoded is Map && decoded["projects"] is List) {
+      return List.from(decoded["projects"]);
+    }
+    return [];
+  }
+
+  throw Exception("(${res.statusCode}) ${_errMsg(res)}");
+}
+
+/// GET /api/projects/contractor/mine
+Future<List<dynamic>> getMyProjectsForContractor() async {
+  final token = await _mustToken();
+  final uri = Uri.parse(ApiConfig.join("/api/projects/contractor/mine"));
+
+  final res = await http
+      .get(uri, headers: _authHeaders(token))
+      .timeout(const Duration(seconds: 30));
+
+  final decoded = _safeDecode(res.body);
+
+  if (res.statusCode == 200) {
+    if (decoded is List) return decoded;
+    if (decoded is Map && decoded["projects"] is List) {
+      return List.from(decoded["projects"]);
+    }
+    return [];
+  }
+
+  throw Exception("(${res.statusCode}) ${_errMsg(res)}");
+}
+
 
     return file.path;
   }
@@ -316,6 +364,55 @@ Future<Map<String, dynamic>> getProjectById(String projectId) async {
 
     throw Exception("(${res.statusCode}) ${_errMsg(res)}");
   }
+// =========================
+// Contractor lists
+// =========================
+
+Future<List<dynamic>> getAvailableProjectsForContractor() async {
+  final token = await _mustToken();
+
+  // ✅ غيّر المسار إذا API عندك مختلف
+  final uri = Uri.parse(ApiConfig.join("/api/projects/available-for-contractor"));
+
+  final res = await http
+      .get(uri, headers: _authHeaders(token))
+      .timeout(const Duration(seconds: 30));
+
+  final decoded = _safeDecode(res.body);
+
+  if (res.statusCode == 200) {
+    if (decoded is List) return decoded;
+    if (decoded is Map && decoded["projects"] is List) {
+      return List.from(decoded["projects"]);
+    }
+    return [];
+  }
+
+  throw Exception("(${res.statusCode}) ${_errMsg(res)}");
+}
+
+Future<List<dynamic>> getMyProjectsForContractor() async {
+  final token = await _mustToken();
+
+  // ✅ غيّر المسار إذا API عندك مختلف
+  final uri = Uri.parse(ApiConfig.join("/api/projects/my-projects"));
+
+  final res = await http
+      .get(uri, headers: _authHeaders(token))
+      .timeout(const Duration(seconds: 30));
+
+  final decoded = _safeDecode(res.body);
+
+  if (res.statusCode == 200) {
+    if (decoded is List) return decoded;
+    if (decoded is Map && decoded["projects"] is List) {
+      return List.from(decoded["projects"]);
+    }
+    return [];
+  }
+
+  throw Exception("(${res.statusCode}) ${_errMsg(res)}");
+}
 
   // =========================
   // Contractors list (✅ endpoint الصحيح)

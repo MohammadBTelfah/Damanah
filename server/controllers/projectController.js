@@ -5,6 +5,7 @@ const Notification = require("../models/Notification");
 
 const { generateBoqForProject } = require("../utils/boq");
 const { analyzeFloorPlanImage } = require("../utils/plan_vision");
+const mongoose = require("mongoose");
 
 // =======================
 // Helpers
@@ -182,6 +183,53 @@ exports.createProject = async (req, res) => {
     console.error("createProject error:", err);
     return res.status(500).json({ error: err.message });
   }
+  
+};
+// =======================
+// Contractor - Available Projects
+// GET /api/projects/contractor/available
+// =======================
+exports.getAvailableProjectsForContractor = async (req, res) => {
+  try {
+    const contractorId = req.user._id;
+
+    const projects = await Project.find({
+      status: "open",
+      contractor: null,
+      $or: [
+        { sharedWith: contractorId },      // مشاريع مشاركة معه
+        { sharedWith: { $exists: false } },// أو مشاريع بدون sharedWith
+        { sharedWith: { $size: 0 } },      // أو sharedWith فاضي
+      ],
+    })
+      .populate("owner", "name email")
+      .sort({ createdAt: -1 });
+
+    return res.json({ projects });
+  } catch (err) {
+    console.error("getAvailableProjectsForContractor error:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+// =======================
+// Contractor - My Projects
+// GET /api/projects/contractor/my
+// =======================
+exports.getMyProjectsForContractor = async (req, res) => {
+  try {
+    const contractorId = req.user._id;
+
+    const projects = await Project.find({
+      contractor: contractorId,
+    })
+      .populate("owner", "name email")
+      .sort({ createdAt: -1 });
+
+    return res.json({ projects });
+  } catch (err) {
+    console.error("getMyProjectsForContractor error:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
 };
 
 // =======================
@@ -222,14 +270,72 @@ exports.getOpenProjects = async (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 };
+// =======================
+// Contractor - Available Projects
+// GET /api/projects/contractor/available
+// =======================
+exports.getAvailableProjectsForContractor = async (req, res) => {
+  try {
+    const contractorId = req.user._id;
 
+    const projects = await Project.find({
+      status: "open",
+      contractor: null,
+      $or: [
+        { sharedWith: contractorId },
+        { sharedWith: { $exists: false } },
+        { sharedWith: { $size: 0 } },
+      ],
+    })
+      .populate("owner", "name email")
+      .sort({ createdAt: -1 });
+
+    return res.json({ projects });
+  } catch (err) {
+    console.error("getAvailableProjectsForContractor error:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+// =======================
+// Contractor - My Projects
+// GET /api/projects/contractor/my
+// =======================
+exports.getMyProjectsForContractor = async (req, res) => {
+  try {
+    const contractorId = req.user._id;
+
+    const projects = await Project.find({
+      contractor: contractorId,
+    })
+      .populate("owner", "name email")
+      .sort({ createdAt: -1 });
+
+    return res.json({ projects });
+  } catch (err) {
+    console.error("getMyProjectsForContractor error:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+// =======================
+// مشروع معيّن
+// GET /api/projects/:projectId
+// =======================
 // =======================
 // مشروع معيّن
 // GET /api/projects/:projectId
 // =======================
 exports.getProjectById = async (req, res) => {
   try {
-    const project = await Project.findById(req.params.projectId)
+    const { projectId } = req.params;
+
+    // ✅ يمنع CastError
+    if (!mongoose.Types.ObjectId.isValid(projectId)) {
+      return res.status(404).json({ message: "Project not found" });
+    }
+
+    const project = await Project.findById(projectId)
       .populate("owner", "name email")
       .populate("contractor", "name email")
       .populate("offers.contractor", "name email");

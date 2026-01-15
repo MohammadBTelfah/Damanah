@@ -4,6 +4,7 @@ import '../services/session_service.dart';
 
 import 'client_home_screen.dart';
 import 'profile_screen.dart';
+import 'contractor_home_screen.dart'; // ✅ NEW
 
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
@@ -14,9 +15,11 @@ class MainShell extends StatefulWidget {
 
 class _MainShellState extends State<MainShell> {
   int _index = 0;
+
   Map<String, dynamic>? _user;
 
-  static const String baseUrl = "http://10.0.2.2:5000";
+  // لو عندك baseUrl محدد بمكان ثاني خليه زي ما هو عندك
+  String get baseUrl => "BASE_URL";
 
   @override
   void initState() {
@@ -36,27 +39,30 @@ class _MainShellState extends State<MainShell> {
 
   @override
   Widget build(BuildContext context) {
+    final role = (_user?["role"] ?? "client").toString().toLowerCase().trim();
+
+    final home = role == "contractor"
+        ? ContractorHomeScreen(
+            user: _user,
+            baseUrl: baseUrl,
+            onRefreshUser: _loadUser,
+          )
+        : ClientHomeScreen(
+            user: _user,
+            baseUrl: baseUrl,
+            onRefreshUser: _loadUser,
+            onOpenProfile: _goToProfileTab,
+          );
+
     final pages = <Widget>[
-      // HOME
-      ClientHomeScreen(
-        user: _user,
-        baseUrl: baseUrl,
-        onRefreshUser: _loadUser,
-        onOpenProfile: _goToProfileTab, // ✅ بدل push
-      ),
-
-      // PROJECTS
+      home,
       const _Placeholder(title: "Projects"),
-
-      // MESSAGES
       const _Placeholder(title: "Messages"),
-
-      // PROFILE (داخل التاب)
       if (_user != null)
         ProfileScreen(
           user: _user!,
           baseUrl: baseUrl,
-          isRoot: true, // ✅ مهم عشان ما يعمل pop ويضل البار ثابت
+          isRoot: true,
           onRefreshUser: _loadUser,
         )
       else
@@ -67,7 +73,7 @@ class _MainShellState extends State<MainShell> {
       backgroundColor: const Color(0xFF0F261F),
       body: IndexedStack(index: _index, children: pages),
 
-      // ✅ ثابت بكل الصفحات
+      // ✅ هذا هو شريط اللي تحت (نفس اللي عند العميل) وراح يصير للمقاول كمان
       bottomNavigationBar: Theme(
         data: Theme.of(context).copyWith(
           splashFactory: NoSplash.splashFactory,
@@ -110,9 +116,7 @@ class _LoadingPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const SafeArea(
-      child: Center(
-        child: CircularProgressIndicator(),
-      ),
+      child: Center(child: CircularProgressIndicator()),
     );
   }
 }
