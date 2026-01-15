@@ -29,19 +29,30 @@ const planUpload = multer({
 });
 
 // ================================
-// Project CRUD
+// ✅ Contractor routes (لازم قبل :projectId)
 // ================================
+router.get(
+  "/contractor/available",
+  protect,
+  contractorOnly,
+  projectController.getAvailableProjectsForContractor
+);
 
-// create project (client)
+router.get(
+  "/contractor/my",
+  protect,
+  contractorOnly,
+  projectController.getMyProjectsForContractor
+);
+
+// ================================
+// Client routes
+// ================================
 router.post("/", protect, clientOnly, projectController.createProject);
-
-// my projects (client)
 router.get("/my", protect, clientOnly, projectController.getMyProjects);
-
-// open projects (contractor)
 router.get("/open", protect, contractorOnly, projectController.getOpenProjects);
 
-// ✅ IMPORTANT: Contractors list for picker (MUST be before "/:projectId")
+// ✅ Contractors list for picker (client) - لازم قبل :projectId
 router.get(
   "/contractors/available",
   protect,
@@ -49,14 +60,14 @@ router.get(
   projectController.getAvailableContractors
 );
 
-// get project by id
+// ================================
+// ✅ Project by ID (آخر شي)
+// ================================
 router.get("/:projectId", protect, projectController.getProjectById);
 
 // ================================
 // Offers
 // ================================
-
-// contractor create offer
 router.post(
   "/:projectId/offers",
   protect,
@@ -64,7 +75,6 @@ router.post(
   projectController.createOffer
 );
 
-// client get offers
 router.get(
   "/:projectId/offers",
   protect,
@@ -72,7 +82,6 @@ router.get(
   projectController.getProjectOffers
 );
 
-// client accept offer
 router.patch(
   "/:projectId/offers/:offerId/accept",
   protect,
@@ -92,29 +101,12 @@ router.post(
 );
 
 // ================================
-// Estimate
+// Estimate / Save / Download / Share / Assign
 // ================================
 router.post("/:id/estimate", protect, clientOnly, projectController.estimateProject);
-
-// ================================
-// Save / Download / Share / Assign
-// ================================
-
-// save project
 router.patch("/:id/save", protect, clientOnly, projectController.saveProject);
-
-// download estimate JSON
-router.get(
-  "/:id/estimate/download",
-  protect,
-  clientOnly,
-  projectController.downloadEstimate
-);
-
-// share with contractor
+router.get("/:id/estimate/download", protect, clientOnly, projectController.downloadEstimate);
 router.post("/:id/share", protect, clientOnly, projectController.shareProject);
-
-// assign contractor
 router.patch("/:id/assign", protect, clientOnly, projectController.assignContractor);
 
 module.exports = router;
