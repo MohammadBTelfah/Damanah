@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/session_service.dart';
-import 'login_screen.dart';
 import 'profile_screen.dart';
+import 'role_selection_screen.dart'; // ✅ بدل LoginScreen
 
 class AppDrawer extends StatefulWidget {
   final Map<String, dynamic> user; // fallback فقط
@@ -59,14 +59,17 @@ class _AppDrawerState extends State<AppDrawer> {
     return "$clean?t=$_bust"; // ✅ cache bust
   }
 
-  Future<void> _logout(BuildContext context, String role) async {
+  Future<void> _logout(BuildContext context) async {
+    // ✅ سكّر الـ Drawer أولاً (اختياري بس ممتاز)
+    Navigator.of(context).pop();
+
     await SessionService.clear();
     if (!context.mounted) return;
 
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(builder: (_) => LoginScreen(role: role)),
-      (_) => false,
+    // ✅ امسح كل الستاك وارجع للبداية (RoleSelection)
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const RoleSelectionScreen()),
+      (route) => false,
     );
   }
 
@@ -162,12 +165,10 @@ class _AppDrawerState extends State<AppDrawer> {
             const Spacer(),
             const Divider(color: Colors.white12),
 
-            
-
             _item(
               Icons.logout,
               "Logout",
-              () => _logout(context, role),
+              () => _logout(context),
               color: Colors.redAccent,
             ),
 

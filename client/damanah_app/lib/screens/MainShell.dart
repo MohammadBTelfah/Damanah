@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../services/session_service.dart';
+import '../config/api_config.dart'; // ✅ ADD THIS
 
 import 'client_home_screen.dart';
 import 'profile_screen.dart';
-import 'contractor_home_screen.dart'; // ✅ NEW
+import 'contractor_home_screen.dart';
 
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
@@ -15,11 +16,10 @@ class MainShell extends StatefulWidget {
 
 class _MainShellState extends State<MainShell> {
   int _index = 0;
-
   Map<String, dynamic>? _user;
 
-  // لو عندك baseUrl محدد بمكان ثاني خليه زي ما هو عندك
-  String get baseUrl => "BASE_URL";
+  // ✅ FIX: استخدم الرابط الحقيقي
+  String get baseUrl => ApiConfig.baseUrl;
 
   @override
   void initState() {
@@ -44,12 +44,12 @@ class _MainShellState extends State<MainShell> {
     final home = role == "contractor"
         ? ContractorHomeScreen(
             user: _user,
-            baseUrl: baseUrl,
+            baseUrl: baseUrl, // ✅ now real url
             onRefreshUser: _loadUser,
           )
         : ClientHomeScreen(
             user: _user,
-            baseUrl: baseUrl,
+            baseUrl: baseUrl, // ✅ now real url
             onRefreshUser: _loadUser,
             onOpenProfile: _goToProfileTab,
           );
@@ -61,7 +61,7 @@ class _MainShellState extends State<MainShell> {
       if (_user != null)
         ProfileScreen(
           user: _user!,
-          baseUrl: baseUrl,
+          baseUrl: baseUrl, // ✅ now real url
           isRoot: true,
           onRefreshUser: _loadUser,
         )
@@ -72,8 +72,6 @@ class _MainShellState extends State<MainShell> {
     return Scaffold(
       backgroundColor: const Color(0xFF0F261F),
       body: IndexedStack(index: _index, children: pages),
-
-      // ✅ هذا هو شريط اللي تحت (نفس اللي عند العميل) وراح يصير للمقاول كمان
       bottomNavigationBar: Theme(
         data: Theme.of(context).copyWith(
           splashFactory: NoSplash.splashFactory,
@@ -87,22 +85,10 @@ class _MainShellState extends State<MainShell> {
           currentIndex: _index,
           onTap: (i) => setState(() => _index = i),
           items: const [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.home_filled),
-              label: "Home",
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.list_alt_outlined),
-              label: "Projects",
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.chat_bubble_outline),
-              label: "Messages",
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.person_outline),
-              label: "Profile",
-            ),
+            BottomNavigationBarItem(icon: Icon(Icons.home_filled), label: "Home"),
+            BottomNavigationBarItem(icon: Icon(Icons.list_alt_outlined), label: "Projects"),
+            BottomNavigationBarItem(icon: Icon(Icons.chat_bubble_outline), label: "Messages"),
+            BottomNavigationBarItem(icon: Icon(Icons.person_outline), label: "Profile"),
           ],
         ),
       ),
