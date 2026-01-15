@@ -20,6 +20,11 @@ function normalizePhone(phone) {
   return String(phone || "").trim();
 }
 
+// ✅ الأردن: 10 أرقام ويبدأ بـ 2
+function isJordanNationalId(id) {
+  return typeof id === "string" && /^2\d{9}$/.test(id.trim());
+}
+
 async function ensureUniqueAcrossAll({ email, phone }) {
   const emailNorm = email ? normalizeEmail(email) : null;
   const phoneNorm = phone ? normalizePhone(phone) : null;
@@ -55,11 +60,10 @@ async function sendVerificationEmailForContractor(contractor) {
 
   contractor.emailVerified = false;
   contractor.emailVerificationToken = emailTokenHash;
-  contractor.emailVerificationExpires = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
+  contractor.emailVerificationExpires = Date.now() + 24 * 60 * 60 * 1000;
   await contractor.save();
 
-  // ✅ تأكد المسار هذا يطابق صفحة verify عندك بالفرونت
-const verifyUrl = `${process.env.API_URL}/api/auth/contractor/verify-email/${emailToken}`;
+  const verifyUrl = `${process.env.API_URL}/api/auth/contractor/verify-email/${emailToken}`;
 
   await sendEmail({
     to: contractor.email,
@@ -120,14 +124,19 @@ async function sendContractorPendingEmail(contractor) {
 
 exports.register = async (req, res) => {
   try {
-    let { name, email, phone, password, role } = req.body;
+    let {
+      name,
+      email,
+      phone,
+      password,
+      role,
+      nationalId: nationalIdInput, // ✅ يدوي من Flutter
+    } = req.body;
 
-    // ✅ Security: لا تسمح لحد يبعث role ثاني
     if (role && String(role).toLowerCase() !== "contractor") {
       return res.status(400).json({ message: "Invalid role" });
     }
 
-    // ✅ normalize
     name = String(name || "").trim();
     const emailNorm = normalizeEmail(email);
     const phoneNorm = normalizePhone(phone);
@@ -163,15 +172,27 @@ exports.register = async (req, res) => {
 
     const hashed = await bcrypt.hash(password, 10);
 
+    // ✅ manual nationalId (أولوية)
+    const manualNationalId =
+      typeof nationalIdInput === "string" && nationalIdInput.trim()
+        ? nationalIdInput.trim()
+        : null;
+
+    if (manualNationalId && !isJordanNationalId(manualNationalId)) {
+      return res.status(400).json({ message: "Invalid national ID format" });
+    }
+
     // ================= OCR (optional) =================
-    let nationalId = null;
+    let nationalIdCandidate = null;
     let nationalIdConfidence = null;
+    let identityRawText = null;
     let identityExtractedAt = null;
 
     if (identityDocumentPath) {
       const ocrRes = await extractNationalIdFromIdentity(identityDocumentPath);
-      nationalId = ocrRes?.nationalId ?? null;
+      nationalIdCandidate = ocrRes?.nationalId ?? null;
       nationalIdConfidence = ocrRes?.confidence ?? null;
+      identityRawText = ocrRes?.rawText ?? null;
       identityExtractedAt = new Date();
     }
 
@@ -185,14 +206,18 @@ exports.register = async (req, res) => {
       phone: phoneNorm,
       password: hashed,
 
-      // ✅ force role
       role: "contractor",
-
       profileImage: profileImagePath,
 
       identityDocument: identityDocumentPath,
-      nationalId,
+
+      // ✅ FINAL = يدوي فقط
+      nationalId: manualNationalId || null,
+
+      // ✅ OCR suggestion
+      nationalIdCandidate,
       nationalIdConfidence,
+      identityRawText,
       identityExtractedAt,
       identityStatus,
 
@@ -203,14 +228,11 @@ exports.register = async (req, res) => {
       emailVerificationToken: null,
       emailVerificationExpires: null,
 
-      // ✅ لا يتفعل قبل موافقات الأدمن (وبعد email verify كمان)
       isActive: false,
     });
 
-    // ✅ send verify email
     await sendVerificationEmailForContractor(contractor);
 
-    // ✅ optional notifications (إذا في ملفات فعلًا)
     if (contractor.identityStatus === "pending") {
       await sendIdentityPendingEmailForContractor(contractor);
     }
@@ -237,6 +259,7 @@ exports.register = async (req, res) => {
 
         identityDocument: contractor.identityDocument,
         nationalId: contractor.nationalId,
+        nationalIdCandidate: contractor.nationalIdCandidate,
         nationalIdConfidence: contractor.nationalIdConfidence,
         identityExtractedAt: contractor.identityExtractedAt,
         identityStatus: contractor.identityStatus,
@@ -254,7 +277,6 @@ exports.register = async (req, res) => {
     });
   }
 };
-
 
 exports.verifyEmail = async (req, res) => {
   try {
@@ -277,19 +299,13 @@ exports.verifyEmail = async (req, res) => {
     contractor.emailVerificationToken = null;
     contractor.emailVerificationExpires = null;
 
-    // ✅ ما بنفعل إلا إذا كل شيء verified
-    const hasPendingIdentity = contractor.identityStatus === "pending";
-    const hasPendingContractor = contractor.contractorStatus === "pending";
-
-    contractor.isActive = !(hasPendingIdentity || hasPendingContractor);
+    // ✅ يبقى غير مفعل لحد ما الأدمن يعتمد الوثائق
+    contractor.isActive = false;
 
     await contractor.save();
 
     return res.json({
-      message:
-        hasPendingIdentity || hasPendingContractor
-          ? "Email verified. Please wait until admin reviews your documents."
-          : "Email verified successfully. You can now log in.",
+      message: "Email verified. Please wait until admin reviews your documents.",
     });
   } catch (err) {
     return res.status(500).json({ message: "Server error" });
@@ -339,7 +355,6 @@ exports.login = async (req, res) => {
       });
     }
 
-    // ✅ block if still inactive (pending admin approval)
     if (!contractor.isActive) {
       return res.status(403).json({
         message: "Your documents are pending admin review. Please wait for approval.",
@@ -366,6 +381,7 @@ exports.login = async (req, res) => {
 
         identityDocument: contractor.identityDocument,
         nationalId: contractor.nationalId,
+        nationalIdCandidate: contractor.nationalIdCandidate,
         nationalIdConfidence: contractor.nationalIdConfidence,
         identityExtractedAt: contractor.identityExtractedAt,
         identityStatus: contractor.identityStatus,

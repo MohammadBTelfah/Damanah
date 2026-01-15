@@ -829,7 +829,7 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
         ),
         const SizedBox(height: 12),
         DropdownButtonFormField<String>(
-          value: _buildingType,
+          initialValue: _buildingType,
           decoration: _dec("Building Type"),
           dropdownColor: const Color(0xFF2F463D),
           iconEnabledColor: Colors.white,
@@ -858,7 +858,7 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
         ),
         const SizedBox(height: 12),
         DropdownButtonFormField<String>(
-          value: _finishing,
+          initialValue: _finishing,
           decoration: _dec("Finishing Level"),
           dropdownColor: const Color(0xFF2F463D),
           iconEnabledColor: Colors.white,
@@ -964,7 +964,7 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
                   Flexible(
                     flex: 2,
                     child: DropdownButtonFormField<String>(
-                      value: current,
+                      initialValue: current,
                       isExpanded: true,
                       decoration: _dec(
                         "Type",
@@ -1010,7 +1010,7 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
                 ],
               ),
             );
-          }).toList(),
+          }),
         if (_materials.isNotEmpty) ...[
           const SizedBox(height: 8),
           Row(
@@ -1088,7 +1088,7 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
                       style: const TextStyle(color: Colors.white70),
                     ),
                   );
-                }).toList(),
+                }),
                 if (items.length > 8)
                   const Text("...more items",
                       style: TextStyle(color: Colors.white38)),
