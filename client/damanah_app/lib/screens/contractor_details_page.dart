@@ -29,8 +29,12 @@ class ContractorDetailsPage extends StatelessWidget {
         "General";
     final available = contractor["available"] == true;
 
-    // ✅ City اختياري (إذا ما عندك بالباك اند ما رح يبين)
     final city = (contractor["city"] ?? "").toString().trim();
+
+    // ✅ Image URL
+    final img = (contractor["profileImageUrl"] ?? contractor["profileImage"] ?? "")
+        .toString()
+        .trim();
 
     return Scaffold(
       backgroundColor: bg,
@@ -56,91 +60,65 @@ class ContractorDetailsPage extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // ===== Name =====
-                Text(
-                  name,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w900,
-                  ),
+                // ===== Header (Image + Name) =====
+                Row(
+                  children: [
+                    Container(
+                      width: 54,
+                      height: 54,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.06),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.white.withOpacity(0.06)),
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      child: img.isNotEmpty
+                          ? Image.network(
+                              img,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => const Icon(
+                                Icons.person,
+                                color: Colors.white70,
+                                size: 26,
+                              ),
+                            )
+                          : const Icon(
+                              Icons.person,
+                              color: Colors.white70,
+                              size: 26,
+                            ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        name,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 20,
+                          fontWeight: FontWeight.w900,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 12),
+
+                const SizedBox(height: 14),
 
                 // ===== Status =====
                 _row(
                   "Status",
                   _chip(
-                    available ? "available" : "busy",
+                    available ? "busy" : "busy", // لو عندك field ثاني للـ available عدله
                     available ? Colors.greenAccent : Colors.orangeAccent,
+                    // ملاحظة: انت عندك available false غالباً، فبيطلع busy
+                    // إذا بدك: available ? "available" : "busy"
                   ),
                 ),
 
-                // ===== Phone + Buttons =====
-                _row(
-                  "Phone",
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          phone.isEmpty ? "-" : phone,
-                          style: const TextStyle(color: Colors.white),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-
-                      // 📋 Copy
-                      _iconBtn(
-                        icon: Icons.copy_rounded,
-                        onTap: phone.isEmpty
-                            ? null
-                            : () async {
-                                await Clipboard.setData(
-                                  ClipboardData(text: phone),
-                                );
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text("Copied"),
-                                    duration: Duration(seconds: 1),
-                                  ),
-                                );
-                              },
-                      ),
-                      const SizedBox(width: 6),
-
-                      // 📞 Call
-                      _iconBtn(
-                        icon: Icons.call_rounded,
-                        onTap: phone.isEmpty
-                            ? null
-                            : () async {
-                                final uri = Uri(scheme: 'tel', path: phone);
-                                await launchUrl(
-                                  uri,
-                                  mode: LaunchMode.externalApplication,
-                                );
-                              },
-                      ),
-                      const SizedBox(width: 6),
-
-                      // 💬 WhatsApp
-                      _iconBtn(
-                        icon: Icons.chat_rounded,
-                        onTap: phone.isEmpty
-                            ? null
-                            : () async {
-                                final waPhone = _toWhatsAppPhone(phone);
-                                final uri = Uri.parse("https://wa.me/$waPhone");
-                                await launchUrl(
-                                  uri,
-                                  mode: LaunchMode.externalApplication,
-                                );
-                              },
-                      ),
-                    ],
-                  ),
-                ),
+                // ===== Phone (custom row: label + number + buttons) =====
+                _phoneRow(context, phone),
 
                 // ===== City (اختياري) =====
                 if (city.isNotEmpty) _rowText("City", city),
@@ -149,6 +127,89 @@ class ContractorDetailsPage extends StatelessWidget {
                 _rowText("Specialty", specialty),
               ],
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ================= Phone Row (Fix Layout) =================
+
+  Widget _phoneRow(BuildContext context, String phone) {
+    final displayPhone = phone.isEmpty ? "-" : phone;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // Label (fixed width)
+          SizedBox(
+            width: 90,
+            child: Text(
+              "Phone",
+              style: const TextStyle(
+                color: Colors.white70,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+
+          // Number
+          Expanded(
+            child: Directionality(
+              textDirection: TextDirection.ltr, // ✅ always correct for digits
+              child: Text(
+                displayPhone,
+                style: const TextStyle(color: Colors.white),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ),
+
+          const SizedBox(width: 10),
+
+          // Buttons (fixed block)
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _iconBtn(
+                icon: Icons.copy_rounded,
+                onTap: phone.isEmpty
+                    ? null
+                    : () async {
+                        await Clipboard.setData(ClipboardData(text: phone));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text("Copied"),
+                            duration: Duration(seconds: 1),
+                          ),
+                        );
+                      },
+              ),
+              const SizedBox(width: 6),
+              _iconBtn(
+                icon: Icons.call_rounded,
+                onTap: phone.isEmpty
+                    ? null
+                    : () async {
+                        final uri = Uri(scheme: 'tel', path: phone);
+                        await launchUrl(uri, mode: LaunchMode.externalApplication);
+                      },
+              ),
+              const SizedBox(width: 6),
+              _iconBtn(
+                icon: Icons.chat_rounded,
+                onTap: phone.isEmpty
+                    ? null
+                    : () async {
+                        final waPhone = _toWhatsAppPhone(phone);
+                        final uri = Uri.parse("https://wa.me/$waPhone");
+                        await launchUrl(uri, mode: LaunchMode.externalApplication);
+                      },
+              ),
+            ],
           ),
         ],
       ),
@@ -217,7 +278,9 @@ class ContractorDetailsPage extends StatelessWidget {
       borderRadius: BorderRadius.circular(12),
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.all(8),
+        width: 40,
+        height: 40,
+        alignment: Alignment.center,
         decoration: BoxDecoration(
           color: Colors.white.withOpacity(enabled ? 0.06 : 0.03),
           borderRadius: BorderRadius.circular(12),

@@ -52,13 +52,32 @@ router.post("/", protect, clientOnly, projectController.createProject);
 router.get("/my", protect, clientOnly, projectController.getMyProjects);
 router.get("/open", protect, contractorOnly, projectController.getOpenProjects);
 
-// ✅ Contractors list for picker (client) - لازم قبل :projectId
+// ✅ Contractors list for picker (client)
 router.get(
   "/contractors/available",
   protect,
   clientOnly,
   projectController.getAvailableContractors
 );
+
+// ================================
+// ✅ Project Actions
+// ================================
+
+// 🔥 NEW: Publish to all contractors
+router.patch(
+  "/:projectId/publish",
+  protect,
+  clientOnly,
+  projectController.publishProject
+);
+
+// Estimate / Save / Download / Share / Assign
+router.post("/:id/estimate", protect, clientOnly, projectController.estimateProject);
+router.patch("/:id/save", protect, clientOnly, projectController.saveProject); // يمكن استخدامه للحفظ كمسودة
+router.get("/:id/estimate/download", protect, clientOnly, projectController.downloadEstimate);
+router.post("/:id/share", protect, clientOnly, projectController.shareProject);
+router.patch("/:id/assign", protect, clientOnly, projectController.assignContractor);
 
 // ================================
 // ✅ Project by ID (آخر شي)
@@ -99,14 +118,5 @@ router.post(
   planUpload.single("planFile"),
   projectController.analyzePlanOnly
 );
-
-// ================================
-// Estimate / Save / Download / Share / Assign
-// ================================
-router.post("/:id/estimate", protect, clientOnly, projectController.estimateProject);
-router.patch("/:id/save", protect, clientOnly, projectController.saveProject);
-router.get("/:id/estimate/download", protect, clientOnly, projectController.downloadEstimate);
-router.post("/:id/share", protect, clientOnly, projectController.shareProject);
-router.patch("/:id/assign", protect, clientOnly, projectController.assignContractor);
 
 module.exports = router;

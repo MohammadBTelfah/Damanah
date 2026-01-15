@@ -44,6 +44,42 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
     }
   }
 
+  // ====================== URL helpers (for images) ======================
+
+  String _baseUrlFromService() {
+    // يعتمد إن ProjectService عندك فيه baseUrl
+    // إذا ما عندك baseUrl، رح يرجع فاضي (وما بنخرب شي)
+    try {
+      final dynamic s = _service;
+      final v = s.baseUrl;
+      if (v is String) return v;
+    } catch (_) {}
+    return "";
+  }
+
+  String _joinUrl(String base, String path) {
+    final b = base.endsWith('/') ? base.substring(0, base.length - 1) : base;
+    final p = path.startsWith('/') ? path.substring(1) : path;
+    return "$b/$p";
+  }
+
+  String _toAbsoluteUrl(String maybeUrlOrPath) {
+    final v = maybeUrlOrPath.trim();
+    if (v.isEmpty) return "";
+
+    if (v.startsWith("http://") || v.startsWith("https://")) return v;
+
+    if (v.startsWith("/")) {
+      final base = _baseUrlFromService();
+      if (base.isEmpty) return v; // ما قدرنا نطلع baseUrl من السيرفس
+      return _joinUrl(base, v);
+    }
+
+    return v;
+  }
+
+  // ====================== UI ======================
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -60,11 +96,8 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? _errorView()
-              : RefreshIndicator(
-                  onRefresh: _load,
-                  child: _buildContent(),
-                ),
+          ? _errorView()
+          : RefreshIndicator(onRefresh: _load, child: _buildContent()),
     );
   }
 
@@ -73,7 +106,11 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
       padding: const EdgeInsets.all(16),
       children: [
         const SizedBox(height: 60),
-        Icon(Icons.error_outline, size: 46, color: Colors.white.withOpacity(0.7)),
+        Icon(
+          Icons.error_outline,
+          size: 46,
+          color: Colors.white.withOpacity(0.7),
+        ),
         const SizedBox(height: 12),
         Center(
           child: Text(
@@ -88,18 +125,19 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
           style: ElevatedButton.styleFrom(
             backgroundColor: const Color(0xFF9EE7B7),
             foregroundColor: Colors.black,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
             minimumSize: const Size.fromHeight(48),
           ),
           child: const Text("Retry"),
-        )
+        ),
       ],
     );
   }
 
   Widget _buildContent() {
     final p = _data ?? {};
-
     final title = (p["title"] ?? p["name"] ?? "Untitled").toString();
 
     return ListView(
@@ -134,13 +172,19 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
                     color: Colors.white.withOpacity(0.06),
                     borderRadius: BorderRadius.circular(14),
                   ),
-                  child: const Icon(Icons.payments_outlined, color: Colors.white70),
+                  child: const Icon(
+                    Icons.payments_outlined,
+                    color: Colors.white70,
+                  ),
                 ),
                 const SizedBox(width: 12),
                 const Expanded(
                   child: Text(
                     "No estimation yet",
-                    style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w700),
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
               ],
@@ -167,9 +211,129 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
 
         const SizedBox(height: 12),
 
+        // ===== Contractor Card =====
+        _buildContractorCard(p),
+
+        const SizedBox(height: 12),
+
         // ===== Plan Analysis =====
-        if (p["planAnalysis"] != null) _buildPlanAnalysisCard(p["planAnalysis"]),
+        if (p["planAnalysis"] != null)
+          _buildPlanAnalysisCard(p["planAnalysis"]),
       ],
+    );
+  }
+
+  // ====================== Contractor Card ======================
+
+  Widget _buildContractorCard(Map<String, dynamic> p) {
+    final raw = p["contractor"]; // بعد populate: Map أو null
+
+    if (raw == null) {
+      return _card(
+        child: Row(
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.06),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: const Icon(
+                Icons.engineering_outlined,
+                color: Colors.white70,
+              ),
+            ),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Text(
+                "No contractor assigned yet",
+                style: TextStyle(
+                  color: Colors.white70,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final c = (raw is Map)
+        ? Map<String, dynamic>.from(raw)
+        : <String, dynamic>{};
+
+    final name =
+        (c["name"] ?? c["fullName"] ?? c["companyName"] ?? "Contractor")
+            .toString();
+    final email = (c["email"] ?? "").toString();
+    final phone = (c["phone"] ?? "").toString();
+
+    final imgRaw = (c["profileImageUrl"] ?? c["profileImage"] ?? "").toString();
+    final img = _toAbsoluteUrl(imgRaw);
+
+    return _card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            "Contractor",
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.06),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: img.isNotEmpty
+                    ? Image.network(
+                        img,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) =>
+                            const Icon(Icons.person, color: Colors.white70),
+                      )
+                    : const Icon(Icons.person, color: Colors.white70),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      name,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 16,
+                      ),
+                    ),
+                    if (phone.trim().isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        "Phone: $phone",
+                        style: const TextStyle(color: Colors.white70),
+                      ),
+                    ],
+                    if (email.trim().isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        "Email: $email",
+                        style: const TextStyle(color: Colors.white70),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -179,8 +343,8 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
     final est = (p["estimation"] is Map)
         ? Map<String, dynamic>.from(p["estimation"])
         : (p["estimate"] is Map)
-            ? Map<String, dynamic>.from(p["estimate"])
-            : <String, dynamic>{};
+        ? Map<String, dynamic>.from(p["estimate"])
+        : <String, dynamic>{};
 
     final total = est["totalCost"] ?? est["total"] ?? est["total_cost"];
     final currency = (est["currency"] ?? "JOD").toString();
@@ -235,7 +399,7 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
                     "$itemsCount items",
                     style: const TextStyle(color: Colors.white60, fontSize: 12),
                   ),
-                ]
+                ],
               ],
             ),
           ),
@@ -249,7 +413,6 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
         ? Map<String, dynamic>.from(planAnalysisRaw)
         : <String, dynamic>{};
 
-    // يدعم أسماء مختلفة محتملة
     final totalArea = pa["totalArea"] ?? pa["area"] ?? pa["total_area"];
     final floors = pa["floors"];
     final rooms = pa["rooms"];
@@ -261,10 +424,7 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
         children: [
           const Text(
             "Plan Analysis",
-            style: TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.w800,
-            ),
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 10),
           _bullet("Total Area", totalArea),
@@ -341,14 +501,14 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
     final bg = isOpen
         ? Colors.green.withOpacity(0.18)
         : isProgress
-            ? Colors.orange.withOpacity(0.18)
-            : Colors.white.withOpacity(0.12);
+        ? Colors.orange.withOpacity(0.18)
+        : Colors.white.withOpacity(0.12);
 
     final fg = isOpen
         ? Colors.greenAccent
         : isProgress
-            ? Colors.orangeAccent
-            : Colors.white70;
+        ? Colors.orangeAccent
+        : Colors.white70;
 
     return Align(
       alignment: Alignment.centerLeft,

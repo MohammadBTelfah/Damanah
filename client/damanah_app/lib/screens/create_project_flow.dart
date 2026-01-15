@@ -4,7 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../services/project_service.dart';
-import 'estimate_loading_page.dart'; // ✅ عدّل المسار حسب مكان الملف عندك
+import 'estimate_loading_page.dart'; 
 
 class CreateProjectFlow extends StatefulWidget {
   final ScrollController? scrollController;
@@ -33,18 +33,13 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
   final _locationCtrl = TextEditingController();
   String _finishing = "basic";
 
-  // ✅ NEW: building type
-  String _buildingType = "house"; // house/apartment/villa/commercial...
+  String _buildingType = "house"; 
 
   List<dynamic> _materials = [];
-  final Map<String, String> _selectedVariant = {}; // materialId -> variantKey
+  final Map<String, String> _selectedVariant = {}; 
 
   Map<String, dynamic>? _estimate;
   String? _projectId;
-
-  // ✅ NEW: contractors cache
-  List<dynamic> _contractors = [];
-  bool _contractorsLoading = false;
 
   @override
   void dispose() {
@@ -83,11 +78,8 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
     );
   }
 
-  // =========================
-  // ✅ Helpers for planAnalysis sanitization
-  // =========================
-
-  int? _toInt(dynamic v) {
+  // Helpers omitted for brevity (same as before)...
+   int? _toInt(dynamic v) {
     if (v == null) return null;
     if (v is int) return v;
     if (v is double) return v.toInt();
@@ -103,25 +95,17 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
     return null;
   }
 
-  /// ✅ make sure planAnalysis.rooms/bathrooms are NUMBERS (not list of objects)
   Map<String, dynamic>? _sanitizePlanAnalysis(Map<String, dynamic>? analysis) {
     if (analysis == null) return null;
-
     final a = Map<String, dynamic>.from(analysis);
-
-    // totalArea
     if (a.containsKey("totalArea")) {
       final d = _toDouble(a["totalArea"]);
       if (d != null) a["totalArea"] = d;
     }
-
-    // floors
     if (a.containsKey("floors")) {
       final n = _toInt(a["floors"]);
       if (n != null) a["floors"] = n;
     }
-
-    // rooms: if list -> roomsDetails + rooms count
     final roomsVal = a["rooms"];
     if (roomsVal is List) {
       a["roomsDetails"] = roomsVal;
@@ -133,8 +117,6 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
       final n = _toInt(roomsVal);
       if (n != null) a["rooms"] = n;
     }
-
-    // bathrooms: if list -> bathroomsDetails + bathrooms count
     final bathsVal = a["bathrooms"];
     if (bathsVal is List) {
       a["bathroomsDetails"] = bathsVal;
@@ -146,27 +128,23 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
       final n = _toInt(bathsVal);
       if (n != null) a["bathrooms"] = n;
     }
-
     return a;
   }
 
   Future<void> _pickPlan() async {
     if (_loading) return;
-
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['png', 'jpg', 'jpeg', 'webp', 'pdf'],
     );
     if (result == null || result.files.single.path == null) return;
-
     setState(() {
       _planFile = File(result.files.single.path!);
     });
   }
 
-  // ✅ fallback manual review (Step 2)
   void _goManualReview({String? msg}) {
-    _analysis = {}; // فاضي
+    _analysis = {}; 
     if (_floorsCtrl.text.trim().isEmpty) _floorsCtrl.text = "1";
     setState(() => _step = 1);
     if (msg != null) _snack(msg, color: Colors.orange);
@@ -176,9 +154,7 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
     if (_loading) return;
 
     if (_planFile == null) {
-      _goManualReview(
-        msg: "Auto analysis unavailable. Please fill details manually.",
-      );
+      _goManualReview(msg: "Auto analysis unavailable. Please fill details manually.");
       return;
     }
 
@@ -186,15 +162,12 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
 
     try {
       final data = await _service.analyzePlan(filePath: _planFile!.path);
-
       final analysis = (data["analysis"] is Map)
           ? Map<String, dynamic>.from(data["analysis"])
           : <String, dynamic>{};
 
       final area = (analysis["totalArea"] ?? analysis["area"] ?? "").toString();
       final floors = (analysis["floors"] ?? "").toString();
-
-      // ✅ rooms/baths could be list => show count in controllers
       final roomsVal = analysis["rooms"];
       final bathsVal = analysis["bathrooms"];
 
@@ -226,15 +199,12 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
       });
     } catch (e) {
       final msg = e.toString();
-
       final shouldManual = msg.contains("AI_UNAVAILABLE") ||
           msg.contains("(503)") ||
           msg.contains("(429)");
 
       if (shouldManual) {
-        _goManualReview(
-          msg: "Auto analysis failed. Please fill details manually.",
-        );
+        _goManualReview(msg: "Auto analysis failed. Please fill details manually.");
       } else {
         _snack(msg);
       }
@@ -245,7 +215,6 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
 
   Future<void> _goProjectInfo() async {
     if (_loading) return;
-
     final area = double.tryParse(_areaCtrl.text.trim());
     final floors = int.tryParse(_floorsCtrl.text.trim());
 
@@ -281,17 +250,9 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
 
     final area = double.tryParse(_areaCtrl.text.trim());
     final floors = int.tryParse(_floorsCtrl.text.trim());
+    if (area == null || area <= 0) return _snack("Invalid area");
+    if (floors == null || floors <= 0) return _snack("Invalid floors");
 
-    if (area == null || area <= 0) {
-      _snack("Invalid area");
-      return;
-    }
-    if (floors == null || floors <= 0) {
-      _snack("Invalid floors");
-      return;
-    }
-
-    // ✅ IMPORTANT: sanitize analysis (rooms/bathrooms must be numbers)
     final sanitizedAnalysis = _sanitizePlanAnalysis(_analysis);
 
     setState(() => _loading = true);
@@ -322,12 +283,10 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
     }
   }
 
-  // ✅ UPDATED: show EstimateLoadingPage before estimate
   Future<void> _runEstimate() async {
     if (_loading) return;
-
     if (_projectId == null || _projectId!.isEmpty) {
-      _snack("No projectId (Project was not created)");
+      _snack("No projectId");
       return;
     }
 
@@ -344,7 +303,6 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
               projectId: _projectId!,
               selections: selections,
             );
-
             _estimate = data;
             _step = 4;
           },
@@ -360,40 +318,14 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
   }
 
   // =============================
-  // ✅ Step 5 actions
+  // ✅ NEW Step 5 Actions
   // =============================
 
-  // ✅ UPDATED: after saving, close flow and return true
-  Future<void> _saveProject() async {
-    if (_projectId == null) {
-      _snack("No projectId");
-      return;
-    }
-    setState(() => _loading = true);
-    try {
-      await _service.saveProject(projectId: _projectId!);
-      if (!mounted) return;
-
-      _snack("Project saved ✅", color: Colors.green);
-
-      // ✅ close this sheet flow after save
-      Navigator.pop(context, true);
-    } catch (e) {
-      _snack("Save failed: $e");
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
-  }
-
   Future<void> _downloadEstimate() async {
-    if (_projectId == null) {
-      _snack("No projectId");
-      return;
-    }
+    if (_projectId == null) return _snack("No projectId");
     setState(() => _loading = true);
     try {
-      final filePath =
-          await _service.downloadEstimateToFile(projectId: _projectId!);
+      final filePath = await _service.downloadEstimateToFile(projectId: _projectId!);
       _snack("Downloaded ✅\n$filePath", color: Colors.green);
     } catch (e) {
       _snack("Download failed: $e");
@@ -402,127 +334,23 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
     }
   }
 
-  Future<void> _ensureContractorsLoaded() async {
-    if (_contractors.isNotEmpty || _contractorsLoading) return;
-
-    setState(() => _contractorsLoading = true);
+  // 🔥 PUBLISH PROJECT to All Contractors
+  Future<void> _publishProject() async {
+    if (_projectId == null) return _snack("No projectId");
+    setState(() => _loading = true);
     try {
-      final list = await _service.getContractors();
-      setState(() => _contractors = list);
+      await _service.publishProject(projectId: _projectId!);
+      
+      if (!mounted) return;
+      _snack("Published to all contractors ✅", color: Colors.green);
+      
+      // Close flow on success
+      Navigator.pop(context, true);
     } catch (e) {
-      _snack("Load contractors failed: $e");
+      _snack("Publish failed: $e");
     } finally {
-      if (mounted) setState(() => _contractorsLoading = false);
+      if (mounted) setState(() => _loading = false);
     }
-  }
-
-  Future<void> _openContractorPicker({required bool assign}) async {
-    if (_projectId == null) {
-      _snack("No projectId");
-      return;
-    }
-
-    await _ensureContractorsLoaded();
-
-    if (_contractors.isEmpty) {
-      _snack("No contractors found");
-      return;
-    }
-
-    if (!mounted) return;
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF0E1814),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-      ),
-      builder: (_) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 48,
-                  height: 5,
-                  margin: const EdgeInsets.only(bottom: 12),
-                  decoration: BoxDecoration(
-                    color: Colors.white12,
-                    borderRadius: BorderRadius.circular(99),
-                  ),
-                ),
-                Text(
-                  assign ? "Assign Contractor" : "Share with Contractor",
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 16,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Flexible(
-                  child: ListView.separated(
-                    shrinkWrap: true,
-                    itemCount: _contractors.length,
-                    separatorBuilder: (_, __) =>
-                        Divider(color: Colors.white.withOpacity(0.06)),
-                    itemBuilder: (_, i) {
-                      final c = (_contractors[i] is Map)
-                          ? Map<String, dynamic>.from(_contractors[i])
-                          : <String, dynamic>{};
-
-                      final id = c["_id"]?.toString() ?? "";
-                      final name = c["name"]?.toString() ??
-                          c["fullName"]?.toString() ??
-                          c["companyName"]?.toString() ??
-                          "Contractor";
-
-                      return ListTile(
-                        title: Text(name,
-                            style: const TextStyle(color: Colors.white)),
-                        subtitle: Text(
-                          id,
-                          style: const TextStyle(color: Colors.white38),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        onTap: () async {
-                          Navigator.pop(context);
-
-                          setState(() => _loading = true);
-                          try {
-                            if (assign) {
-                              await _service.assignContractor(
-                                projectId: _projectId!,
-                                contractorId: id,
-                              );
-                              _snack("Assigned ✅", color: Colors.green);
-                            } else {
-                              await _service.shareProject(
-                                projectId: _projectId!,
-                                contractorId: id,
-                              );
-                              _snack("Shared ✅", color: Colors.green);
-                            }
-                          } catch (e) {
-                            _snack("${assign ? "Assign" : "Share"} failed: $e");
-                          } finally {
-                            if (mounted) setState(() => _loading = false);
-                          }
-                        },
-                      );
-                    },
-                  ),
-                ),
-                const SizedBox(height: 10),
-              ],
-            ),
-          ),
-        );
-      },
-    );
   }
 
   Widget _sheetShell({required Widget child}) {
@@ -535,14 +363,9 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
     );
   }
 
-  // =============================
-  // UI
-  // =============================
-
   @override
   Widget build(BuildContext context) {
     final sc = widget.scrollController;
-
     return _sheetShell(
       child: SafeArea(
         top: false,
@@ -581,9 +404,7 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
                       margin: EdgeInsets.only(right: i == 4 ? 0 : 8),
                       height: 6,
                       decoration: BoxDecoration(
-                        color: active
-                            ? const Color(0xFF9EE7B7)
-                            : Colors.white10,
+                        color: active ? const Color(0xFF9EE7B7) : Colors.white10,
                         borderRadius: BorderRadius.circular(99),
                       ),
                     ),
@@ -629,57 +450,37 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
                 height: 22,
                 child: CircularProgressIndicator(strokeWidth: 2),
               )
-            : Text(
-                text,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
+            : Text(text,
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
       ),
     );
   }
 
-  Widget _buildSecondaryButton(String text, VoidCallback onPressed,
-      {IconData? icon}) {
+  Widget _buildSecondaryButton(String text, VoidCallback onPressed, {IconData? icon}) {
     return SizedBox(
       height: 48,
       child: OutlinedButton.icon(
         onPressed: _loading ? null : onPressed,
-        icon: Icon(icon ?? Icons.circle_outlined,
-            color: Colors.white70, size: 18),
+        icon: Icon(icon ?? Icons.circle_outlined, color: Colors.white70, size: 18),
         label: Text(text, style: const TextStyle(color: Colors.white)),
         style: OutlinedButton.styleFrom(
           side: BorderSide(color: Colors.white.withOpacity(0.2)),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         ),
       ),
     );
   }
 
-  // -----------------
-  // Steps UI builders
-  // -----------------
-
+  // Steps 1-4 are mostly unchanged (except calling logic)
   Widget _buildStepUpload() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Text(
-          "Step 1: Upload your floor plan",
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 16,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
+        const Text("Step 1: Upload your floor plan",
+            style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
         const SizedBox(height: 6),
-        const Text(
-          "Optional: If auto-analysis fails, you can enter details manually.",
-          style: TextStyle(color: Colors.white60, fontSize: 12),
-        ),
+        const Text("Optional: If auto-analysis fails, you can enter details manually.",
+            style: TextStyle(color: Colors.white60, fontSize: 12)),
         const SizedBox(height: 10),
         Container(
           padding: const EdgeInsets.all(14),
@@ -692,9 +493,7 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                _planFile == null
-                    ? "No file selected"
-                    : _planFile!.path.split(Platform.pathSeparator).last,
+                _planFile == null ? "No file selected" : _planFile!.path.split(Platform.pathSeparator).last,
                 style: const TextStyle(color: Colors.white70),
               ),
               const SizedBox(height: 10),
@@ -706,9 +505,7 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
                       style: OutlinedButton.styleFrom(
                         foregroundColor: Colors.white,
                         side: BorderSide(color: Colors.white.withOpacity(0.2)),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                       ),
                       child: const Text("Choose File"),
                     ),
@@ -728,47 +525,16 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Text(
-          "Step 2: Review & edit data",
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 16,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        const SizedBox(height: 6),
-        const Text(
-          "If auto-analysis is unavailable, fill these fields manually.",
-          style: TextStyle(color: Colors.white60, fontSize: 12),
-        ),
+        const Text("Step 2: Review & edit data",
+            style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
         const SizedBox(height: 12),
-        TextFormField(
-          controller: _areaCtrl,
-          style: const TextStyle(color: Colors.white),
-          keyboardType: TextInputType.number,
-          decoration: _dec("Area (m²) *"),
-        ),
+        TextFormField(controller: _areaCtrl, style: const TextStyle(color: Colors.white), keyboardType: TextInputType.number, decoration: _dec("Area (m²) *")),
         const SizedBox(height: 12),
-        TextFormField(
-          controller: _floorsCtrl,
-          style: const TextStyle(color: Colors.white),
-          keyboardType: TextInputType.number,
-          decoration: _dec("Floors *"),
-        ),
+        TextFormField(controller: _floorsCtrl, style: const TextStyle(color: Colors.white), keyboardType: TextInputType.number, decoration: _dec("Floors *")),
         const SizedBox(height: 12),
-        TextFormField(
-          controller: _roomsCtrl,
-          style: const TextStyle(color: Colors.white),
-          keyboardType: TextInputType.number,
-          decoration: _dec("Rooms (optional)"),
-        ),
+        TextFormField(controller: _roomsCtrl, style: const TextStyle(color: Colors.white), keyboardType: TextInputType.number, decoration: _dec("Rooms (optional)")),
         const SizedBox(height: 12),
-        TextFormField(
-          controller: _bathsCtrl,
-          style: const TextStyle(color: Colors.white),
-          keyboardType: TextInputType.number,
-          decoration: _dec("Bathrooms (optional)"),
-        ),
+        TextFormField(controller: _bathsCtrl, style: const TextStyle(color: Colors.white), keyboardType: TextInputType.number, decoration: _dec("Bathrooms (optional)")),
         const SizedBox(height: 16),
         Row(
           children: [
@@ -778,9 +544,7 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
                 style: OutlinedButton.styleFrom(
                   foregroundColor: Colors.white,
                   side: BorderSide(color: Colors.white.withOpacity(0.2)),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                 ),
                 child: const Text("Back"),
               ),
@@ -797,36 +561,14 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Text(
-          "Step 3: Project details",
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 16,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
+        const Text("Step 3: Project details",
+            style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
         const SizedBox(height: 12),
-        TextFormField(
-          controller: _titleCtrl,
-          style: const TextStyle(color: Colors.white),
-          decoration: _dec("Project Title *"),
-        ),
+        TextFormField(controller: _titleCtrl, style: const TextStyle(color: Colors.white), decoration: _dec("Project Title *")),
         const SizedBox(height: 12),
-        TextFormField(
-          controller: _descCtrl,
-          style: const TextStyle(color: Colors.white),
-          maxLines: 2,
-          decoration: _dec(
-            "Description (optional)",
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-          ),
-        ),
+        TextFormField(controller: _descCtrl, style: const TextStyle(color: Colors.white), maxLines: 2, decoration: _dec("Description (optional)", padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10))),
         const SizedBox(height: 12),
-        TextFormField(
-          controller: _locationCtrl,
-          style: const TextStyle(color: Colors.white),
-          decoration: _dec("Location"),
-        ),
+        TextFormField(controller: _locationCtrl, style: const TextStyle(color: Colors.white), decoration: _dec("Location")),
         const SizedBox(height: 12),
         DropdownButtonFormField<String>(
           initialValue: _buildingType,
@@ -841,20 +583,6 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
             DropdownMenuItem(value: "commercial", child: Text("Commercial")),
           ],
           onChanged: (v) => setState(() => _buildingType = v ?? "house"),
-        ),
-        const SizedBox(height: 12),
-        TextFormField(
-          controller: _areaCtrl,
-          readOnly: true,
-          style: const TextStyle(color: Colors.white),
-          decoration: _dec("Area (m²)"),
-        ),
-        const SizedBox(height: 12),
-        TextFormField(
-          controller: _floorsCtrl,
-          readOnly: true,
-          style: const TextStyle(color: Colors.white),
-          decoration: _dec("Floors"),
         ),
         const SizedBox(height: 12),
         DropdownButtonFormField<String>(
@@ -879,17 +607,13 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
                 style: OutlinedButton.styleFrom(
                   foregroundColor: Colors.white,
                   side: BorderSide(color: Colors.white.withOpacity(0.2)),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                 ),
                 child: const Text("Back"),
               ),
             ),
             const SizedBox(width: 10),
-            Expanded(
-              child: _buildPrimaryButton("Next", _createProjectThenLoadMaterials),
-            ),
+            Expanded(child: _buildPrimaryButton("Next", _createProjectThenLoadMaterials)),
           ],
         ),
       ],
@@ -900,42 +624,24 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Text(
-          "Step 4: Choose materials",
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 16,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        const SizedBox(height: 6),
-        const Text(
-          "Optional: you can skip any material and estimate will still work.",
-          style: TextStyle(color: Colors.white60, fontSize: 12),
-        ),
+        const Text("Step 4: Choose materials",
+            style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
         const SizedBox(height: 12),
         if (_materials.isEmpty) ...[
-          const Text("No materials found",
-              style: TextStyle(color: Colors.white60)),
+          const Text("No materials found", style: TextStyle(color: Colors.white60)),
           const SizedBox(height: 12),
           _buildPrimaryButton("Estimate (Skip)", _runEstimate),
         ] else
           ..._materials.map((m) {
-            final mat = (m is Map)
-                ? Map<String, dynamic>.from(m)
-                : <String, dynamic>{};
+            final mat = (m is Map) ? Map<String, dynamic>.from(m) : <String, dynamic>{};
             final id = mat["_id"]?.toString() ?? "";
             final name = mat["name"]?.toString() ?? "Material";
-            final variants = (mat["variants"] is List)
-                ? List.from(mat["variants"])
-                : <dynamic>[];
-
+            final variants = (mat["variants"] is List) ? List.from(mat["variants"]) : <dynamic>[];
             final fallbackVariants = [
               {"key": "basic", "label": "Basic"},
               {"key": "medium", "label": "Medium"},
               {"key": "premium", "label": "Premium"},
             ];
-
             final list = variants.isNotEmpty ? variants : fallbackVariants;
             final String? current = _selectedVariant[id];
 
@@ -950,15 +656,7 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
               child: Row(
                 children: [
                   Expanded(
-                    child: Text(
-                      name,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                    child: Text(name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700), maxLines: 2, overflow: TextOverflow.ellipsis),
                   ),
                   const SizedBox(width: 10),
                   Flexible(
@@ -966,28 +664,15 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
                     child: DropdownButtonFormField<String>(
                       initialValue: current,
                       isExpanded: true,
-                      decoration: _dec(
-                        "Type",
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 10,
-                        ),
-                      ),
+                      decoration: _dec("Type", padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10)),
                       dropdownColor: const Color(0xFF2F463D),
                       iconEnabledColor: Colors.white,
                       style: const TextStyle(color: Colors.white),
                       items: list.map((v) {
-                        final vm = (v is Map)
-                            ? Map<String, dynamic>.from(v)
-                            : <String, dynamic>{};
+                        final vm = (v is Map) ? Map<String, dynamic>.from(v) : <String, dynamic>{};
                         return DropdownMenuItem<String>(
                           value: vm["key"]?.toString(),
-                          child: Text(
-                            vm["label"]?.toString() ??
-                                vm["key"]?.toString() ??
-                                "",
-                            overflow: TextOverflow.ellipsis,
-                          ),
+                          child: Text(vm["label"]?.toString() ?? vm["key"]?.toString() ?? "", overflow: TextOverflow.ellipsis),
                         );
                       }).toList(),
                       onChanged: (v) {
@@ -996,17 +681,6 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
                       },
                     ),
                   ),
-                  if (current != null) ...[
-                    const SizedBox(width: 6),
-                    IconButton(
-                      tooltip: "Clear",
-                      onPressed: _loading
-                          ? null
-                          : () => setState(() => _selectedVariant.remove(id)),
-                      icon: const Icon(Icons.close,
-                          color: Colors.white70, size: 18),
-                    ),
-                  ],
                 ],
               ),
             );
@@ -1021,9 +695,7 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
                   style: OutlinedButton.styleFrom(
                     foregroundColor: Colors.white,
                     side: BorderSide(color: Colors.white.withOpacity(0.2)),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                   ),
                   child: const Text("Back"),
                 ),
@@ -1037,6 +709,9 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
     );
   }
 
+  // =============================
+  // 🔥 UPDATED: Step 5
+  // =============================
   Widget _buildStepEstimate() {
     final items = (_estimate?["items"] is List)
         ? List.from(_estimate?["items"])
@@ -1095,34 +770,52 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
               ],
             ),
           ),
-          const SizedBox(height: 14),
-          _buildSecondaryButton("Download details", _downloadEstimate,
+          const SizedBox(height: 24),
+
+          // ✅ زر التحميل
+          _buildSecondaryButton("Download Details (PDF/JSON)", _downloadEstimate,
               icon: Icons.download),
-          const SizedBox(height: 10),
-          _buildSecondaryButton("Save project", _saveProject,
-              icon: Icons.bookmark_add_outlined),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: _buildSecondaryButton(
-                  "Share",
-                  () => _openContractorPicker(assign: false),
-                  icon: Icons.share_outlined,
+
+          const SizedBox(height: 14),
+
+          // ✅ زر النشر العام (بدل الأزرار القديمة)
+          SizedBox(
+            height: 54,
+            child: ElevatedButton.icon(
+              onPressed: _loading ? null : _publishProject,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF9EE7B7),
+                foregroundColor: Colors.black,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(18),
                 ),
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _buildSecondaryButton(
-                  "Assign",
-                  () => _openContractorPicker(assign: true),
-                  icon: Icons.handshake_outlined,
-                ),
-              ),
-            ],
+              icon: _loading
+                  ? const SizedBox.shrink()
+                  : const Icon(Icons.public, size: 22),
+              label: _loading
+                  ? const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text(
+                      "Publish to All Contractors",
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+            ),
           ),
-          const SizedBox(height: 12),
-          _buildPrimaryButton("Finish", () => Navigator.pop(context, true)),
+          const SizedBox(height: 8),
+          const Center(
+            child: Text(
+              "Contractors will be able to see your project and send offers.",
+              style: TextStyle(color: Colors.white54, fontSize: 12),
+              textAlign: TextAlign.center,
+            ),
+          ),
         ],
       ],
     );

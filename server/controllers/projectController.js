@@ -24,25 +24,17 @@ function toDouble(v) {
   return n;
 }
 
-// ✅ make sure planAnalysis.rooms/bathrooms are NUMBERS (not list)
 function sanitizePlanAnalysis(planAnalysis) {
   if (!planAnalysis || typeof planAnalysis !== "object") return undefined;
-
   const a = { ...planAnalysis };
-
-  // totalArea
   if (a.totalArea !== undefined) {
     const d = toDouble(a.totalArea);
     if (d !== null) a.totalArea = d;
   }
-
-  // floors
   if (a.floors !== undefined) {
     const n = toInt(a.floors);
     if (n !== null) a.floors = n;
   }
-
-  // rooms
   if (Array.isArray(a.rooms)) {
     a.roomsDetails = a.rooms;
     a.rooms = a.rooms.length;
@@ -53,8 +45,6 @@ function sanitizePlanAnalysis(planAnalysis) {
     const n = toInt(a.rooms);
     if (n !== null) a.rooms = n;
   }
-
-  // bathrooms
   if (Array.isArray(a.bathrooms)) {
     a.bathroomsDetails = a.bathrooms;
     a.bathrooms = a.bathrooms.length;
@@ -65,13 +55,15 @@ function sanitizePlanAnalysis(planAnalysis) {
     const n = toInt(a.bathrooms);
     if (n !== null) a.bathrooms = n;
   }
-
   return a;
+}
+
+function getBaseUrl(req) {
+  return `${req.protocol}://${req.get("host")}`;
 }
 
 // =======================
 // ✅ قائمة المقاولين المتاحين (للـ client)
-// GET /api/contractors/available
 // =======================
 exports.getAvailableContractors = async (req, res) => {
   try {
@@ -81,7 +73,19 @@ exports.getAvailableContractors = async (req, res) => {
       isActive: true,
     }).select("_id name email phone profileImage");
 
-    return res.json(contractors);
+    const baseUrl = getBaseUrl(req);
+    const list = contractors.map((c) => {
+      const obj = c.toObject();
+      return {
+        ...obj,
+        profileImageUrl: obj.profileImage
+          ? (String(obj.profileImage).startsWith("http")
+              ? obj.profileImage
+              : `${baseUrl}${obj.profileImage}`)
+          : null,
+      };
+    });
+    return res.json(list);
   } catch (err) {
     console.error("getAvailableContractors error:", err);
     return res
@@ -91,8 +95,7 @@ exports.getAvailableContractors = async (req, res) => {
 };
 
 // =======================
-// إنشاء مشروع جديد (client)
-// POST /api/projects
+// إنشاء مشروع جديد
 // =======================
 exports.createProject = async (req, res) => {
   try {
@@ -111,38 +114,26 @@ exports.createProject = async (req, res) => {
       return res.status(400).json({ message: "Title is required" });
     }
 
-    // ✅ sanitize numbers
-    const areaNum =
-      area === null || area === undefined || area === "" ? null : Number(area);
-    const floorsNum =
-      floors === null || floors === undefined || floors === ""
-        ? null
-        : Number(floors);
+    const areaNum = area === null || area === undefined || area === "" ? null : Number(area);
+    const floorsNum = floors === null || floors === undefined || floors === "" ? null : Number(floors);
 
     if (areaNum !== null && (!Number.isFinite(areaNum) || areaNum <= 0)) {
       return res.status(400).json({ message: "Invalid area" });
     }
-
     if (floorsNum !== null && (!Number.isFinite(floorsNum) || floorsNum <= 0)) {
       return res.status(400).json({ message: "Invalid floors" });
     }
 
-    // ✅ normalize finishingLevel
     const level = String(finishingLevel || "basic").toLowerCase().trim();
     const allowedLevels = ["basic", "medium", "premium"];
     const safeLevel = allowedLevels.includes(level) ? level : "basic";
 
-    // ✅ normalize buildingType (Flutter: house/villa/apartment/commercial)
     const bt = String(buildingType || "apartment").toLowerCase().trim();
     const allowedTypes = ["apartment", "villa", "commercial", "house"];
     let safeBuildingType = allowedTypes.includes(bt) ? bt : "apartment";
-
-    // ✅ إذا DB/BOQ بدك تعتمد villa بدل house
     if (safeBuildingType === "house") safeBuildingType = "villa";
 
-    // ✅ sanitize planAnalysis (مهم عشان مشكلة rooms array)
-    const safePlanAnalysis =
-      typeof sanitizePlanAnalysis === "function"
+    const safePlanAnalysis = typeof sanitizePlanAnalysis === "function"
         ? sanitizePlanAnalysis(planAnalysis)
         : planAnalysis;
 
@@ -156,24 +147,10 @@ exports.createProject = async (req, res) => {
       finishingLevel: safeLevel,
       buildingType: safeBuildingType,
       planAnalysis: safePlanAnalysis,
+      status: "draft", // Start as draft until published
     });
 
     await project.save();
-
-    // ✅ Notify client: project created
-    try {
-      await Notification.create({
-        user: req.user._id,
-        userModel: "Client",
-        title: "Project created",
-        body: `Your project "${project.title}" was created successfully.`,
-        type: "project_created",
-        projectId: project._id,
-        read: false,
-      });
-    } catch (e) {
-      console.error("notification project_created failed:", e.message);
-    }
 
     return res.status(201).json({
       message: "Project created successfully",
@@ -183,11 +160,43 @@ exports.createProject = async (req, res) => {
     console.error("createProject error:", err);
     return res.status(500).json({ error: err.message });
   }
-  
 };
+
+// =======================
+// 🔥 NEW: Publish Project to All Contractors
+// PATCH /api/projects/:projectId/publish
+// =======================
+exports.publishProject = async (req, res) => {
+  try {
+    const { projectId } = req.params;
+
+    const project = await Project.findById(projectId);
+    if (!project) return res.status(404).json({ message: "Project not found" });
+
+    if (String(project.owner) !== String(req.user._id)) {
+      return res.status(403).json({ message: "Not owner of this project" });
+    }
+
+    // لجعله متاحاً للجميع: الحالة open والمصفوفة sharedWith فارغة
+    project.status = "open";
+    project.sharedWith = []; 
+    project.sharedWithModel = undefined; // reset
+    project.isSaved = true; // Ensure it's marked as saved
+
+    await project.save();
+
+    // اختياري: إرسال إشعار للمقاولين (يتطلب منطق إضافي لجلب جميع المقاولين وإرسال إشعارات لهم)
+    // حالياً نكتفي بجعل المشروع متاحاً في القائمة
+
+    return res.json({ message: "Project published to all contractors", project });
+  } catch (err) {
+    console.error("publishProject error:", err);
+    return res.status(500).json({ message: "Publish failed", error: err.message });
+  }
+};
+
 // =======================
 // Contractor - Available Projects
-// GET /api/projects/contractor/available
 // =======================
 exports.getAvailableProjectsForContractor = async (req, res) => {
   try {
@@ -197,9 +206,9 @@ exports.getAvailableProjectsForContractor = async (req, res) => {
       status: "open",
       contractor: null,
       $or: [
-        { sharedWith: contractorId },      // مشاريع مشاركة معه
-        { sharedWith: { $exists: false } },// أو مشاريع بدون sharedWith
-        { sharedWith: { $size: 0 } },      // أو sharedWith فاضي
+        { sharedWith: contractorId },
+        { sharedWith: { $exists: false } },
+        { sharedWith: { $size: 0 } }, // This picks up published projects
       ],
     })
       .populate("owner", "name email")
@@ -211,14 +220,13 @@ exports.getAvailableProjectsForContractor = async (req, res) => {
     return res.status(500).json({ message: "Server error" });
   }
 };
+
 // =======================
 // Contractor - My Projects
-// GET /api/projects/contractor/my
 // =======================
 exports.getMyProjectsForContractor = async (req, res) => {
   try {
     const contractorId = req.user._id;
-
     const projects = await Project.find({
       contractor: contractorId,
     })
@@ -234,7 +242,6 @@ exports.getMyProjectsForContractor = async (req, res) => {
 
 // =======================
 // مشاريعي (client)
-// GET /api/projects/my
 // =======================
 exports.getMyProjects = async (req, res) => {
   try {
@@ -251,8 +258,7 @@ exports.getMyProjects = async (req, res) => {
 };
 
 // =======================
-// المشاريع المفتوحة (للمقاولين)
-// GET /api/projects/open
+// المشاريع المفتوحة
 // =======================
 exports.getOpenProjects = async (req, res) => {
   try {
@@ -270,80 +276,22 @@ exports.getOpenProjects = async (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 };
-// =======================
-// Contractor - Available Projects
-// GET /api/projects/contractor/available
-// =======================
-exports.getAvailableProjectsForContractor = async (req, res) => {
-  try {
-    const contractorId = req.user._id;
-
-    const projects = await Project.find({
-      status: "open",
-      contractor: null,
-      $or: [
-        { sharedWith: contractorId },
-        { sharedWith: { $exists: false } },
-        { sharedWith: { $size: 0 } },
-      ],
-    })
-      .populate("owner", "name email")
-      .sort({ createdAt: -1 });
-
-    return res.json({ projects });
-  } catch (err) {
-    console.error("getAvailableProjectsForContractor error:", err);
-    return res.status(500).json({ message: "Server error" });
-  }
-};
-
-// =======================
-// Contractor - My Projects
-// GET /api/projects/contractor/my
-// =======================
-exports.getMyProjectsForContractor = async (req, res) => {
-  try {
-    const contractorId = req.user._id;
-
-    const projects = await Project.find({
-      contractor: contractorId,
-    })
-      .populate("owner", "name email")
-      .sort({ createdAt: -1 });
-
-    return res.json({ projects });
-  } catch (err) {
-    console.error("getMyProjectsForContractor error:", err);
-    return res.status(500).json({ message: "Server error" });
-  }
-};
 
 // =======================
 // مشروع معيّن
-// GET /api/projects/:projectId
-// =======================
-// =======================
-// مشروع معيّن
-// GET /api/projects/:projectId
 // =======================
 exports.getProjectById = async (req, res) => {
   try {
     const { projectId } = req.params;
-
-    // ✅ يمنع CastError
     if (!mongoose.Types.ObjectId.isValid(projectId)) {
       return res.status(404).json({ message: "Project not found" });
     }
-
     const project = await Project.findById(projectId)
       .populate("owner", "name email")
-      .populate("contractor", "name email")
-      .populate("offers.contractor", "name email");
+      .populate("contractor", "_id name email phone profileImage contractorStatus isActive")
+      .populate("offers.contractor", "_id name email phone profileImage");
 
-    if (!project) {
-      return res.status(404).json({ message: "Project not found" });
-    }
-
+    if (!project) return res.status(404).json({ message: "Project not found" });
     return res.json(project);
   } catch (err) {
     console.error("getProjectById error:", err);
@@ -352,34 +300,27 @@ exports.getProjectById = async (req, res) => {
 };
 
 // =======================
-// المقاول يقدّم عرض على مشروع
-// POST /api/projects/:projectId/offers
+// إنشاء عرض (Contractor)
 // =======================
 exports.createOffer = async (req, res) => {
   try {
     const { price, message } = req.body;
     const { projectId } = req.params;
 
-    if (!price) {
-      return res.status(400).json({ message: "Price is required" });
-    }
+    if (!price) return res.status(400).json({ message: "Price is required" });
 
     const project = await Project.findById(projectId);
     if (!project) return res.status(404).json({ message: "Project not found" });
 
     if (project.status !== "open") {
-      return res
-        .status(400)
-        .json({ message: "Offers are only allowed on open projects" });
+      return res.status(400).json({ message: "Offers are only allowed on open projects" });
     }
 
     const exists = project.offers.find(
       (o) => o.contractor.toString() === req.user._id.toString()
     );
     if (exists) {
-      return res
-        .status(400)
-        .json({ message: "You already submitted an offer for this project" });
+      return res.status(400).json({ message: "You already submitted an offer for this project" });
     }
 
     project.offers.push({
@@ -390,7 +331,6 @@ exports.createOffer = async (req, res) => {
 
     await project.save();
 
-    // ✅ Notify client (project owner): new offer
     try {
       await Notification.create({
         user: project.owner,
@@ -413,23 +353,19 @@ exports.createOffer = async (req, res) => {
 };
 
 // =======================
-// العميل يشوف العروض على مشروعه
-// GET /api/projects/:projectId/offers
+// جلب العروض
 // =======================
 exports.getProjectOffers = async (req, res) => {
   try {
     const { projectId } = req.params;
-
     const project = await Project.findById(projectId)
       .populate("offers.contractor", "name email phone")
       .populate("owner", "name email");
 
     if (!project) return res.status(404).json({ message: "Project not found" });
-
     if (project.owner._id.toString() !== req.user._id.toString()) {
       return res.status(403).json({ message: "Not owner of this project" });
     }
-
     return res.json(project.offers);
   } catch (err) {
     console.error("getProjectOffers error:", err);
@@ -438,8 +374,7 @@ exports.getProjectOffers = async (req, res) => {
 };
 
 // =======================
-// العميل يقبل عرض + إنشاء عقد
-// POST /api/projects/:projectId/offers/:offerId/accept
+// قبول العرض
 // =======================
 exports.acceptOffer = async (req, res) => {
   try {
@@ -447,7 +382,6 @@ exports.acceptOffer = async (req, res) => {
 
     const project = await Project.findById(projectId);
     if (!project) return res.status(404).json({ message: "Project not found" });
-
     if (project.owner.toString() !== req.user._id.toString()) {
       return res.status(403).json({ message: "Not owner of this project" });
     }
@@ -459,13 +393,11 @@ exports.acceptOffer = async (req, res) => {
     project.status = "in_progress";
 
     project.offers.forEach((o) => {
-      o.status =
-        o._id.toString() === offerId.toString() ? "accepted" : "rejected";
+      o.status = o._id.toString() === offerId.toString() ? "accepted" : "rejected";
     });
 
     await project.save();
 
-    // ✅ Notify contractor: offer accepted
     try {
       await Notification.create({
         user: offer.contractor,
@@ -490,7 +422,6 @@ exports.acceptOffer = async (req, res) => {
       startDate: new Date(),
     });
 
-    // ✅ Notify client: contract created (اختياري لكنه مفيد)
     try {
       await Notification.create({
         user: project.owner,
@@ -517,25 +448,19 @@ exports.acceptOffer = async (req, res) => {
 };
 
 // =======================
-// Analyze plan only
-// POST /api/projects/plan/analyze
+// Analyze Plan
 // =======================
 exports.analyzePlanOnly = async (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ message: "Plan file is required" });
-    }
+    if (!req.file) return res.status(400).json({ message: "Plan file is required" });
 
     const mime = req.file.mimetype || "";
     const name = (req.file.originalname || "").toLowerCase();
-    const isImage =
-      mime.startsWith("image/") ||
-      [".png", ".jpg", ".jpeg", ".webp"].some((e) => name.endsWith(e));
+    const isImage = mime.startsWith("image/") || [".png", ".jpg", ".jpeg", ".webp"].some((e) => name.endsWith(e));
 
     if (!isImage) {
       return res.status(400).json({
-        message:
-          "Vision analysis requires an IMAGE (png/jpg/webp). Convert PDF to image first.",
+        message: "Vision analysis requires an IMAGE (png/jpg/webp). Convert PDF to image first.",
         mimetype: mime,
       });
     }
@@ -545,12 +470,7 @@ exports.analyzePlanOnly = async (req, res) => {
       return res.json({ message: "Plan analyzed successfully", analysis });
     } catch (e) {
       console.error("Vision analyze error:", e);
-
-      const isRateLimit =
-        e?.status === 429 ||
-        e?.code === "rate_limit_exceeded" ||
-        e?.error?.code === "rate_limit_exceeded";
-
+      const isRateLimit = e?.status === 429 || e?.code === "rate_limit_exceeded" || e?.error?.code === "rate_limit_exceeded";
       if (isRateLimit) {
         return res.status(503).json({
           message: "AI is unavailable now. Fill details manually.",
@@ -558,7 +478,6 @@ exports.analyzePlanOnly = async (req, res) => {
           retryAfterSeconds: 20,
         });
       }
-
       return res.status(502).json({
         message: "Vision analysis failed",
         code: "VISION_FAILED",
@@ -572,28 +491,22 @@ exports.analyzePlanOnly = async (req, res) => {
 };
 
 // =======================
-// Estimate + save into project
-// POST /api/projects/:id/estimate
+// Estimate
 // =======================
 exports.estimateProject = async (req, res) => {
   try {
     const projectId = req.params.id || req.params.projectId;
-    const selections = Array.isArray(req.body.selections)
-      ? req.body.selections
-      : [];
+    const selections = Array.isArray(req.body.selections) ? req.body.selections : [];
 
     const project = await Project.findById(projectId);
     if (!project) return res.status(404).json({ message: "Project not found" });
 
-    if (!req.user?._id)
-      return res.status(401).json({ message: "Unauthorized" });
-
+    if (!req.user?._id) return res.status(401).json({ message: "Unauthorized" });
     if (String(project.owner) !== String(req.user._id)) {
       return res.status(403).json({ message: "Not owner of this project" });
     }
 
     const estimation = await generateBoqForProject(project, { selections });
-
     project.estimation = estimation;
     await project.save();
 
@@ -607,28 +520,22 @@ exports.estimateProject = async (req, res) => {
     });
   } catch (err) {
     console.error("estimateProject error:", err);
-    return res
-      .status(500)
-      .json({ message: "Estimate failed", error: err.message });
+    return res.status(500).json({ message: "Estimate failed", error: err.message });
   }
 };
 
 // =======================
-// Save project (isSaved = true)
-// POST /api/projects/:id/save
+// Save Project
 // =======================
 exports.saveProject = async (req, res) => {
   try {
     const project = await Project.findById(req.params.id);
     if (!project) return res.status(404).json({ message: "Project not found" });
-
     if (String(project.owner) !== String(req.user._id)) {
       return res.status(403).json({ message: "Not owner of this project" });
     }
-
     project.isSaved = true;
     await project.save();
-
     return res.json({ message: "Project saved", project });
   } catch (err) {
     console.error("saveProject error:", err);
@@ -637,75 +544,50 @@ exports.saveProject = async (req, res) => {
 };
 
 // =======================
-// Download estimate JSON
-// GET /api/projects/:id/estimate/download
+// Download
 // =======================
 exports.downloadEstimate = async (req, res) => {
   try {
     const project = await Project.findById(req.params.id);
     if (!project) return res.status(404).json({ message: "Project not found" });
-
     if (String(project.owner) !== String(req.user._id)) {
       return res.status(403).json({ message: "Not owner of this project" });
     }
 
-    const estimation =
-      project.estimation || { items: [], totalCost: 0, currency: "JOD" };
-
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="estimate-${project._id}.json"`
-    );
+    const estimation = project.estimation || { items: [], totalCost: 0, currency: "JOD" };
+    res.setHeader("Content-Disposition", `attachment; filename="estimate-${project._id}.json"`);
     return res.json(estimation);
   } catch (err) {
     console.error("downloadEstimate error:", err);
-    return res
-      .status(500)
-      .json({ message: "Download failed", error: err.message });
+    return res.status(500).json({ message: "Download failed", error: err.message });
   }
 };
 
 // =======================
-// Share project with contractor
-// POST /api/projects/:id/share  body:{ contractorId }
+// Share
 // =======================
 exports.shareProject = async (req, res) => {
   try {
     const { contractorId } = req.body;
-    if (!contractorId) {
-      return res.status(400).json({ message: "contractorId is required" });
-    }
+    if (!contractorId) return res.status(400).json({ message: "contractorId is required" });
 
     const project = await Project.findById(req.params.id);
     if (!project) return res.status(404).json({ message: "Project not found" });
-
     if (String(project.owner) !== String(req.user._id)) {
       return res.status(403).json({ message: "Not owner of this project" });
     }
 
-    // ✅ validate contractor exists + active
-    const contractor = await Contractor.findById(contractorId)
-      .select("name isActive role")
-      .lean();
-
-    if (!contractor || contractor.role !== "contractor") {
-      return res.status(404).json({ message: "Contractor not found" });
-    }
-    if (!contractor.isActive) {
-      return res.status(400).json({ message: "Contractor is not active" });
-    }
+    const contractor = await Contractor.findById(contractorId).select("name isActive role").lean();
+    if (!contractor || contractor.role !== "contractor") return res.status(404).json({ message: "Contractor not found" });
+    if (!contractor.isActive) return res.status(400).json({ message: "Contractor is not active" });
 
     project.sharedWithModel = "Contractor";
     project.sharedWith = project.sharedWith || [];
-
-    const exists = project.sharedWith.some(
-      (id) => String(id) === String(contractorId)
-    );
+    const exists = project.sharedWith.some((id) => String(id) === String(contractorId));
     if (!exists) project.sharedWith.push(contractorId);
 
     await project.save();
 
-    // ✅ Notify contractor: project shared
     try {
       await Notification.create({
         user: contractorId,
@@ -728,41 +610,27 @@ exports.shareProject = async (req, res) => {
 };
 
 // =======================
-// Assign contractor
-// POST /api/projects/:id/assign  body:{ contractorId }
+// Assign
 // =======================
 exports.assignContractor = async (req, res) => {
   try {
     const { contractorId } = req.body;
-    if (!contractorId) {
-      return res.status(400).json({ message: "contractorId is required" });
-    }
+    if (!contractorId) return res.status(400).json({ message: "contractorId is required" });
 
     const project = await Project.findById(req.params.id);
     if (!project) return res.status(404).json({ message: "Project not found" });
-
     if (String(project.owner) !== String(req.user._id)) {
       return res.status(403).json({ message: "Not owner of this project" });
     }
 
-    // ✅ validate contractor exists + active
-    const contractor = await Contractor.findById(contractorId)
-      .select("name isActive role")
-      .lean();
-
-    if (!contractor || contractor.role !== "contractor") {
-      return res.status(404).json({ message: "Contractor not found" });
-    }
-    if (!contractor.isActive) {
-      return res.status(400).json({ message: "Contractor is not active" });
-    }
+    const contractor = await Contractor.findById(contractorId).select("name isActive role").lean();
+    if (!contractor || contractor.role !== "contractor") return res.status(404).json({ message: "Contractor not found" });
+    if (!contractor.isActive) return res.status(400).json({ message: "Contractor is not active" });
 
     project.contractor = contractorId;
     project.status = "in_progress";
-
     await project.save();
 
-    // ✅ Notify contractor: assigned
     try {
       await Notification.create({
         user: contractorId,
@@ -781,99 +649,5 @@ exports.assignContractor = async (req, res) => {
   } catch (err) {
     console.error("assignContractor error:", err);
     return res.status(500).json({ message: "Assign failed", error: err.message });
-  }
-};
-
-// =======================
-// Upload plan + analyze + estimate
-// POST /api/projects/:projectId/plan/upload
-// =======================
-exports.uploadPlanAndEstimate = async (req, res) => {
-  try {
-    const { projectId } = req.params;
-    const selections = Array.isArray(req.body?.selections)
-      ? req.body.selections
-      : [];
-
-    const project = await Project.findById(projectId);
-    if (!project) return res.status(404).json({ message: "Project not found" });
-
-    if (!req.user?._id) return res.status(401).json({ message: "Unauthorized" });
-
-    if (String(project.owner) !== String(req.user._id)) {
-      return res.status(403).json({ message: "Not owner of this project" });
-    }
-
-    if (!req.file) {
-      return res.status(400).json({ message: "Plan file is required" });
-    }
-
-    project.planFile = req.file.path;
-
-    const mime = req.file.mimetype || "";
-    const name = (req.file.originalname || "").toLowerCase();
-    const isImage =
-      mime.startsWith("image/") ||
-      [".png", ".jpg", ".jpeg", ".webp"].some((e) => name.endsWith(e));
-
-    if (!isImage) {
-      return res.status(400).json({
-        message:
-          "Currently Vision analysis expects an IMAGE (png/jpg/webp). Convert PDF to image first.",
-        mimetype: mime,
-      });
-    }
-
-    let analysis = null;
-    try {
-      analysis = await analyzeFloorPlanImage(req.file.path);
-
-      project.planAnalysis = sanitizePlanAnalysis(analysis);
-
-      if (analysis?.totalArea && Number(analysis.totalArea) > 0) {
-        project.area = Number(analysis.totalArea);
-      }
-      if (analysis?.floors && Number(analysis.floors) > 0) {
-        project.floors = Number(analysis.floors);
-      }
-    } catch (e) {
-      console.error("Vision analyze error:", e);
-
-      const isRateLimit =
-        e?.status === 429 ||
-        e?.code === "rate_limit_exceeded" ||
-        e?.error?.code === "rate_limit_exceeded";
-
-      if (isRateLimit) {
-        await project.save();
-        return res.status(503).json({
-          message: "AI is unavailable now. Continue manually (area/floors).",
-          code: "AI_UNAVAILABLE",
-          planFileUrl: project.planFile,
-          projectId: project._id,
-        });
-      }
-
-      return res.status(502).json({
-        message: "Vision analysis failed",
-        code: "VISION_FAILED",
-        error: e?.message || "Unknown error",
-      });
-    }
-
-    const estimation = await generateBoqForProject(project, { selections });
-    project.estimation = estimation;
-
-    await project.save();
-
-    return res.json({
-      message: "Plan uploaded, estimate generated.",
-      planAnalysis: project.planAnalysis,
-      estimation: project.estimation,
-      planFileUrl: project.planFile,
-    });
-  } catch (err) {
-    console.error("uploadPlanAndEstimate error:", err);
-    return res.status(500).json({ error: err.message });
   }
 };
