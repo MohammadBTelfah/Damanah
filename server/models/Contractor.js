@@ -8,6 +8,8 @@ const contractorSchema = new mongoose.Schema(
 
     password: { type: String, required: true, minlength: 6 },
 
+    role: { type: String, enum: ["contractor"], default: "contractor" },
+
     profileImage: { type: String, default: null },
 
     phone: { type: String, required: true },
@@ -23,12 +25,17 @@ const contractorSchema = new mongoose.Schema(
 
     // وقت استخراج البيانات من الهوية
     identityExtractedAt: { type: Date, default: null },
+    // اقتراح OCR (لا يطغى على الرقم اليدوي)
+    nationalIdCandidate: { type: String, default: null },
+
+    // النص المستخرج من OCR (اختياري – للتشخيص)
+    identityRawText: { type: String, default: null },
 
     // حالة التحقق من الهوية من الأدمن
     identityStatus: {
       type: String,
-      enum: ["pending", "verified", "rejected"],
-      default: "pending",
+      enum: ["none", "pending", "verified", "rejected"],
+      default: "none",
     },
 
     // وثيقة المقاول المهنية (رخصة / سجل)

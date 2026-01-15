@@ -16,6 +16,12 @@ const adminSchema = new mongoose.Schema(
       minlength: 6,
     },
 
+    role: {
+      type: String,
+      enum: [ "admin"],
+      default: "admin",
+    },
+
     profileImage: {
       type: String,
       default: null,
@@ -37,6 +43,7 @@ const adminSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    
 
     // توكن تفعيل الإيميل (لو احتجته لاحقًا)
     emailVerificationToken: {

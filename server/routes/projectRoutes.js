@@ -3,24 +3,14 @@ const router = express.Router();
 const path = require("path");
 const multer = require("multer");
 
-const {
-  createProject,
-  getMyProjects,
-  getOpenProjects,
-  getProjectById,
-  createOffer,
-  getProjectOffers,
-  acceptOffer,
-  uploadPlanAndEstimate,
-} = require("../controllers/projectController");
-
+const projectController = require("../controllers/projectController");
 const {
   protect,
   clientOnly,
   contractorOnly,
 } = require("../middleware/authMiddleWare");
 
-// إعداد التخزين لملفات المخططات
+// ========= multer for plans =========
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, "uploads/plans/"),
   filename: (req, file, cb) =>
@@ -35,46 +25,96 @@ const storage = multer.diskStorage({
 
 const planUpload = multer({
   storage,
-  fileFilter: (req, file, cb) => {
-    const allowed = ["image/png", "image/jpeg", "application/pdf"];
-    if (allowed.includes(file.mimetype)) cb(null, true);
-    else cb(new Error("Invalid file type"), false);
-  },
+  limits: { fileSize: 10 * 1024 * 1024 },
 });
 
-// إنشاء مشروع جديد (client فقط)
-router.post("/", protect, clientOnly, createProject);
+// ================================
+// Project CRUD
+// ================================
 
-// مشاريعي (client)
-router.get("/my", protect, clientOnly, getMyProjects);
+// create project (client)
+router.post("/", protect, clientOnly, projectController.createProject);
 
-// المشاريع المفتوحة (contractor)
-router.get("/open", protect, contractorOnly, getOpenProjects);
+// my projects (client)
+router.get("/my", protect, clientOnly, projectController.getMyProjects);
 
-// مشروع معيّن
-router.get("/:projectId", protect, getProjectById);
+// open projects (contractor)
+router.get("/open", protect, contractorOnly, projectController.getOpenProjects);
 
-// المقاول يقدّم عرض
-router.post("/:projectId/offers", protect, contractorOnly, createOffer);
+// ✅ IMPORTANT: Contractors list for picker (MUST be before "/:projectId")
+router.get(
+  "/contractors/available",
+  protect,
+  clientOnly,
+  projectController.getAvailableContractors
+);
 
-// العميل يشوف العروض
-router.get("/:projectId/offers", protect, clientOnly, getProjectOffers);
+// get project by id
+router.get("/:projectId", protect, projectController.getProjectById);
 
-// العميل يقبل عرض معيّن
+// ================================
+// Offers
+// ================================
+
+// contractor create offer
+router.post(
+  "/:projectId/offers",
+  protect,
+  contractorOnly,
+  projectController.createOffer
+);
+
+// client get offers
+router.get(
+  "/:projectId/offers",
+  protect,
+  clientOnly,
+  projectController.getProjectOffers
+);
+
+// client accept offer
 router.patch(
   "/:projectId/offers/:offerId/accept",
   protect,
   clientOnly,
-  acceptOffer
+  projectController.acceptOffer
 );
 
-// رفع مخطط + Mock AI + BOQ
+// ================================
+// Plan analyze
+// ================================
 router.post(
-  "/:projectId/plan",
+  "/plan/analyze",
   protect,
   clientOnly,
   planUpload.single("planFile"),
-  uploadPlanAndEstimate
+  projectController.analyzePlanOnly
 );
+
+// ================================
+// Estimate
+// ================================
+router.post("/:id/estimate", protect, clientOnly, projectController.estimateProject);
+
+// ================================
+// Save / Download / Share / Assign
+// ================================
+
+// save project
+router.patch("/:id/save", protect, clientOnly, projectController.saveProject);
+
+// download estimate JSON
+router.get(
+  "/:id/estimate/download",
+  protect,
+  clientOnly,
+  projectController.downloadEstimate
+);
+
+// share with contractor
+router.post("/:id/share", protect, clientOnly, projectController.shareProject);
+
+// assign contractor
+router.patch("/:id/assign", protect, clientOnly, projectController.assignContractor);
 
 module.exports = router;

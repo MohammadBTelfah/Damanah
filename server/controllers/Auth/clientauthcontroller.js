@@ -20,6 +20,11 @@ function normalizePhone(phone) {
   return String(phone || "").trim();
 }
 
+// ✅ الأردن: 10 أرقام وغالباً يبدأ بـ 2
+function isJordanNationalId(id) {
+  return typeof id === "string" && /^2\d{9}$/.test(id.trim());
+}
+
 function signToken(userId) {
   return jwt.sign({ id: userId, role: "client" }, process.env.JWT_SECRET, {
     expiresIn: "30d",
@@ -59,8 +64,7 @@ async function sendVerificationEmailForClient(client) {
   client.emailVerificationExpires = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
   await client.save();
 
-  // ✅ تأكد المسار هذا يطابق صفحة verify عندك بالفرونت
-const verifyUrl = `${process.env.API_URL}/api/auth/client/verify-email/${emailToken}`;
+  const verifyUrl = `${process.env.API_URL}/api/auth/client/verify-email/${emailToken}`;
 
   await sendEmail({
     to: client.email,
@@ -83,7 +87,7 @@ const verifyUrl = `${process.env.API_URL}/api/auth/client/verify-email/${emailTo
   });
 }
 
-// ✅ NEW: inform user identity is pending admin review
+// ✅ identity is pending admin review
 async function sendIdentityPendingEmailForClient(client) {
   await sendEmail({
     to: client.email,
@@ -104,7 +108,7 @@ async function sendIdentityPendingEmailForClient(client) {
 
 exports.register = async (req, res) => {
   try {
-    let { name, email, phone, password } = req.body;
+    let { name, email, phone, password, nationalId: nationalIdInput } = req.body;
 
     // ✅ normalize
     name = String(name || "").trim();
@@ -139,35 +143,53 @@ exports.register = async (req, res) => {
 
     const hashed = await bcrypt.hash(password, 10);
 
+    // ✅ USER INPUT has priority (يدوي)
+    const manualNationalId =
+      typeof nationalIdInput === "string" && nationalIdInput.trim()
+        ? nationalIdInput.trim()
+        : null;
+
+    // ✅ validate manual national ID (اختياري لكنه مفيد)
+    if (manualNationalId && !isJordanNationalId(manualNationalId)) {
+      return res.status(400).json({ message: "Invalid national ID format" });
+    }
+
     // ================= OCR (optional) =================
-    let nationalId = null;
+    let nationalIdCandidate = null;
     let nationalIdConfidence = null;
+    let identityRawText = null;
     let identityExtractedAt = null;
 
     if (identityDocumentPath) {
       const ocrRes = await extractNationalIdFromIdentity(identityDocumentPath);
-      nationalId = ocrRes?.nationalId ?? null;
+      nationalIdCandidate = ocrRes?.nationalId ?? null;
       nationalIdConfidence = ocrRes?.confidence ?? null;
+      identityRawText = ocrRes?.rawText ?? null; // اختياري
       identityExtractedAt = new Date();
     }
 
-    // ✅ إذا رفع هوية: pending
-    // عدّل "none" إذا نظامك مختلف
+    // ✅ statuses
     const identityStatus = identityDocumentPath ? "pending" : "none";
 
     const client = await Client.create({
       name,
-      email: emailNorm, // ✅ store normalized
-      phone: phoneNorm, // ✅ store normalized
+      email: emailNorm,
+      phone: phoneNorm,
       password: hashed,
+
+      role: "client",
 
       profileImage: profileImagePath,
       identityDocument: identityDocumentPath,
 
-      nationalId,
-      nationalIdConfidence,
-      identityExtractedAt,
+      // ✅ IMPORTANT: لا تعتمد على OCR لتعبئة الرقم النهائي
+      nationalId: manualNationalId || null,
 
+      // ✅ OCR suggestion فقط
+      nationalIdCandidate,
+      nationalIdConfidence,
+      identityRawText,
+      identityExtractedAt,
       identityStatus,
 
       emailVerified: false,
@@ -180,7 +202,7 @@ exports.register = async (req, res) => {
     // ✅ send verification email
     await sendVerificationEmailForClient(client);
 
-    // ✅ if identity pending -> inform user
+    // ✅ identity pending email (only if identity uploaded)
     if (client.identityStatus === "pending") {
       await sendIdentityPendingEmailForClient(client);
     }
@@ -190,17 +212,25 @@ exports.register = async (req, res) => {
     return res.status(201).json({
       message: "Account created. Please check your email to verify your account.",
       token,
-      role: "client",
+      role: client.role,
       user: {
         id: client._id,
         name: client.name,
         email: client.email,
         phone: client.phone,
+
+        role: client.role,
+
         profileImage: client.profileImage,
         identityDocument: client.identityDocument,
+
         emailVerified: client.emailVerified,
         identityStatus: client.identityStatus,
         isActive: client.isActive,
+
+        nationalId: client.nationalId,
+        nationalIdCandidate: client.nationalIdCandidate,
+        nationalIdConfidence: client.nationalIdConfidence,
       },
     });
   } catch (err) {
@@ -231,7 +261,7 @@ exports.verifyEmail = async (req, res) => {
     client.emailVerificationToken = null;
     client.emailVerificationExpires = null;
 
-    // ✅ activate after email verification
+    // ✅ activate after email verification (حسب نظامك)
     client.isActive = true;
 
     await client.save();
@@ -291,14 +321,6 @@ exports.login = async (req, res) => {
       });
     }
 
-    // ✅ إذا بدك تمنع الدخول لما الهوية pending (اختياري)
-    // if (client.identityStatus === "pending") {
-    //   return res.status(403).json({
-    //     message: "Your identity is pending admin review. Please wait.",
-    //     code: "IDENTITY_PENDING",
-    //   });
-    // }
-
     const token = signToken(client._id);
 
     return res.json({
@@ -322,6 +344,7 @@ exports.login = async (req, res) => {
         identityStatus: client.identityStatus,
 
         nationalId: client.nationalId,
+        nationalIdCandidate: client.nationalIdCandidate,
         nationalIdConfidence: client.nationalIdConfidence,
         identityExtractedAt: client.identityExtractedAt,
       },

@@ -18,26 +18,15 @@ const contractorAccountRoutes = require("./routes/contractor/accountRoutes");
 const clientAccountRoutes = require("./routes/client/accountRoutes");
 const adminAccountRoutes = require("./routes/admin/accountRoutes");
 const healthRoutes = require("./routes/healthRoutes");
-
+const materialRoutes = require("./routes/materialRoutes");
 
 // Middlewares
 app.use(cors());
 app.use(express.json());
 
-
 // 🔥 مهم جداً: عرض ملفّات الرفع
 
 const UPLOADS_DIR = path.join(__dirname, "uploads");
-const PROFILES_DIR = path.join(UPLOADS_DIR, "profiles");
-
-console.log("✅ USING THIS INDEX.JS FILE");
-console.log("✅ UPLOADS_DIR =>", UPLOADS_DIR);
-console.log("✅ PROFILES_DIR =>", PROFILES_DIR);
-console.log("✅ PROFILES_DIR EXISTS =>", fs.existsSync(PROFILES_DIR));
-
-if (fs.existsSync(PROFILES_DIR)) {
-  console.log("✅ PROFILES SAMPLE =>", fs.readdirSync(PROFILES_DIR).slice(0, 5));
-}
 
 app.use("/uploads", express.static(UPLOADS_DIR));
 
@@ -45,7 +34,6 @@ app.use("/uploads", express.static(UPLOADS_DIR));
 app.get("/", (req, res) => {
   res.json({ message: "Damanah API is running 🚀" });
 });
-
 
 // API routes
 
@@ -62,6 +50,7 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/projects", projectRoutes);
 app.use("/api/contractor/account", contractorAccountRoutes);
 app.use("/api/client/account", clientAccountRoutes);
+app.use("/api/materials", materialRoutes);
 
 // MongoDB connection
 const PORT = process.env.PORT || 5000;
@@ -71,8 +60,10 @@ mongoose
   .connect(MONGO_URI)
   .then(() => {
     console.log("✅ MongoDB Connected");
-    app.listen(PORT, () => {
-      console.log(`🚀 Server running on port ${PORT}`);
+    const HOST = "0.0.0.0";
+
+    app.listen(PORT, HOST, () => {
+      console.log(`🚀 Server running on http://${HOST}:${PORT}`);
     });
   })
   .catch((err) => {

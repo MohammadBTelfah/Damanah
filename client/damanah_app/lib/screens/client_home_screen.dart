@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/session_service.dart';
 import 'app_drawer.dart';
-
+import 'create_project_flow.dart'; // ✅ جديد
 
 String _joinUrl(String base, String path) {
   final b = base.endsWith('/') ? base.substring(0, base.length - 1) : base;
@@ -69,10 +69,9 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
     final profileImage = user?["profileImage"];
 
     final String? profileUrl =
-    (profileImage != null && profileImage.toString().trim().isNotEmpty)
+        (profileImage != null && profileImage.toString().trim().isNotEmpty)
         ? _joinUrl(widget.baseUrl, profileImage.toString().trim())
         : null;
-
 
     return Scaffold(
       key: _scaffoldKey,
@@ -119,8 +118,9 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                       child: CircleAvatar(
                         radius: 18,
                         backgroundColor: Colors.white12,
-                        backgroundImage:
-                            profileUrl != null ? NetworkImage(profileUrl) : null,
+                        backgroundImage: profileUrl != null
+                            ? NetworkImage(profileUrl)
+                            : null,
                         child: profileUrl == null
                             ? const Icon(Icons.person, color: Colors.white)
                             : null,
@@ -142,8 +142,10 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                       onPressed: () {
                         // TODO: افتح settings screen
                       },
-                      icon: const Icon(Icons.settings_outlined,
-                          color: Colors.white),
+                      icon: const Icon(
+                        Icons.settings_outlined,
+                        color: Colors.white,
+                      ),
                     ),
                   ],
                 ),
@@ -178,10 +180,37 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                   icon: Icons.add,
                   title: "New Project",
                   subtitle: "Start a new project",
-                  onTap: () {
-                    // TODO: navigation
+                  onTap: () async {
+                    final done = await showModalBottomSheet<bool>(
+                      context: context,
+                      isScrollControlled: true,
+                      backgroundColor: Colors.transparent,
+                      builder: (context) {
+                        return DraggableScrollableSheet(
+                          initialChildSize: 0.92,
+                          minChildSize: 0.7,
+                          maxChildSize: 0.98,
+                          builder: (context, scrollController) {
+                            return CreateProjectFlow(
+                              scrollController: scrollController,
+                            );
+                          },
+                        );
+                      },
+                    );
+
+                    if (done == true) {
+                      if (!mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text("Project created successfully"),
+                          backgroundColor: Colors.green,
+                        ),
+                      );
+                    }
                   },
                 ),
+
                 const SizedBox(height: 12),
                 _ActionTile(
                   icon: Icons.list_alt_outlined,
@@ -420,13 +449,18 @@ class _ProjectOfferCard extends StatelessWidget {
                           imageUrl!,
                           fit: BoxFit.cover,
                           errorBuilder: (_, __, ___) => const Center(
-                            child: Icon(Icons.image_not_supported_outlined,
-                                color: Colors.white54),
+                            child: Icon(
+                              Icons.image_not_supported_outlined,
+                              color: Colors.white54,
+                            ),
                           ),
                         )
                       : const Center(
-                          child: Icon(Icons.kitchen_outlined,
-                              color: Colors.white, size: 28),
+                          child: Icon(
+                            Icons.kitchen_outlined,
+                            color: Colors.white,
+                            size: 28,
+                          ),
                         ),
                 ),
               ),
@@ -483,8 +517,10 @@ class _CommunityCard extends StatelessWidget {
                     height: 105,
                     color: Colors.white10,
                     child: const Center(
-                      child: Icon(Icons.image_not_supported_outlined,
-                          color: Colors.white54),
+                      child: Icon(
+                        Icons.image_not_supported_outlined,
+                        color: Colors.white54,
+                      ),
                     ),
                   ),
                 ),
