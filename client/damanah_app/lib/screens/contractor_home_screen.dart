@@ -4,6 +4,9 @@ import '../services/session_service.dart';
 import '../services/project_service.dart';
 import 'app_drawer.dart';
 
+import 'package:url_launcher/url_launcher.dart';
+import '../services/jcca_news_service.dart';
+
 String _joinUrl(String base, String path) {
   final b = base.endsWith('/') ? base.substring(0, base.length - 1) : base;
   final p = path.startsWith('/') ? path.substring(1) : path;
@@ -30,6 +33,10 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final ProjectService _projectService = ProjectService();
 
+  // ===== JCCA News =====
+  final JccaNewsService _newsService = JccaNewsService();
+  Future<List<Map<String, dynamic>>>? _newsFuture;
+
   Map<String, dynamic>? _userLocal;
 
   Future<List<dynamic>>? _availableFuture;
@@ -39,6 +46,7 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
   void initState() {
     super.initState();
     _syncUserAndLoad();
+    _newsFuture = _newsService.fetchNews(limit: 5);
   }
 
   @override
@@ -57,7 +65,6 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
 
     final role = (u?["role"] ?? "").toString().toLowerCase().trim();
     if (role != "contractor") {
-      // لو دخل غلط، خلّيها فاضية
       setState(() {
         _availableFuture = Future.value([]);
         _myFuture = Future.value([]);
@@ -74,6 +81,16 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
   Future<void> _refreshAll() async {
     await widget.onRefreshUser();
     await _syncUserAndLoad();
+
+    setState(() {
+      _newsFuture = _newsService.fetchNews(limit: 5);
+    });
+  }
+
+  Future<void> _openUrl(String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null) return;
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
   @override
@@ -81,18 +98,19 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
     const bgTop = Color(0xFF0F261F);
     const bgBottom = Color(0xFF0B1D17);
     const primary = Color(0xFF8BE3B5);
+    const card = Color(0xFF1B3A35);
 
     final user = _userLocal;
     final name = (user?["name"] ?? "Contractor").toString();
 
-    final profilePath = (user?["profileImage"] ?? user?["avatar"] ?? "").toString();
-    final profileUrl = profilePath.isNotEmpty ? _joinUrl(widget.baseUrl, profilePath) : null;
+    final profilePath =
+        (user?["profileImage"] ?? user?["avatar"] ?? "").toString();
+    final profileUrl =
+        profilePath.isNotEmpty ? _joinUrl(widget.baseUrl, profilePath) : null;
 
     return Scaffold(
       key: _scaffoldKey,
       backgroundColor: bgTop,
-
-      // ✅ Drawer نفس العميل
       drawer: user == null
           ? null
           : AppDrawer(
@@ -103,7 +121,6 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
                 await _syncUserAndLoad();
               },
             ),
-
       body: SafeArea(
         child: Container(
           decoration: const BoxDecoration(
@@ -118,7 +135,7 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
               children: [
-                // ===== Top Bar (مثل صفحة العميل) =====
+                // ===== Top Bar =====
                 Row(
                   children: [
                     GestureDetector(
@@ -129,7 +146,8 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
                       child: CircleAvatar(
                         radius: 18,
                         backgroundColor: Colors.white12,
-                        backgroundImage: profileUrl != null ? NetworkImage(profileUrl) : null,
+                        backgroundImage:
+                            profileUrl != null ? NetworkImage(profileUrl) : null,
                         child: profileUrl == null
                             ? const Icon(Icons.person, color: Colors.white)
                             : null,
@@ -148,8 +166,11 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
                       ),
                     ),
                     IconButton(
-                      onPressed: () {},
-                      icon: const Icon(Icons.notifications_none, color: Colors.white),
+                      onPressed: () {
+                        // TODO: notifications page if you want
+                      },
+                      icon: const Icon(Icons.notifications_none,
+                          color: Colors.white),
                     ),
                   ],
                 ),
@@ -157,7 +178,7 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
                 const SizedBox(height: 18),
 
                 Text(
-                  "Welcome back, $name",
+                  "Welcome back,\n$name",
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 28,
@@ -187,7 +208,8 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
                           dividerColor: Colors.transparent,
                           indicator: BoxDecoration(
                             color: primary,
-                            borderRadius: BorderRadius.all(Radius.circular(12)),
+                            borderRadius:
+                                BorderRadius.all(Radius.circular(12)),
                           ),
                           tabs: [
                             Tab(text: "Available Projects"),
@@ -196,7 +218,7 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
                         ),
                         const SizedBox(height: 10),
                         SizedBox(
-                          height: 520, // مساحة للقائمة
+                          height: 520,
                           child: TabBarView(
                             children: [
                               _ProjectsList(
@@ -205,13 +227,139 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
                               ),
                               _ProjectsList(
                                 future: _myFuture,
-                                emptyText: "You don't have assigned projects yet.",
+                                emptyText:
+                                    "You don't have assigned projects yet.",
                               ),
                             ],
                           ),
                         ),
                       ],
                     ),
+                  ),
+                ),
+
+                const SizedBox(height: 18),
+
+                // ===== Latest JCCA News (BIG CARDS + RTL + HORIZONTAL) =====
+                const Text(
+                  "Latest JCCA News",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                SizedBox(
+                  height: 150,
+                  child: FutureBuilder<List<Map<String, dynamic>>>(
+                    future: _newsFuture,
+                    builder: (context, snap) {
+                      if (snap.connectionState == ConnectionState.waiting) {
+                        return const Center(
+                          child: Text(
+                            "Loading news...",
+                            style: TextStyle(color: Colors.white70),
+                          ),
+                        );
+                      }
+
+                      if (snap.hasError) {
+                        return const Center(
+                          child: Text(
+                            "Couldn't load news.",
+                            style: TextStyle(color: Colors.white70),
+                          ),
+                        );
+                      }
+
+                      final items = snap.data ?? [];
+                      if (items.isEmpty) {
+                        return const Center(
+                          child: Text(
+                            "No news available.",
+                            style: TextStyle(color: Colors.white70),
+                          ),
+                        );
+                      }
+
+                      return Directionality(
+                        textDirection: TextDirection.rtl, // ✅ من اليمين
+                        child: ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          itemCount: items.length,
+                          separatorBuilder: (_, __) => const SizedBox(width: 12),
+                          itemBuilder: (context, i) {
+                            final n = items[i];
+                            final rawTitle =
+                                (n["title"] ?? "").toString().trim();
+                            final title = rawTitle.isNotEmpty
+                                ? rawTitle
+                                : "خبر جديد من نقابة المقاولين";
+                            final link = (n["link"] ?? "").toString();
+
+                            return InkWell(
+                              onTap: () => _openUrl(link),
+                              child: Container(
+                                width: 260,
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: card,
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(color: Colors.white12),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(10),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white10,
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: const Icon(
+                                        Icons.newspaper,
+                                        color: Colors.white,
+                                        size: 22,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 14),
+                                    Text(
+                                      title,
+                                      maxLines: 3,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w700,
+                                        height: 1.3,
+                                      ),
+                                    ),
+                                    const Spacer(),
+                                    Row(
+                                      children: const [
+                                        Icon(Icons.open_in_new,
+                                            color: Colors.white54, size: 16),
+                                        SizedBox(width: 6),
+                                        Text(
+                                          "Read more",
+                                          style: TextStyle(
+                                            color: Colors.white54,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      );
+                    },
                   ),
                 ),
               ],
@@ -260,7 +408,8 @@ class _ProjectsList extends StatelessWidget {
         final items = snap.data ?? [];
         if (items.isEmpty) {
           return Center(
-            child: Text(emptyText, style: const TextStyle(color: Colors.white70)),
+            child: Text(emptyText,
+                style: const TextStyle(color: Colors.white70)),
           );
         }
 
@@ -298,7 +447,8 @@ class _ProjectsList extends StatelessWidget {
                     Text(location, style: const TextStyle(color: Colors.white70)),
                   if (status.isNotEmpty) ...[
                     const SizedBox(height: 6),
-                    Text("Status: $status", style: const TextStyle(color: Colors.white60)),
+                    Text("Status: $status",
+                        style: const TextStyle(color: Colors.white60)),
                   ],
                   const SizedBox(height: 10),
                   Align(
