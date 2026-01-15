@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../services/session_service.dart';
+import '../config/api_config.dart'; // ✅ ADD THIS
 
 import 'client_home_screen.dart';
 import 'profile_screen.dart';
+import 'contractor_home_screen.dart';
 
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
@@ -16,7 +18,8 @@ class _MainShellState extends State<MainShell> {
   int _index = 0;
   Map<String, dynamic>? _user;
 
-  static const String baseUrl = "http://10.0.2.2:5000";
+  // ✅ FIX: استخدم الرابط الحقيقي
+  String get baseUrl => ApiConfig.baseUrl;
 
   @override
   void initState() {
@@ -36,27 +39,30 @@ class _MainShellState extends State<MainShell> {
 
   @override
   Widget build(BuildContext context) {
+    final role = (_user?["role"] ?? "client").toString().toLowerCase().trim();
+
+    final home = role == "contractor"
+        ? ContractorHomeScreen(
+            user: _user,
+            baseUrl: baseUrl, // ✅ now real url
+            onRefreshUser: _loadUser,
+          )
+        : ClientHomeScreen(
+            user: _user,
+            baseUrl: baseUrl, // ✅ now real url
+            onRefreshUser: _loadUser,
+            onOpenProfile: _goToProfileTab,
+          );
+
     final pages = <Widget>[
-      // HOME
-      ClientHomeScreen(
-        user: _user,
-        baseUrl: baseUrl,
-        onRefreshUser: _loadUser,
-        onOpenProfile: _goToProfileTab, // ✅ بدل push
-      ),
-
-      // PROJECTS
+      home,
       const _Placeholder(title: "Projects"),
-
-      // MESSAGES
       const _Placeholder(title: "Messages"),
-
-      // PROFILE (داخل التاب)
       if (_user != null)
         ProfileScreen(
           user: _user!,
-          baseUrl: baseUrl,
-          isRoot: true, // ✅ مهم عشان ما يعمل pop ويضل البار ثابت
+          baseUrl: baseUrl, // ✅ now real url
+          isRoot: true,
           onRefreshUser: _loadUser,
         )
       else
@@ -66,8 +72,6 @@ class _MainShellState extends State<MainShell> {
     return Scaffold(
       backgroundColor: const Color(0xFF0F261F),
       body: IndexedStack(index: _index, children: pages),
-
-      // ✅ ثابت بكل الصفحات
       bottomNavigationBar: Theme(
         data: Theme.of(context).copyWith(
           splashFactory: NoSplash.splashFactory,
@@ -81,22 +85,10 @@ class _MainShellState extends State<MainShell> {
           currentIndex: _index,
           onTap: (i) => setState(() => _index = i),
           items: const [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.home_filled),
-              label: "Home",
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.list_alt_outlined),
-              label: "Projects",
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.chat_bubble_outline),
-              label: "Messages",
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.person_outline),
-              label: "Profile",
-            ),
+            BottomNavigationBarItem(icon: Icon(Icons.home_filled), label: "Home"),
+            BottomNavigationBarItem(icon: Icon(Icons.list_alt_outlined), label: "Projects"),
+            BottomNavigationBarItem(icon: Icon(Icons.chat_bubble_outline), label: "Messages"),
+            BottomNavigationBarItem(icon: Icon(Icons.person_outline), label: "Profile"),
           ],
         ),
       ),
@@ -110,9 +102,7 @@ class _LoadingPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const SafeArea(
-      child: Center(
-        child: CircularProgressIndicator(),
-      ),
+      child: Center(child: CircularProgressIndicator()),
     );
   }
 }

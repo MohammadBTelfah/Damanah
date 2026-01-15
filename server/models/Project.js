@@ -5,13 +5,13 @@ const projectSchema = new mongoose.Schema(
   {
     owner: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Client", // ✅ بما إن صاحب المشروع عميل
+      ref: "Client",
       required: true,
     },
 
     contractor: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Contractor", // ✅ المقاول المختار
+      ref: "Contractor",
       default: null,
     },
 
@@ -25,14 +25,20 @@ const projectSchema = new mongoose.Schema(
 
     buildingType: {
       type: String,
+      // تأكدنا أن الـ controller يحول house لـ villa، فهذا الـ enum صحيح
       enum: ["apartment", "villa", "commercial"],
       default: "apartment",
     },
 
+    // ============================================
+    // 🔥 التعديل تم هنا (Added 'draft')
+    // ============================================
     status: {
       type: String,
-      enum: ["open", "in_progress", "completed", "cancelled"],
-      default: "open",
+      // 1. أضفنا "draft" للقائمة
+      enum: ["draft", "open", "in_progress", "completed", "cancelled"],
+      // 2. جعلنا الحالة الافتراضية "draft"
+      default: "draft",
     },
 
     planFile: { type: String, default: null },
@@ -52,8 +58,6 @@ const projectSchema = new mongoose.Schema(
           unit: String,
           pricePerUnit: Number,
           total: Number,
-
-          // ✅ optional: عشان تربط الاختيار بالمادة والـ variant
           materialId: String,
           variantKey: String,
         },
@@ -63,19 +67,17 @@ const projectSchema = new mongoose.Schema(
       finishingLevel: { type: String, default: "basic" },
     },
 
-    // ✅ زر "Save project"
     isSaved: { type: Boolean, default: false },
 
-    // ✅ مشاركة المشروع
     sharedWith: [
       {
         type: mongoose.Schema.Types.ObjectId,
-        refPath: "sharedWithModel", // ✅ ديناميكي
+        refPath: "sharedWithModel",
       },
     ],
     sharedWithModel: {
       type: String,
-      enum: ["Contractor"], // ✅ حاليا فقط مقاولين
+      enum: ["Contractor"],
       default: "Contractor",
     },
 
@@ -83,7 +85,7 @@ const projectSchema = new mongoose.Schema(
       {
         contractor: {
           type: mongoose.Schema.Types.ObjectId,
-          ref: "Contractor", // ✅ عندك Contractor موديل
+          ref: "Contractor",
           required: true,
         },
         price: { type: Number, required: true },

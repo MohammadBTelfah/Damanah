@@ -39,6 +39,43 @@ class _ContractorsPageState extends State<ContractorsPage> {
     }
   }
 
+  // ====================== URL helpers (for images) ======================
+
+  String _baseUrlFromService() {
+    // يعتمد إن ProjectService عندك فيه baseUrl
+    try {
+      final dynamic s = _service;
+      final v = s.baseUrl;
+      if (v is String) return v;
+    } catch (_) {}
+    return "";
+  }
+
+  String _joinUrl(String base, String path) {
+    final b = base.endsWith('/') ? base.substring(0, base.length - 1) : base;
+    final p = path.startsWith('/') ? path.substring(1) : path;
+    return "$b/$p";
+  }
+
+  String _toAbsoluteUrl(String maybeUrlOrPath) {
+    final v = maybeUrlOrPath.trim();
+    if (v.isEmpty) return "";
+
+    // already absolute
+    if (v.startsWith("http://") || v.startsWith("https://")) return v;
+
+    // server path like /uploads/...
+    if (v.startsWith("/")) {
+      final base = _baseUrlFromService();
+      if (base.isEmpty) return v; // ما قدرنا نطلع baseUrl
+      return _joinUrl(base, v);
+    }
+
+    return v;
+  }
+
+  // ====================== UI ======================
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -57,22 +94,22 @@ class _ContractorsPageState extends State<ContractorsPage> {
         child: _loading
             ? const Center(child: CircularProgressIndicator())
             : _error != null
-                ? _errorView()
-                : _contractors.isEmpty
-                    ? _emptyView()
-                    : ListView.separated(
-                        padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-                        itemCount: _contractors.length,
-                        separatorBuilder: (_, __) =>
-                            Divider(color: Colors.white.withOpacity(0.06)),
-                        itemBuilder: (context, i) {
-                          final c = (_contractors[i] is Map)
-                              ? Map<String, dynamic>.from(_contractors[i])
-                              : <String, dynamic>{};
+            ? _errorView()
+            : _contractors.isEmpty
+            ? _emptyView()
+            : ListView.separated(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+                itemCount: _contractors.length,
+                separatorBuilder: (_, __) =>
+                    Divider(color: Colors.white.withOpacity(0.06)),
+                itemBuilder: (context, i) {
+                  final c = (_contractors[i] is Map)
+                      ? Map<String, dynamic>.from(_contractors[i])
+                      : <String, dynamic>{};
 
-                          return _contractorCard(c);
-                        },
-                      ),
+                  return _contractorCard(c);
+                },
+              ),
       ),
     );
   }
@@ -87,11 +124,12 @@ class _ContractorsPageState extends State<ContractorsPage> {
         c["specialty"]?.toString() ?? c["type"]?.toString() ?? "General";
     final available = c["available"] == true;
 
+    final imgRaw = (c["profileImageUrl"] ?? c["profileImage"] ?? "").toString();
+    final img = _toAbsoluteUrl(imgRaw);
+
     void openDetails() {
       Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => ContractorDetailsPage(contractor: c),
-        ),
+        MaterialPageRoute(builder: (_) => ContractorDetailsPage(contractor: c)),
       );
     }
 
@@ -107,6 +145,7 @@ class _ContractorsPageState extends State<ContractorsPage> {
         ),
         child: Row(
           children: [
+            // ===== Avatar (Image) =====
             Container(
               width: 42,
               height: 42,
@@ -114,10 +153,19 @@ class _ContractorsPageState extends State<ContractorsPage> {
                 color: Colors.white.withOpacity(0.06),
                 borderRadius: BorderRadius.circular(14),
               ),
-              child:
-                  const Icon(Icons.groups_outlined, color: Colors.white70),
+              clipBehavior: Clip.antiAlias,
+              child: img.isNotEmpty
+                  ? Image.network(
+                      img,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) =>
+                          const Icon(Icons.person, color: Colors.white70),
+                    )
+                  : const Icon(Icons.person, color: Colors.white70),
             ),
+
             const SizedBox(width: 12),
+
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -134,23 +182,15 @@ class _ContractorsPageState extends State<ContractorsPage> {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    [
-                      if (city.isNotEmpty) city,
-                      specialty,
-                    ].join(" • "),
-                    style: const TextStyle(
-                      color: Colors.white60,
-                      fontSize: 12,
-                    ),
+                    [if (city.isNotEmpty) city, specialty].join(" • "),
+                    style: const TextStyle(color: Colors.white60, fontSize: 12),
                   ),
                   const SizedBox(height: 8),
                   Row(
                     children: [
                       _chip(
                         available ? "available" : "busy",
-                        available
-                            ? Colors.greenAccent
-                            : Colors.orangeAccent,
+                        available ? Colors.greenAccent : Colors.orangeAccent,
                       ),
                       const SizedBox(width: 10),
 
@@ -172,7 +212,8 @@ class _ContractorsPageState extends State<ContractorsPage> {
                             InkWell(
                               borderRadius: BorderRadius.circular(10),
                               onTap: () async {
-                                if (phone.trim().isEmpty || phone == "-") return;
+                                if (phone.trim().isEmpty || phone == "-")
+                                  return;
                                 await Clipboard.setData(
                                   ClipboardData(text: phone),
                                 );
@@ -204,8 +245,7 @@ class _ContractorsPageState extends State<ContractorsPage> {
             const SizedBox(width: 8),
             IconButton(
               onPressed: openDetails,
-              icon: const Icon(Icons.chevron_right,
-                  color: Colors.white70),
+              icon: const Icon(Icons.chevron_right, color: Colors.white70),
             ),
           ],
         ),
@@ -238,8 +278,11 @@ class _ContractorsPageState extends State<ContractorsPage> {
     return ListView(
       children: [
         const SizedBox(height: 70),
-        Icon(Icons.error_outline,
-            size: 48, color: Colors.white.withOpacity(0.7)),
+        Icon(
+          Icons.error_outline,
+          size: 48,
+          color: Colors.white.withOpacity(0.7),
+        ),
         const SizedBox(height: 12),
         Center(
           child: Text(
@@ -256,8 +299,7 @@ class _ContractorsPageState extends State<ContractorsPage> {
     return ListView(
       children: const [
         SizedBox(height: 70),
-        Icon(Icons.groups_outlined,
-            size: 52, color: Colors.white38),
+        Icon(Icons.groups_outlined, size: 52, color: Colors.white38),
         SizedBox(height: 12),
         Center(
           child: Text(

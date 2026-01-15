@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 
 import 'login_screen.dart';
 import 'client_register_screen.dart';
-import 'contractor_register_screen.dart'; // ✅ مهم
+import 'contractor_register_screen.dart';
+import 'role_selection_screen.dart'; // ✅ بدل MainShell
 
 class AuthChoiceScreen extends StatelessWidget {
   final String role;
@@ -24,7 +25,15 @@ class AuthChoiceScreen extends StatelessWidget {
               child: Row(
                 children: [
                   InkWell(
-                    onTap: () => Navigator.pop(context),
+                    onTap: () {
+                      // ✅ يرجع لصفحة اختيار الدور (RoleSelection)
+                      Navigator.of(context).pushAndRemoveUntil(
+                        MaterialPageRoute(
+                          builder: (_) => const RoleSelectionScreen(),
+                        ),
+                        (route) => false,
+                      );
+                    },
                     borderRadius: BorderRadius.circular(30),
                     child: Container(
                       padding: const EdgeInsets.all(8),
@@ -45,7 +54,7 @@ class AuthChoiceScreen extends StatelessWidget {
 
             const SizedBox(height: 10),
 
-            // ===== اللــوقــو بدون خلفية =====
+            // ===== اللوقو =====
             Padding(
               padding: const EdgeInsets.only(top: 20),
               child: Center(
@@ -95,12 +104,12 @@ class AuthChoiceScreen extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
               child: Column(
                 children: [
-                  // Log in button
+                  // Log in
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
                       onPressed: () {
-                        Navigator.push(
+                        Navigator.pushReplacement(
                           context,
                           MaterialPageRoute(
                             builder: (_) => LoginScreen(role: role),
@@ -128,20 +137,20 @@ class AuthChoiceScreen extends StatelessWidget {
 
                   const SizedBox(height: 14),
 
-                  // ✅ Sign up button (معدّل)
+                  // Sign up
                   SizedBox(
                     width: double.infinity,
                     child: OutlinedButton(
                       onPressed: () {
                         if (isClient) {
-                          Navigator.push(
+                          Navigator.pushReplacement(
                             context,
                             MaterialPageRoute(
                               builder: (_) => const ClientRegisterScreen(),
                             ),
                           );
                         } else {
-                          Navigator.push(
+                          Navigator.pushReplacement(
                             context,
                             MaterialPageRoute(
                               builder: (_) => const ContractorRegisterScreen(),

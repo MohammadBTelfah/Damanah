@@ -52,8 +52,8 @@ class ProjectService {
     };
   }
 
-    // =========================
-  // My Projects (client only)
+  // =========================
+  // Project Actions (Client)
   // =========================
 
   /// GET /api/projects/my
@@ -69,71 +69,31 @@ class ProjectService {
 
     if (res.statusCode == 200) {
       if (decoded is List) return decoded;
-
       if (decoded is Map && decoded["projects"] is List) {
         return List.from(decoded["projects"]);
       }
-
       throw Exception("Invalid my-projects response shape: ${res.body}");
     }
-
     throw Exception("(${res.statusCode}) ${_errMsg(res)}");
   }
 
-  // =========================
-// Project details
-// =========================
-
-/// GET /api/projects/:id
-Future<Map<String, dynamic>> getProjectById(String projectId) async {
-  final token = await _mustToken();
-  final uri = Uri.parse(ApiConfig.join("/api/projects/$projectId"));
-
-  final res = await http
-      .get(uri, headers: _authHeaders(token))
-      .timeout(const Duration(seconds: 30));
-
-  final data = _safeJsonMap(res.body);
-
-  if (res.statusCode == 200) return data;
-
-  throw Exception("(${res.statusCode}) ${data["message"] ?? "Failed to load project"}");
-}
-
-
-
-  // =========================
-  // Plan analyze
-  // =========================
-
-  /// POST /api/projects/plan/analyze (multipart planFile)
-  Future<Map<String, dynamic>> analyzePlan({required String filePath}) async {
+  // 🔥 ADDED: Get Project By ID
+  /// GET /api/projects/:id
+  Future<Map<String, dynamic>> getProjectById(String projectId) async {
     final token = await _mustToken();
-    final uri = Uri.parse(ApiConfig.join("/api/projects/plan/analyze"));
+    final uri = Uri.parse(ApiConfig.join("/api/projects/$projectId"));
 
-    final req = http.MultipartRequest("POST", uri);
-    req.headers.addAll(_authHeaders(token));
+    final res = await http
+        .get(uri, headers: _authHeaders(token))
+        .timeout(const Duration(seconds: 30));
 
-    req.files.add(await http.MultipartFile.fromPath("planFile", filePath));
+    final data = _safeJsonMap(res.body);
 
-    final streamed = await req.send().timeout(const Duration(seconds: 60));
-    final res = await http.Response.fromStream(streamed);
+    if (res.statusCode == 200) return data;
 
-    final map = _safeJsonMap(res.body);
-
-    if (res.statusCode == 200) return map;
-
-    final code = map["code"]?.toString();
-    if (code == "AI_UNAVAILABLE") {
-      throw Exception("AI_UNAVAILABLE");
-    }
-
-    throw Exception("(${res.statusCode}) ${map["message"] ?? "Analyze plan failed"}");
+    throw Exception(
+        "(${res.statusCode}) ${data["message"] ?? "Failed to load project"}");
   }
-
-  // =========================
-  // Create project
-  // =========================
 
   /// POST /api/projects
   Future<String> createProjectAndReturnId({
@@ -179,36 +139,9 @@ Future<Map<String, dynamic>> getProjectById(String projectId) async {
       return id;
     }
 
-    throw Exception("(${res.statusCode}) ${data["message"] ?? "Create project failed"}");
+    throw Exception(
+        "(${res.statusCode}) ${data["message"] ?? "Create project failed"}");
   }
-
-  // =========================
-  // Materials
-  // =========================
-
-  /// GET /api/materials
-  Future<List<dynamic>> getMaterials() async {
-    final token = await _mustToken();
-    final uri = Uri.parse(ApiConfig.join("/api/materials"));
-
-    final res = await http
-        .get(uri, headers: _authHeaders(token))
-        .timeout(const Duration(seconds: 30));
-
-    final decoded = _safeDecode(res.body);
-
-    if (res.statusCode == 200 && decoded is List) return decoded;
-
-    if (decoded is Map && decoded["message"] != null) {
-      throw Exception("(${res.statusCode}) ${decoded["message"]}");
-    }
-
-    throw Exception("(${res.statusCode}) Failed to load materials");
-  }
-
-  // =========================
-  // Estimate
-  // =========================
 
   /// POST /api/projects/:id/estimate
   Future<Map<String, dynamic>> estimateProject({
@@ -230,11 +163,52 @@ Future<Map<String, dynamic>> getProjectById(String projectId) async {
 
     if (res.statusCode == 200) return data;
 
-    throw Exception("(${res.statusCode}) ${data["message"] ?? "Estimate failed"}");
+    throw Exception(
+        "(${res.statusCode}) ${data["message"] ?? "Estimate failed"}");
+  }
+
+  /// POST /api/projects/plan/analyze
+  Future<Map<String, dynamic>> analyzePlan({required String filePath}) async {
+    final token = await _mustToken();
+    final uri = Uri.parse(ApiConfig.join("/api/projects/plan/analyze"));
+
+    final req = http.MultipartRequest("POST", uri);
+    req.headers.addAll(_authHeaders(token));
+    req.files.add(await http.MultipartFile.fromPath("planFile", filePath));
+
+    final streamed = await req.send().timeout(const Duration(seconds: 60));
+    final res = await http.Response.fromStream(streamed);
+
+    final map = _safeJsonMap(res.body);
+    if (res.statusCode == 200) return map;
+
+    final code = map["code"]?.toString();
+    if (code == "AI_UNAVAILABLE") throw Exception("AI_UNAVAILABLE");
+
+    throw Exception(
+        "(${res.statusCode}) ${map["message"] ?? "Analyze plan failed"}");
+  }
+
+  /// GET /api/materials
+  Future<List<dynamic>> getMaterials() async {
+    final token = await _mustToken();
+    final uri = Uri.parse(ApiConfig.join("/api/materials"));
+
+    final res = await http
+        .get(uri, headers: _authHeaders(token))
+        .timeout(const Duration(seconds: 30));
+
+    final decoded = _safeDecode(res.body);
+
+    if (res.statusCode == 200 && decoded is List) return decoded;
+    if (decoded is Map && decoded["message"] != null) {
+      throw Exception("(${res.statusCode}) ${decoded["message"]}");
+    }
+    throw Exception("(${res.statusCode}) Failed to load materials");
   }
 
   // =========================
-  // Save / Download
+  // Save / Download / Publish
   // =========================
 
   /// PATCH /api/projects/:id/save
@@ -247,14 +221,14 @@ Future<Map<String, dynamic>> getProjectById(String projectId) async {
         .timeout(const Duration(seconds: 30));
 
     if (res.statusCode == 200) return;
-
     throw Exception("(${res.statusCode}) ${_errMsg(res)}");
   }
 
   /// GET /api/projects/:id/estimate/download
   Future<String> downloadEstimateToFile({required String projectId}) async {
     final token = await _mustToken();
-    final uri = Uri.parse(ApiConfig.join("/api/projects/$projectId/estimate/download"));
+    final uri =
+        Uri.parse(ApiConfig.join("/api/projects/$projectId/estimate/download"));
 
     final res = await http
         .get(uri, headers: _authHeaders(token))
@@ -267,27 +241,18 @@ Future<Map<String, dynamic>> getProjectById(String projectId) async {
     final dir = await getApplicationDocumentsDirectory();
     final file = File("${dir.path}/estimate_$projectId.json");
     await file.writeAsBytes(res.bodyBytes, flush: true);
-
     return file.path;
   }
 
-  // =========================
-  // Share / Assign
-  // =========================
-
-  /// POST /api/projects/:id/share  body { contractorId }
-  Future<void> shareProject({
-    required String projectId,
-    required String contractorId,
-  }) async {
+  // 🔥 NEW: Publish Project
+  Future<void> publishProject({required String projectId}) async {
     final token = await _mustToken();
-    final uri = Uri.parse(ApiConfig.join("/api/projects/$projectId/share"));
+    final uri = Uri.parse(ApiConfig.join("/api/projects/$projectId/publish"));
 
     final res = await http
-        .post(
+        .patch(
           uri,
           headers: _authHeaders(token, json: true),
-          body: jsonEncode({"contractorId": contractorId}),
         )
         .timeout(const Duration(seconds: 30));
 
@@ -296,11 +261,31 @@ Future<Map<String, dynamic>> getProjectById(String projectId) async {
     throw Exception("(${res.statusCode}) ${_errMsg(res)}");
   }
 
-  /// PATCH /api/projects/:id/assign  body { contractorId }
-  Future<void> assignContractor({
-    required String projectId,
-    required String contractorId,
-  }) async {
+  // =========================
+  // Contractor Utils (For Client)
+  // =========================
+  Future<List<dynamic>> getContractors() async {
+    final token = await _mustToken();
+    final uri =
+        Uri.parse(ApiConfig.join("/api/projects/contractors/available"));
+
+    final res = await http
+        .get(uri, headers: _authHeaders(token))
+        .timeout(const Duration(seconds: 30));
+
+    final decoded = _safeDecode(res.body);
+    if (res.statusCode == 200) {
+      if (decoded is List) return decoded;
+      if (decoded is Map && decoded["contractors"] is List) {
+        return List.from(decoded["contractors"]);
+      }
+      throw Exception("Invalid contractors response shape: ${res.body}");
+    }
+    throw Exception("(${res.statusCode}) ${_errMsg(res)}");
+  }
+
+  Future<void> assignContractor(
+      {required String projectId, required String contractorId}) async {
     final token = await _mustToken();
     final uri = Uri.parse(ApiConfig.join("/api/projects/$projectId/assign"));
 
@@ -317,14 +302,32 @@ Future<Map<String, dynamic>> getProjectById(String projectId) async {
     throw Exception("(${res.statusCode}) ${_errMsg(res)}");
   }
 
+  Future<void> shareProject(
+      {required String projectId, required String contractorId}) async {
+    final token = await _mustToken();
+    final uri = Uri.parse(ApiConfig.join("/api/projects/$projectId/share"));
+
+    final res = await http
+        .post(
+          uri,
+          headers: _authHeaders(token, json: true),
+          body: jsonEncode({"contractorId": contractorId}),
+        )
+        .timeout(const Duration(seconds: 30));
+
+    if (res.statusCode == 200) return;
+
+    throw Exception("(${res.statusCode}) ${_errMsg(res)}");
+  }
+
   // =========================
-  // Contractors list (✅ endpoint الصحيح)
+  // 🔥 ADDED: Contractor Specific Methods
   // =========================
 
-  /// GET /api/projects/contractors/available
-  Future<List<dynamic>> getContractors() async {
+  /// GET /api/projects/contractor/available
+  Future<List<dynamic>> getAvailableProjectsForContractor() async {
     final token = await _mustToken();
-    final uri = Uri.parse(ApiConfig.join("/api/projects/contractors/available"));
+    final uri = Uri.parse(ApiConfig.join("/api/projects/contractor/available"));
 
     final res = await http
         .get(uri, headers: _authHeaders(token))
@@ -332,24 +335,36 @@ Future<Map<String, dynamic>> getProjectById(String projectId) async {
 
     final decoded = _safeDecode(res.body);
 
-    // ✅ Success: allow server to return List OR { contractors: [] }
     if (res.statusCode == 200) {
-      if (decoded is List) return decoded;
-
-      if (decoded is Map && decoded["contractors"] is List) {
-        return List.from(decoded["contractors"]);
+      if (decoded is Map && decoded["projects"] is List) {
+        return List.from(decoded["projects"]);
       }
-
-      // ✅ 200 but wrong shape => show it
-      throw Exception("Invalid contractors response shape: ${res.body}");
+      if (decoded is List) return decoded;
+      return [];
     }
 
-    // ✅ Not success => show real reason (401/403/404...)
+    throw Exception("(${res.statusCode}) ${_errMsg(res)}");
+  }
+
+  /// GET /api/projects/contractor/my
+  Future<List<dynamic>> getMyProjectsForContractor() async {
+    final token = await _mustToken();
+    final uri = Uri.parse(ApiConfig.join("/api/projects/contractor/my"));
+
+    final res = await http
+        .get(uri, headers: _authHeaders(token))
+        .timeout(const Duration(seconds: 30));
+
+    final decoded = _safeDecode(res.body);
+
+    if (res.statusCode == 200) {
+      if (decoded is Map && decoded["projects"] is List) {
+        return List.from(decoded["projects"]);
+      }
+      if (decoded is List) return decoded;
+      return [];
+    }
+
     throw Exception("(${res.statusCode}) ${_errMsg(res)}");
   }
 }
-// =========================
-// My Projects (client only)
-// =========================
-
-/// GET /api/projects/my
