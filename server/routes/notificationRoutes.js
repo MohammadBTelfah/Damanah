@@ -1,5 +1,5 @@
 const router = require("express").Router();
-const { protect } = require("../middleware/authMiddleware");
+const { protect } = require("../middleware/authMiddleWare");
 const notificationController = require("../controllers/notificationController");
 
 router.get("/", protect, notificationController.getMyNotifications);
