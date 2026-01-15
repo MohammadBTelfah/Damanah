@@ -52,6 +52,56 @@ class ProjectService {
     };
   }
 
+    // =========================
+  // My Projects (client only)
+  // =========================
+
+  /// GET /api/projects/my
+  Future<List<dynamic>> getMyProjects() async {
+    final token = await _mustToken();
+    final uri = Uri.parse(ApiConfig.join("/api/projects/my"));
+
+    final res = await http
+        .get(uri, headers: _authHeaders(token))
+        .timeout(const Duration(seconds: 30));
+
+    final decoded = _safeDecode(res.body);
+
+    if (res.statusCode == 200) {
+      if (decoded is List) return decoded;
+
+      if (decoded is Map && decoded["projects"] is List) {
+        return List.from(decoded["projects"]);
+      }
+
+      throw Exception("Invalid my-projects response shape: ${res.body}");
+    }
+
+    throw Exception("(${res.statusCode}) ${_errMsg(res)}");
+  }
+
+  // =========================
+// Project details
+// =========================
+
+/// GET /api/projects/:id
+Future<Map<String, dynamic>> getProjectById(String projectId) async {
+  final token = await _mustToken();
+  final uri = Uri.parse(ApiConfig.join("/api/projects/$projectId"));
+
+  final res = await http
+      .get(uri, headers: _authHeaders(token))
+      .timeout(const Duration(seconds: 30));
+
+  final data = _safeJsonMap(res.body);
+
+  if (res.statusCode == 200) return data;
+
+  throw Exception("(${res.statusCode}) ${data["message"] ?? "Failed to load project"}");
+}
+
+
+
   // =========================
   // Plan analyze
   // =========================
@@ -78,9 +128,7 @@ class ProjectService {
       throw Exception("AI_UNAVAILABLE");
     }
 
-    throw Exception(
-      "(${res.statusCode}) ${map["message"] ?? "Analyze plan failed"}",
-    );
+    throw Exception("(${res.statusCode}) ${map["message"] ?? "Analyze plan failed"}");
   }
 
   // =========================
@@ -131,9 +179,7 @@ class ProjectService {
       return id;
     }
 
-    throw Exception(
-      "(${res.statusCode}) ${data["message"] ?? "Create project failed"}",
-    );
+    throw Exception("(${res.statusCode}) ${data["message"] ?? "Create project failed"}");
   }
 
   // =========================
@@ -184,9 +230,7 @@ class ProjectService {
 
     if (res.statusCode == 200) return data;
 
-    throw Exception(
-      "(${res.statusCode}) ${data["message"] ?? "Estimate failed"}",
-    );
+    throw Exception("(${res.statusCode}) ${data["message"] ?? "Estimate failed"}");
   }
 
   // =========================
@@ -210,9 +254,7 @@ class ProjectService {
   /// GET /api/projects/:id/estimate/download
   Future<String> downloadEstimateToFile({required String projectId}) async {
     final token = await _mustToken();
-    final uri = Uri.parse(
-      ApiConfig.join("/api/projects/$projectId/estimate/download"),
-    );
+    final uri = Uri.parse(ApiConfig.join("/api/projects/$projectId/estimate/download"));
 
     final res = await http
         .get(uri, headers: _authHeaders(token))
@@ -282,9 +324,7 @@ class ProjectService {
   /// GET /api/projects/contractors/available
   Future<List<dynamic>> getContractors() async {
     final token = await _mustToken();
-    final uri = Uri.parse(
-      ApiConfig.join("/api/projects/contractors/available"),
-    );
+    final uri = Uri.parse(ApiConfig.join("/api/projects/contractors/available"));
 
     final res = await http
         .get(uri, headers: _authHeaders(token))
@@ -292,16 +332,24 @@ class ProjectService {
 
     final decoded = _safeDecode(res.body);
 
+    // ✅ Success: allow server to return List OR { contractors: [] }
     if (res.statusCode == 200) {
       if (decoded is List) return decoded;
+
       if (decoded is Map && decoded["contractors"] is List) {
         return List.from(decoded["contractors"]);
       }
-      // لو رجّع شكل ثاني
-      return [];
+
+      // ✅ 200 but wrong shape => show it
+      throw Exception("Invalid contractors response shape: ${res.body}");
     }
 
-    // مهم: اعرض سبب 401/403 بدل "no contractors"
+    // ✅ Not success => show real reason (401/403/404...)
     throw Exception("(${res.statusCode}) ${_errMsg(res)}");
   }
 }
+// =========================
+// My Projects (client only)
+// =========================
+
+/// GET /api/projects/my
