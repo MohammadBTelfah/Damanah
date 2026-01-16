@@ -16,6 +16,9 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
   String? _error;
   Map<String, dynamic>? _data;
 
+  Future<List<dynamic>>? _offersFuture;
+  bool _accepting = false;
+
   @override
   void initState() {
     super.initState();
@@ -31,12 +34,15 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
     try {
       final res = await _service.getProjectById(widget.projectId);
 
-      // server ممكن يرجع { project: {...} } أو يرجع المشروع مباشرة
+      // server might return { project: {...} } or project directly
       final project = (res["project"] is Map)
           ? Map<String, dynamic>.from(res["project"])
           : Map<String, dynamic>.from(res);
 
       setState(() => _data = project);
+
+      // ✅ load offers (client)
+      _offersFuture = _service.getProjectOffers(projectId: widget.projectId);
     } catch (e) {
       setState(() => _error = e.toString());
     } finally {
@@ -44,11 +50,15 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
     }
   }
 
+  Future<void> _refreshOffers() async {
+    setState(() {
+      _offersFuture = _service.getProjectOffers(projectId: widget.projectId);
+    });
+  }
+
   // ====================== URL helpers (for images) ======================
 
   String _baseUrlFromService() {
-    // يعتمد إن ProjectService عندك فيه baseUrl
-    // إذا ما عندك baseUrl، رح يرجع فاضي (وما بنخرب شي)
     try {
       final dynamic s = _service;
       final v = s.baseUrl;
@@ -71,7 +81,7 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
 
     if (v.startsWith("/")) {
       final base = _baseUrlFromService();
-      if (base.isEmpty) return v; // ما قدرنا نطلع baseUrl من السيرفس
+      if (base.isEmpty) return v;
       return _joinUrl(base, v);
     }
 
@@ -96,8 +106,8 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-          ? _errorView()
-          : RefreshIndicator(onRefresh: _load, child: _buildContent()),
+              ? _errorView()
+              : RefreshIndicator(onRefresh: _load, child: _buildContent()),
     );
   }
 
@@ -106,11 +116,7 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
       padding: const EdgeInsets.all(16),
       children: [
         const SizedBox(height: 60),
-        Icon(
-          Icons.error_outline,
-          size: 46,
-          color: Colors.white.withOpacity(0.7),
-        ),
+        Icon(Icons.error_outline, size: 46, color: Colors.white.withOpacity(0.7)),
         const SizedBox(height: 12),
         Center(
           child: Text(
@@ -125,9 +131,7 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
           style: ElevatedButton.styleFrom(
             backgroundColor: const Color(0xFF9EE7B7),
             foregroundColor: Colors.black,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             minimumSize: const Size.fromHeight(48),
           ),
           child: const Text("Retry"),
@@ -157,10 +161,8 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
 
         const SizedBox(height: 12),
 
-        // ===== Estimate Card (السعر) =====
-        if (p["estimation"] != null || p["estimate"] != null)
-          _buildEstimateCard(p),
-
+        // ===== Estimate Card =====
+        if (p["estimation"] != null || p["estimate"] != null) _buildEstimateCard(p),
         if (p["estimation"] == null && p["estimate"] == null)
           _card(
             child: Row(
@@ -172,19 +174,13 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
                     color: Colors.white.withOpacity(0.06),
                     borderRadius: BorderRadius.circular(14),
                   ),
-                  child: const Icon(
-                    Icons.payments_outlined,
-                    color: Colors.white70,
-                  ),
+                  child: const Icon(Icons.payments_outlined, color: Colors.white70),
                 ),
                 const SizedBox(width: 12),
                 const Expanded(
                   child: Text(
                     "No estimation yet",
-                    style: TextStyle(
-                      color: Colors.white70,
-                      fontWeight: FontWeight.w700,
-                    ),
+                    style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w700),
                   ),
                 ),
               ],
@@ -211,22 +207,180 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
 
         const SizedBox(height: 12),
 
-        // ===== Contractor Card =====
+        // ===== Contractor Card (assigned contractor) =====
         _buildContractorCard(p),
 
         const SizedBox(height: 12),
 
+        // ===== Offers (Client) =====
+        _buildOffersSection(),
+
+        const SizedBox(height: 12),
+
         // ===== Plan Analysis =====
-        if (p["planAnalysis"] != null)
-          _buildPlanAnalysisCard(p["planAnalysis"]),
+        if (p["planAnalysis"] != null) _buildPlanAnalysisCard(p["planAnalysis"]),
       ],
     );
+  }
+
+  // ====================== Offers Section ======================
+
+  Widget _buildOffersSection() {
+    return _card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  "Offers",
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900),
+                ),
+              ),
+              TextButton(
+                onPressed: _refreshOffers,
+                child: const Text("Refresh"),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+
+          FutureBuilder<List<dynamic>>(
+            future: _offersFuture,
+            builder: (context, snap) {
+              if (snap.connectionState == ConnectionState.waiting) {
+                return const Padding(
+                  padding: EdgeInsets.all(8),
+                  child: Center(child: CircularProgressIndicator()),
+                );
+              }
+              if (snap.hasError) {
+                return Text(
+                  "Failed to load offers: ${snap.error}",
+                  style: const TextStyle(color: Colors.redAccent),
+                );
+              }
+
+              final offers = snap.data ?? [];
+              if (offers.isEmpty) {
+                return const Text(
+                  "No offers yet.",
+                  style: TextStyle(color: Colors.white70),
+                );
+              }
+
+              return Column(
+                children: offers.map((o) {
+                  final m = (o as Map).cast<String, dynamic>();
+
+                  final offerId = (m["_id"] ?? m["id"] ?? "").toString();
+                  final price = (m["price"] ?? "-").toString();
+                  final message = (m["message"] ?? "").toString().trim();
+
+                  final contractor = m["contractor"];
+                  final contractorName = contractor is Map
+                      ? (contractor["name"] ?? "Contractor").toString()
+                      : "Contractor";
+
+                  final phone = contractor is Map ? (contractor["phone"] ?? "").toString() : "";
+                  final email = contractor is Map ? (contractor["email"] ?? "").toString() : "";
+
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.06),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: Colors.white.withOpacity(0.08)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          contractorName,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text("Price: $price", style: const TextStyle(color: Colors.white70)),
+                        if (message.isNotEmpty) ...[
+                          const SizedBox(height: 6),
+                          Text("Message: $message",
+                              style: const TextStyle(color: Colors.white70)),
+                        ],
+                        if (phone.trim().isNotEmpty) ...[
+                          const SizedBox(height: 6),
+                          Text("Phone: $phone", style: const TextStyle(color: Colors.white60)),
+                        ],
+                        if (email.trim().isNotEmpty) ...[
+                          const SizedBox(height: 2),
+                          Text("Email: $email", style: const TextStyle(color: Colors.white60)),
+                        ],
+                        const SizedBox(height: 10),
+
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            onPressed: (_accepting || offerId.isEmpty)
+                                ? null
+                                : () => _acceptOffer(offerId),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF9EE7B7),
+                              foregroundColor: Colors.black,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              minimumSize: const Size.fromHeight(46),
+                            ),
+                            child: _accepting
+                                ? const SizedBox(
+                                    height: 22,
+                                    width: 22,
+                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                  )
+                                : const Text("Accept Offer"),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _acceptOffer(String offerId) async {
+    setState(() => _accepting = true);
+    try {
+      await _service.acceptOffer(projectId: widget.projectId, offerId: offerId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Offer accepted ✅")),
+      );
+
+      // Refresh project + offers after accept
+      await _load();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString())),
+      );
+    } finally {
+      if (mounted) setState(() => _accepting = false);
+    }
   }
 
   // ====================== Contractor Card ======================
 
   Widget _buildContractorCard(Map<String, dynamic> p) {
-    final raw = p["contractor"]; // بعد populate: Map أو null
+    final raw = p["contractor"];
 
     if (raw == null) {
       return _card(
@@ -239,19 +393,13 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
                 color: Colors.white.withOpacity(0.06),
                 borderRadius: BorderRadius.circular(14),
               ),
-              child: const Icon(
-                Icons.engineering_outlined,
-                color: Colors.white70,
-              ),
+              child: const Icon(Icons.engineering_outlined, color: Colors.white70),
             ),
             const SizedBox(width: 12),
             const Expanded(
               child: Text(
                 "No contractor assigned yet",
-                style: TextStyle(
-                  color: Colors.white70,
-                  fontWeight: FontWeight.w700,
-                ),
+                style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w700),
               ),
             ),
           ],
@@ -259,13 +407,9 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
       );
     }
 
-    final c = (raw is Map)
-        ? Map<String, dynamic>.from(raw)
-        : <String, dynamic>{};
+    final c = (raw is Map) ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
 
-    final name =
-        (c["name"] ?? c["fullName"] ?? c["companyName"] ?? "Contractor")
-            .toString();
+    final name = (c["name"] ?? c["fullName"] ?? c["companyName"] ?? "Contractor").toString();
     final email = (c["email"] ?? "").toString();
     final phone = (c["phone"] ?? "").toString();
 
@@ -277,7 +421,7 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            "Contractor",
+            "Assigned Contractor",
             style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 12),
@@ -315,17 +459,11 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
                     ),
                     if (phone.trim().isNotEmpty) ...[
                       const SizedBox(height: 4),
-                      Text(
-                        "Phone: $phone",
-                        style: const TextStyle(color: Colors.white70),
-                      ),
+                      Text("Phone: $phone", style: const TextStyle(color: Colors.white70)),
                     ],
                     if (email.trim().isNotEmpty) ...[
                       const SizedBox(height: 2),
-                      Text(
-                        "Email: $email",
-                        style: const TextStyle(color: Colors.white70),
-                      ),
+                      Text("Email: $email", style: const TextStyle(color: Colors.white70)),
                     ],
                   ],
                 ),
@@ -343,8 +481,8 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
     final est = (p["estimation"] is Map)
         ? Map<String, dynamic>.from(p["estimation"])
         : (p["estimate"] is Map)
-        ? Map<String, dynamic>.from(p["estimate"])
-        : <String, dynamic>{};
+            ? Map<String, dynamic>.from(p["estimate"])
+            : <String, dynamic>{};
 
     final total = est["totalCost"] ?? est["total"] ?? est["total_cost"];
     final currency = (est["currency"] ?? "JOD").toString();
@@ -379,10 +517,7 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
               children: [
                 const Text(
                   "Estimated Cost",
-                  style: TextStyle(
-                    color: Colors.white70,
-                    fontWeight: FontWeight.w700,
-                  ),
+                  style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 6),
                 Text(
@@ -460,10 +595,7 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
             width: 120,
             child: Text(
               label,
-              style: const TextStyle(
-                color: Colors.white70,
-                fontWeight: FontWeight.w700,
-              ),
+              style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.w700),
             ),
           ),
           Expanded(child: value),
@@ -475,10 +607,7 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
   Widget _rowText(String label, dynamic value) {
     return _row(
       label,
-      Text(
-        (value ?? "-").toString(),
-        style: const TextStyle(color: Colors.white),
-      ),
+      Text((value ?? "-").toString(), style: const TextStyle(color: Colors.white)),
     );
   }
 
@@ -486,10 +615,7 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
     final v = (value == null) ? "-" : value.toString();
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Text(
-        "• $label: $v",
-        style: const TextStyle(color: Colors.white70),
-      ),
+      child: Text("• $label: $v", style: const TextStyle(color: Colors.white70)),
     );
   }
 
@@ -501,14 +627,14 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
     final bg = isOpen
         ? Colors.green.withOpacity(0.18)
         : isProgress
-        ? Colors.orange.withOpacity(0.18)
-        : Colors.white.withOpacity(0.12);
+            ? Colors.orange.withOpacity(0.18)
+            : Colors.white.withOpacity(0.12);
 
     final fg = isOpen
         ? Colors.greenAccent
         : isProgress
-        ? Colors.orangeAccent
-        : Colors.white70;
+            ? Colors.orangeAccent
+            : Colors.white70;
 
     return Align(
       alignment: Alignment.centerLeft,
@@ -521,11 +647,7 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
         ),
         child: Text(
           s.replaceAll("_", " "),
-          style: TextStyle(
-            color: fg,
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
-          ),
+          style: TextStyle(color: fg, fontSize: 12, fontWeight: FontWeight.w700),
         ),
       ),
     );
