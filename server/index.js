@@ -21,6 +21,8 @@ const healthRoutes = require("./routes/healthRoutes");
 const materialRoutes = require("./routes/materialRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
 const publicRoutes = require("./routes/publicRoutes");
+const tipRoutes = require("./routes/tipRoutes");
+const contractRoutes = require("./routes/contractRoutes");
 
 
 // Middlewares
@@ -57,6 +59,8 @@ app.use("/api/materials", materialRoutes);
 
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/public", publicRoutes);
+app.use("/api/tips", tipRoutes);
+app.use("/api/contracts", contractRoutes);
 
 // MongoDB connection
 const PORT = process.env.PORT || 5000;

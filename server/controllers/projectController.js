@@ -725,3 +725,45 @@ exports.assignContractor = async (req, res) => {
       .json({ message: "Assign failed", error: err.message });
   }
 };
+// =======================
+// Get Recent Offers across all projects (Client Dashboard)
+// =======================
+exports.getClientRecentOffers = async (req, res) => {
+  try {
+    // 1. جلب مشاريع المستخدم مع العروض وتفاصيل المقاول
+    const projects = await Project.find({ owner: req.user._id })
+      .select("title offers")
+      .populate({
+        path: "offers.contractor",
+        select: "name profileImage",
+      });
+
+    // 2. تجميع العروض في قائمة واحدة مسطحة
+    let allOffers = [];
+    projects.forEach((project) => {
+      if (project.offers && project.offers.length > 0) {
+        project.offers.forEach((offer) => {
+          allOffers.push({
+            offerId: offer._id,
+            price: offer.price,
+            message: offer.message,
+            createdAt: offer.createdAt, // تاريخ العرض
+            contractorName: offer.contractor ? offer.contractor.name : "Unknown",
+            contractorImage: offer.contractor ? offer.contractor.profileImage : null,
+            projectTitle: project.title, // اسم المشروع
+            projectId: project._id,
+          });
+        });
+      }
+    });
+
+    // 3. ترتيبها من الأحدث للأقدم
+    allOffers.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    // 4. إرجاع أول 5 عروض فقط
+    return res.json(allOffers.slice(0, 5));
+  } catch (err) {
+    console.error("getClientRecentOffers error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+};

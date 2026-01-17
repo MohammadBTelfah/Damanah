@@ -5,6 +5,11 @@ import '../services/session_service.dart';
 import '../config/api_config.dart';
 
 class NotificationService {
+  
+  // =========================
+  // Helpers
+  // =========================
+
   dynamic _safeDecode(String body) {
     try {
       return jsonDecode(body);
@@ -16,6 +21,7 @@ class NotificationService {
   Map<String, dynamic> _safeJsonMap(String body) {
     final decoded = _safeDecode(body);
     if (decoded is Map<String, dynamic>) return decoded;
+    if (decoded is Map) return Map<String, dynamic>.from(decoded);
     return {"message": "Invalid server response"};
   }
 
@@ -40,6 +46,10 @@ class NotificationService {
       "Accept": "application/json",
     };
   }
+
+  // =========================
+  // API Calls
+  // =========================
 
   /// GET /api/notifications
   Future<List<dynamic>> getMyNotifications() async {
@@ -93,6 +103,37 @@ class NotificationService {
     );
 
     if (res.statusCode == 200) return;
+    throw Exception("(${res.statusCode}) ${_errMsg(res)}");
+  }
+
+  // ✅ NEW: Delete All Notifications
+  /// DELETE /api/notifications
+  Future<void> clearAll() async {
+    final token = await _mustToken();
+    final uri = Uri.parse(ApiConfig.join("/api/notifications"));
+
+    final res = await http.delete(uri, headers: _authHeaders(token)).timeout(
+      const Duration(seconds: 20),
+    );
+
+    if (res.statusCode == 200) return;
+    
+    // If not 200, throw error
+    throw Exception("(${res.statusCode}) ${_errMsg(res)}");
+  }
+
+  // ✅ NEW: Delete Single Notification
+  /// DELETE /api/notifications/:id
+  Future<void> deleteNotification(String id) async {
+    final token = await _mustToken();
+    final uri = Uri.parse(ApiConfig.join("/api/notifications/$id"));
+
+    final res = await http.delete(uri, headers: _authHeaders(token)).timeout(
+      const Duration(seconds: 20),
+    );
+
+    if (res.statusCode == 200) return;
+    
     throw Exception("(${res.statusCode}) ${_errMsg(res)}");
   }
 }

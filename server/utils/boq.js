@@ -10,23 +10,9 @@ function approximatePerimeterFromArea(area) {
   return 4 * side;
 }
 
-function normalizeLevel(level) {
-  const v = String(level || "").toLowerCase().trim();
-
-  if (v === "basic") return "basic";
-  if (v === "medium") return "medium";
-  if (v === "premium") return "premium";
-
-  if (v === "standard") return "medium";
-  if (v === "luxury") return "premium";
-
-  return "medium";
-}
-
 function normalizeBuildingType(t) {
   const v = String(t || "").toLowerCase().trim();
   if (["apartment", "villa", "commercial"].includes(v)) return v;
-  // aliases
   if (v === "residential") return "apartment";
   if (v === "house") return "villa";
   if (v === "shop" || v === "office") return "commercial";
@@ -39,14 +25,8 @@ function pickVariantByKey(materialDoc, variantKey) {
   return vars.find((x) => String(x.key) === String(variantKey)) || null;
 }
 
-function pickVariantByLevel(materialDoc, levelKey) {
-  if (!materialDoc) return null;
-  const vars = Array.isArray(materialDoc.variants) ? materialDoc.variants : [];
-  const exact = vars.find((x) => x.key === levelKey);
-  return exact || vars[0] || null;
-}
-
-function buildItem(name, unit, quantity, pricePerUnit, meta = {}) {
+// Updated: Accepts variantLabel to return it to frontend
+function buildItem(name, unit, quantity, pricePerUnit, meta = {}, variantLabel = "") {
   const q = Number(quantity || 0);
   const p = Number(pricePerUnit || 0);
   return {
@@ -55,12 +35,13 @@ function buildItem(name, unit, quantity, pricePerUnit, meta = {}) {
     unit,
     pricePerUnit: p,
     total: Number((q * p).toFixed(2)),
+    variantLabel: variantLabel, // <--- Sent to Frontend
     ...meta,
   };
 }
 
 // ======================
-// Presets (Jordan-friendly rough coefficients)
+// Presets (Unchanged)
 // ======================
 const PRESETS = {
   apartment: {
@@ -68,44 +49,33 @@ const PRESETS = {
     height: 3.0,
     coats: 2,
     waste: 1.05,
-
     concrete_m3_per_m2: 0.11,
     rebar_kg_per_m2: 45,
-
     wall_exposure_factor: 0.85,
-
     tiles_floor_coverage: 0.75,
     plaster_wall_factor: 1.0,
     paint_factor: 0.85,
   },
-
   villa: {
     label: "Villa",
     height: 3.0,
     coats: 2,
     waste: 1.07,
-
     concrete_m3_per_m2: 0.12,
     rebar_kg_per_m2: 55,
-
     wall_exposure_factor: 1.0,
-
     tiles_floor_coverage: 0.85,
     plaster_wall_factor: 1.05,
     paint_factor: 0.9,
   },
-
   commercial: {
     label: "Commercial",
     height: 3.5,
     coats: 3,
     waste: 1.08,
-
     concrete_m3_per_m2: 0.14,
     rebar_kg_per_m2: 70,
-
     wall_exposure_factor: 1.1,
-
     tiles_floor_coverage: 0.6,
     plaster_wall_factor: 0.95,
     paint_factor: 0.8,
@@ -113,256 +83,167 @@ const PRESETS = {
 };
 
 // ======================
-// Main
+// Main Logic
 // ======================
-/**
- * generateBoqForProject(project, options)
- * options:
- *  - selections: [{ materialId, variantKey }]
- *  - buildingType: apartment/villa/commercial (اختياري)
- *  - overrides: لتعديل معاملات preset (اختياري)
- *
- * يعتمد على:
- *  - project.area (m2)
- *  - project.floors
- *  - project.finishingLevel
- *  - project.buildingType (لو موجود)
- */
 async function generateBoqForProject(project, options = {}) {
   const area = Number(project.area || 0);
   const floors = Math.max(1, Number(project.floors || 1));
-  const levelKey = normalizeLevel(project.finishingLevel);
-
+  
   const buildingType = normalizeBuildingType(
     options.buildingType || project.buildingType || "apartment"
   );
 
   const presetBase = PRESETS[buildingType] || PRESETS.apartment;
-  const overrides =
-    options.overrides && typeof options.overrides === "object"
-      ? options.overrides
-      : {};
-
+  const overrides = options.overrides || {};
   const preset = { ...presetBase, ...overrides };
 
   const height = Number(preset.height || 3);
   const coats = Number(preset.coats || 2);
   const waste = Number(preset.waste || 1.05);
 
-  // selections mapping: materialId -> variantKey
+  // 1. Get Selections
   const selections = Array.isArray(options.selections) ? options.selections : [];
+  
+  if (selections.length === 0) {
+     return { 
+       items: [], 
+       totalCost: 0, 
+       currency: "JOD", 
+       error: "Please choose at least one material"
+     };
+  }
+
+  // Map: MaterialID -> VariantKey
   const selectedById = new Map(
     selections
       .filter((s) => s && s.materialId && s.variantKey)
       .map((s) => [String(s.materialId), String(s.variantKey)])
   );
 
-  // ✅ المواد الأساسية اللي إلها معادلات خاصة
-  const neededNames = [
-    "Concrete",
-    "Steel Rebar",
-    "Blocks",
-    "Plaster",
-    "Paint",
-    "Tiles",
-  ];
+  // Fetch only selected materials
+  const selectedIds = Array.from(selectedById.keys());
+  const mats = await Material.find({ _id: { $in: selectedIds } }).lean();
 
-  // ✅ اجمع IDs اللي المستخدم اختارها (عشان نضيف extras تلقائيًا)
-  const selectedIds = [
-    ...new Set(
-      selections
-        .map((s) => (s && s.materialId ? String(s.materialId) : ""))
-        .filter(Boolean)
-    ),
-  ];
-
-  // ✅ هات المواد الأساسية + المواد المختارة دفعة واحدة
-  const mats = await Material.find({
-    $or: [{ name: { $in: neededNames } }, { _id: { $in: selectedIds } }],
-  }).lean();
-
-  const byName = new Map(mats.map((m) => [m.name, m]));
-  const byId = new Map(mats.map((m) => [String(m._id), m]));
-
-  function chooseVariant(mat) {
+  // Helper to pick variant and get label
+  function getVariantInfo(mat) {
     if (!mat) return null;
     const chosenKey = selectedById.get(String(mat._id));
-    if (chosenKey) return pickVariantByKey(mat, chosenKey);
-    return pickVariantByLevel(mat, levelKey);
+    if (!chosenKey) return null;
+    
+    const v = pickVariantByKey(mat, chosenKey);
+    if (!v) return null;
+
+    return { 
+        ...v, 
+        // Ensure we have a label for display
+        displayLabel: v.label || v.key || "Standard" 
+    };
   }
 
-  const items = [];
+  // Find inside *fetched* materials (which are only the selected ones)
+  const findMatByName = (partialName) => {
+    return mats.find(m => m.name.toLowerCase().includes(partialName.toLowerCase()));
+  };
 
-  // هندسة تقريبية
+  const items = [];
   const perimeter = approximatePerimeterFromArea(area);
   const wallAreaBase = perimeter * height * floors;
   const wallArea = wallAreaBase * Number(preset.wall_exposure_factor || 1);
 
-  // ======================
-  // 1) Concrete (m3)
-  // ======================
-  {
-    const mat = byName.get("Concrete");
-    const variant = chooseVariant(mat);
-    const q = area * floors * Number(preset.concrete_m3_per_m2 || 0.12) * waste;
+  // ====================================================
+  // Calculations
+  // ====================================================
 
+  // 1. Concrete
+  {
+    const mat = findMatByName("Concrete");
+    const variant = getVariantInfo(mat);
     if (mat && variant) {
-      items.push(
-        buildItem("Concrete", mat.unit || "m3", q, variant.pricePerUnit, {
-          materialId: String(mat._id),
-          variantKey: variant.key,
-          calc: { base: "area*floors*concrete_m3_per_m2*waste" },
-        })
-      );
+      const q = area * floors * Number(preset.concrete_m3_per_m2 || 0.12) * waste;
+      items.push(buildItem(mat.name, mat.unit, q, variant.pricePerUnit, 
+        { materialId: String(mat._id), variantKey: variant.key }, variant.displayLabel));
     }
   }
 
-  // ======================
-  // 2) Steel Rebar (ton)
-  // ======================
+  // 2. Steel Rebar
   {
-    const mat = byName.get("Steel Rebar");
-    const variant = chooseVariant(mat);
-
-    const kg = area * floors * Number(preset.rebar_kg_per_m2 || 55) * waste;
-    const ton = kg / 1000;
-
+    const mat = findMatByName("Steel") || findMatByName("Rebar");
+    const variant = getVariantInfo(mat);
     if (mat && variant) {
-      items.push(
-        buildItem("Steel Rebar", "ton", ton, variant.pricePerUnit, {
-          materialId: String(mat._id),
-          variantKey: variant.key,
-          calc: { base: "area*floors*rebar_kg_per_m2*waste /1000" },
-        })
-      );
+      const kg = area * floors * Number(preset.rebar_kg_per_m2 || 55) * waste;
+      items.push(buildItem(mat.name, "ton", kg / 1000, variant.pricePerUnit, 
+        { materialId: String(mat._id), variantKey: variant.key }, variant.displayLabel));
     }
   }
 
-  // ======================
-  // 3) Blocks (count)
-  // ======================
+  // 3. Blocks
   {
-    const mat = byName.get("Blocks");
-    const variant = chooseVariant(mat);
-
-    const qtyPerM2 = Number(variant?.quantityPerM2 || 12);
-    const q = wallArea * qtyPerM2 * waste;
-
+    const mat = findMatByName("Block") || findMatByName("Hollow");
+    const variant = getVariantInfo(mat);
     if (mat && variant) {
-      items.push(
-        buildItem("Blocks", mat.unit || "block", q, variant.pricePerUnit, {
-          materialId: String(mat._id),
-          variantKey: variant.key,
-          calc: { base: "wallArea*qtyPerM2*waste" },
-        })
-      );
+      const qtyPerM2 = Number(variant.quantityPerM2 || 12.5);
+      const q = wallArea * qtyPerM2 * waste;
+      items.push(buildItem(mat.name, mat.unit || "Piece", q, variant.pricePerUnit, 
+        { materialId: String(mat._id), variantKey: variant.key }, variant.displayLabel));
     }
   }
 
-  // ======================
-  // 4) Plaster (m2)
-  // ======================
+  // 4. Paint
   {
-    const mat = byName.get("Plaster");
-    const variant = chooseVariant(mat);
-
-    const plasterWall = wallArea * Number(preset.plaster_wall_factor || 1.0);
-    const qtyPerM2 = Number(variant?.quantityPerM2 || 1.0);
-    const q = plasterWall * qtyPerM2 * waste;
-
+    const mat = findMatByName("Paint");
+    const variant = getVariantInfo(mat);
     if (mat && variant) {
-      items.push(
-        buildItem("Plaster", mat.unit || "m2", q, variant.pricePerUnit, {
-          materialId: String(mat._id),
-          variantKey: variant.key,
-          calc: { base: "wallArea*plaster_wall_factor*qtyPerM2*waste" },
-        })
-      );
+      const ceilingArea = area * floors;
+      const paintArea = (wallArea + ceilingArea) * coats * Number(preset.paint_factor || 0.85);
+      const qty = variant.quantityPerM2 || 1.0; 
+      const q = paintArea * qty * waste;
+      items.push(buildItem(mat.name, mat.unit || "Gallon", q, variant.pricePerUnit, 
+        { materialId: String(mat._id), variantKey: variant.key }, variant.displayLabel));
     }
   }
 
-  // ======================
-  // 5) Paint
-  // ======================
+  // 5. Tiles
   {
-    const mat = byName.get("Paint");
-    const variant = chooseVariant(mat);
-
-    const ceilingArea = area * floors;
-    const paintArea =
-      (wallArea + ceilingArea) * coats * Number(preset.paint_factor || 0.85);
-
-    const qtyPerM2 = Number(variant?.quantityPerM2 || 1.0);
-    const q = paintArea * qtyPerM2 * waste;
-
+    const mat = findMatByName("Tile") || findMatByName("Porcelain");
+    const variant = getVariantInfo(mat);
     if (mat && variant) {
-      items.push(
-        buildItem("Paint", mat.unit || "m2", q, variant.pricePerUnit, {
-          materialId: String(mat._id),
-          variantKey: variant.key,
-          calc: {
-            base: "(wallArea+ceilingArea)*coats*paint_factor*qtyPerM2*waste",
-          },
-        })
-      );
+      const cover = Number(preset.tiles_floor_coverage || 0.8);
+      const tilesArea = area * floors * cover * 1.05;
+      const q = tilesArea * (variant.quantityPerM2 || 1) * waste;
+      items.push(buildItem(mat.name, mat.unit || "m2", q, variant.pricePerUnit, 
+        { materialId: String(mat._id), variantKey: variant.key }, variant.displayLabel));
     }
   }
 
-  // ======================
-  // 6) Tiles (m2)
-  // ======================
-  {
-    const mat = byName.get("Tiles");
-    const variant = chooseVariant(mat);
+  // 6. Generic Calculation (Rest of selected materials)
+  const calculatedIds = items.map(i => i.materialId);
+  
+  for (const m of mats) {
+    if (calculatedIds.includes(String(m._id))) continue; 
 
-    const cover = Number(preset.tiles_floor_coverage || 0.8);
-    const tilesArea = area * floors * cover * 1.05;
-    const qtyPerM2 = Number(variant?.quantityPerM2 || 1.0);
-    const q = tilesArea * qtyPerM2 * waste;
-
-    if (mat && variant) {
-      items.push(
-        buildItem("Tiles", mat.unit || "m2", q, variant.pricePerUnit, {
-          materialId: String(mat._id),
-          variantKey: variant.key,
-          calc: { base: "area*floors*tiles_floor_coverage*1.05*qtyPerM2*waste" },
-        })
-      );
-    }
-  }
-
-  // ======================
-  // ✅ Extras: أي مادة اختارها المستخدم تنضاف تلقائيًا (إذا إلها quantityPerM2)
-  // ======================
-  for (const s of selections) {
-    const matId = String(s?.materialId || "");
-    const variantKey = String(s?.variantKey || "");
-    if (!matId || !variantKey) continue;
-
-    const mat = byId.get(matId);
-    if (!mat) continue;
-
-    // لا تعيد إضافة المواد الأساسية (لأن انحسبت فوق)
-    if (neededNames.includes(mat.name)) continue;
-
-    const variant = pickVariantByKey(mat, variantKey);
+    const variant = getVariantInfo(m);
     if (!variant) continue;
 
     const qtyPerM2 = Number(variant.quantityPerM2 || 0);
-    if (!(qtyPerM2 > 0)) {
-      // إذا ما عندها كمية/م2، بنتركها (بدك إلها معادلة خاصة لاحقًا)
-      continue;
+    
+    // Logic 1: Per m2
+    if (qtyPerM2 > 0) {
+       const q = area * floors * qtyPerM2 * waste;
+       items.push(buildItem(m.name, m.unit, q, variant.pricePerUnit, 
+        { materialId: String(m._id), variantKey: variant.key }, variant.displayLabel));
+    } 
+    // Logic 2: Per Piece/Set
+    else if (["piece", "set", "unit", "door"].includes(m.unit.toLowerCase())) {
+        const defaultFactor = 1/50; 
+        const q = Math.ceil(area * floors * defaultFactor);
+        items.push(buildItem(m.name, m.unit, q, variant.pricePerUnit, 
+            { materialId: String(m._id), variantKey: variant.key }, variant.displayLabel));
     }
-
-    const q = area * floors * qtyPerM2 * waste;
-
-    items.push(
-      buildItem(mat.name, mat.unit || "unit", q, variant.pricePerUnit, {
-        materialId: String(mat._id),
-        variantKey: variant.key,
-        calc: { base: "area*floors*qtyPerM2*waste (extra selected)" },
-      })
-    );
+    // Logic 3: Fallback (Just 1 unit just in case)
+    else {
+        items.push(buildItem(m.name, m.unit, 1, variant.pricePerUnit, 
+            { materialId: String(m._id), variantKey: variant.key }, variant.displayLabel));
+    }
   }
 
   const totalCost = items.reduce((sum, it) => sum + (Number(it.total) || 0), 0);
@@ -371,17 +252,8 @@ async function generateBoqForProject(project, options = {}) {
     items,
     totalCost: Number(totalCost.toFixed(2)),
     currency: "JOD",
-    finishingLevel: levelKey,
     buildingType,
-    presetUsed: {
-      ...preset,
-      label: presetBase.label,
-    },
   };
 }
 
-module.exports = {
-  generateBoqForProject,
-  approximatePerimeterFromArea,
-  PRESETS,
-};
+module.exports = { generateBoqForProject, PRESETS };
