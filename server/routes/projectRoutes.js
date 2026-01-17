@@ -118,5 +118,7 @@ router.post(
   planUpload.single("planFile"),
   projectController.analyzePlanOnly
 );
+// ... (تأكد أنك تضعه قبل الراوتات التي تحتوي على :id لتجنب التضارب)
+router.get("/client/recent-offers", protect, projectController.getClientRecentOffers);
 
 module.exports = router;

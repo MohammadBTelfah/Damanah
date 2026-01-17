@@ -416,6 +416,55 @@ Future<void> acceptOffer({
   throw Exception("(${res.statusCode}) ${_errMsg(res)}");
 }
 
+// =========================
+  // Tips & Community
+  // =========================
+
+  /// GET /api/tips
+  Future<List<dynamic>> getTips() async {
+    // نستخدم try-catch هنا لضمان عدم توقف التطبيق إذا فشل تحميل النصائح
+    try {
+      final token = await _mustToken();
+      final uri = Uri.parse(ApiConfig.join("/api/tips"));
+
+      final res = await http
+          .get(uri, headers: _authHeaders(token))
+          .timeout(const Duration(seconds: 20));
+
+      final decoded = _safeDecode(res.body);
+
+      if (res.statusCode == 200) {
+        if (decoded is List) return decoded;
+        return []; // إرجاع قائمة فارغة في حال كان الشكل غير صحيح
+      }
+    } catch (e) {
+      // في حال حدوث أي خطأ، نعيد قائمة فارغة كي لا تظهر رسالة خطأ مزعجة في الصفحة الرئيسية
+      return [];
+    }
+    return [];
+  }
+  /// GET /api/projects/client/recent-offers
+  Future<List<dynamic>> getRecentOffers() async {
+    try {
+      final token = await _mustToken();
+      final uri = Uri.parse(ApiConfig.join("/api/projects/client/recent-offers"));
+
+      final res = await http
+          .get(uri, headers: _authHeaders(token))
+          .timeout(const Duration(seconds: 20));
+
+      final decoded = _safeDecode(res.body);
+
+      if (res.statusCode == 200) {
+        if (decoded is List) return decoded;
+        return [];
+      }
+    } catch (e) {
+      // نتجاهل الأخطاء لعدم إيقاف الشاشة
+    }
+    return [];
+  }
+
   /// GET /api/projects/contractor/my
   Future<List<dynamic>> getMyProjectsForContractor() async {
     final token = await _mustToken();
