@@ -1,99 +1,103 @@
 const axios = require("axios");
 const cheerio = require("cheerio");
 
-// مصدر الأخبار من موقع نقابة المقاولين
-const JCCA_NEWS_URL = "https://www.jcca.org.jo/NewsArchive.aspx?lang=ar";
-
-// ===== In-memory cache =====
-let cache = {
-  at: 0,
-  items: [],
-};
-const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+// ✅ الرابط اللي بدك إياه
+const JCCA_NEWS_URL = "https://www.jcca.org.jo/NewsArchive.aspx";
+const BASE = "https://www.jcca.org.jo";
 
 // GET /api/public/jcca-news?limit=5
 exports.getJccaNews = async (req, res) => {
   try {
     const limit = Math.min(parseInt(req.query.limit || "5", 10), 20);
 
-    // ✅ cache
-    if (Date.now() - cache.at < CACHE_TTL && cache.items.length > 0) {
-      return res.json({
-        source: "JCCA",
-        url: JCCA_NEWS_URL,
-        cached: true,
-        fetchedAt: new Date(cache.at).toISOString(),
-        items: cache.items.slice(0, limit),
-      });
-    }
+    // نحاول نجيب الأرشيف بدون lang أولاً (زي ما بدك)
+    let html = null;
+    let usedUrl = JCCA_NEWS_URL;
 
-    const { data: html } = await axios.get(JCCA_NEWS_URL, {
-      timeout: 15000,
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123 Safari/537.36",
-        "Accept-Language": "ar,en;q=0.9",
-      },
-    });
+    const fetchPage = async (url) => {
+      const r = await axios.get(url, {
+        timeout: 15000,
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123 Safari/537.36",
+        },
+      });
+      return r.data;
+    };
+
+    try {
+      html = await fetchPage(usedUrl);
+    } catch (_) {
+      // ✅ fallback إذا احتاج lang=ar
+      usedUrl = `${JCCA_NEWS_URL}?lang=ar`;
+      html = await fetchPage(usedUrl);
+    }
 
     const $ = cheerio.load(html);
+
     const items = [];
-
-    $("a")
-      .filter((_, el) => ($(el).attr("href") || "").includes("NewsDetails"))
-      .each((_, el) => {
-        const href = $(el).attr("href");
-        if (!href) return;
-
-        const link = href.startsWith("http")
-          ? href
-          : `https://www.jcca.org.jo/${href.replace(/^\//, "")}`;
-
-        let title = $(el).text().replace(/\s+/g, " ").trim();
-
-        if (!title) {
-          title = $(el)
-            .closest("tr, li, div")
-            .text()
-            .replace("مشاهدة التفاصيل", "")
-            .replace(/\s+/g, " ")
-            .trim();
-        }
-
-        // تنظيف التواريخ
-        title = title
-          .replace(
-            /\d{1,2}\/\d{1,2}\/\d{4}|\d{1,2}\/[A-Za-z]{3,}\/\d{4}/g,
-            ""
-          )
-          .trim();
-
-        if (!title || title.length < 6) {
-          title = "JCCA News";
-        }
-
-        items.push({ title, link });
-      });
-
-    // إزالة التكرار
-    const unique = [];
     const seen = new Set();
 
-    for (const it of items) {
-      if (seen.has(it.link)) continue;
-      seen.add(it.link);
-      unique.push(it);
-      if (unique.length >= 20) break;
-    }
+    // ✅ روابط الأخبار الصحيحة حالياً: News.aspx?id=...
+    const selectors = [
+      'a[href*="News.aspx?id="]',
+      'a[href*="news.aspx?id="]',
+    ];
 
-    cache = { at: Date.now(), items: unique };
+    $(selectors.join(",")).each((_, el) => {
+      const href = $(el).attr("href");
+      if (!href) return;
+
+      // link absolute
+      const link = href.startsWith("http")
+        ? href
+        : `${BASE}/${href.replace(/^\//, "")}`;
+
+      if (seen.has(link)) return;
+
+      let title = $(el).text().replace(/\s+/g, " ").trim();
+
+      // إذا العنوان فاضي (بعض الروابط تكون "مشاهدة التفاصيل")
+      if (!title || title.includes("مشاهدة") || title.length < 4) {
+        // حاول نجيب أقرب نص من نفس السطر/الصف
+        title = $(el)
+          .closest("tr, li, div")
+          .text()
+          .replace(/\s+/g, " ")
+          .trim();
+      }
+
+      // تنظيف
+      title = title
+        .replace("", "")
+        .replace("مشاهدة التفاصيل", "")
+        .replace("View Details", "")
+        .replace(/\d{1,2}\/[A-Za-z]{3,}\/\d{4}/g, "") // 07/December/2025
+        .replace(/\d{1,2}\/\d{1,2}\/\d{4}/g, "")      // 07/12/2025
+        .replace(/\s+/g, " ")
+        .trim();
+
+      if (!title) title = "New update from JCCA";
+
+      seen.add(link);
+      items.push({ title, link });
+    });
+
+    // ✅ لو ما لقينا شيء نهائياً
+    if (items.length === 0) {
+      return res.json({
+        source: "JCCA",
+        url: usedUrl,
+        items: [],
+        message:
+          "No news items found. The website structure may have changed.",
+      });
+    }
 
     return res.json({
       source: "JCCA",
-      url: JCCA_NEWS_URL,
-      cached: false,
-      fetchedAt: new Date(cache.at).toISOString(),
-      items: unique.slice(0, limit),
+      url: usedUrl,
+      items: items.slice(0, limit),
     });
   } catch (err) {
     console.error("getJccaNews error:", err.message);

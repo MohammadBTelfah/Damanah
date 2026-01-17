@@ -3,9 +3,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../services/session_service.dart';
 import '../services/project_service.dart';
-import '../services/notification_service.dart';
 import '../services/jcca_news_service.dart';
-
 import 'app_drawer.dart';
 import 'contractor_project_details_page.dart';
 
@@ -33,34 +31,25 @@ class ContractorHomeScreen extends StatefulWidget {
 
 class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
-
   final ProjectService _projectService = ProjectService();
-  final NotificationService _notificationService = NotificationService();
+
   final JccaNewsService _newsService = JccaNewsService();
+  Future<List<Map<String, dynamic>>>? _newsFuture;
 
   Map<String, dynamic>? _userLocal;
-
   Future<List<dynamic>>? _availableFuture;
-  Future<List<dynamic>>? _myFuture;
-  Future<List<dynamic>>? _messagesFuture;
-
-  Future<List<Map<String, dynamic>>>? _newsFuture;
 
   @override
   void initState() {
     super.initState();
     _syncUserAndLoad();
     _newsFuture = _newsService.fetchNews(limit: 5);
-    _messagesFuture = _notificationService.getMyNotifications();
   }
 
   @override
   void didUpdateWidget(covariant ContractorHomeScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.user != widget.user) {
-      _syncUserAndLoad();
-      setState(() => _messagesFuture = _notificationService.getMyNotifications());
-    }
+    if (oldWidget.user != widget.user) _syncUserAndLoad();
   }
 
   Future<void> _syncUserAndLoad() async {
@@ -71,26 +60,19 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
 
     final role = (u?["role"] ?? "").toString().toLowerCase().trim();
     if (role != "contractor") {
-      setState(() {
-        _availableFuture = Future.value([]);
-        _myFuture = Future.value([]);
-      });
+      setState(() => _availableFuture = Future.value([]));
       return;
     }
 
     setState(() {
       _availableFuture = _projectService.getAvailableProjectsForContractor();
-      _myFuture = _projectService.getMyProjectsForContractor();
     });
   }
 
   Future<void> _refreshAll() async {
     await widget.onRefreshUser();
     await _syncUserAndLoad();
-    setState(() {
-      _newsFuture = _newsService.fetchNews(limit: 5);
-      _messagesFuture = _notificationService.getMyNotifications();
-    });
+    setState(() => _newsFuture = _newsService.fetchNews(limit: 5));
   }
 
   Future<void> _openUrl(String url) async {
@@ -112,12 +94,10 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
   Widget build(BuildContext context) {
     const bgTop = Color(0xFF0F261F);
     const bgBottom = Color(0xFF0B1D17);
-    const primary = Color(0xFF8BE3B5);
     const card = Color(0xFF1B3A35);
 
     final user = _userLocal;
     final name = (user?["name"] ?? "Contractor").toString();
-
     final profilePath =
         (user?["profileImage"] ?? user?["avatar"] ?? "").toString();
     final profileUrl =
@@ -181,10 +161,9 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
                       ),
                     ),
                     IconButton(
-                      onPressed: () {
-                        // jump to Messages tab by scrolling? (keep simple)
-                      },
-                      icon: const Icon(Icons.notifications_none, color: Colors.white),
+                      onPressed: () {},
+                      icon: const Icon(Icons.notifications_none,
+                          color: Colors.white),
                     ),
                   ],
                 ),
@@ -203,50 +182,26 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
 
                 const SizedBox(height: 14),
 
-                // ✅ Internal Tabs: Projects / Messages (no bottom nav)
-                Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: Colors.white10,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Colors.white12),
+                // ✅ Client requests only
+                const Text(
+                  "Client Requests",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
                   ),
-                  child: DefaultTabController(
-                    length: 2,
-                    child: Column(
-                      children: [
-                        const TabBar(
-                          indicatorSize: TabBarIndicatorSize.tab,
-                          labelColor: Colors.black,
-                          unselectedLabelColor: Colors.white70,
-                          dividerColor: Colors.transparent,
-                          indicator: BoxDecoration(
-                            color: primary,
-                            borderRadius: BorderRadius.all(Radius.circular(12)),
-                          ),
-                          tabs: [
-                            Tab(text: "Projects"),
-                            Tab(text: "Messages"),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        SizedBox(
-                          height: 620,
-                          child: TabBarView(
-                            children: [
-                              _projectsView(card),
-                              _messagesView(card),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                ),
+                const SizedBox(height: 10),
+
+                _ProjectsList(
+                  future: _availableFuture,
+                  emptyText: "No client requests right now.",
+                  onOpenDetails: _openProjectDetails,
                 ),
 
                 const SizedBox(height: 18),
 
-                // News (English + LTR)
+                // ✅ News
                 const Text(
                   "Latest JCCA News",
                   style: TextStyle(
@@ -264,21 +219,29 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
                     builder: (context, snap) {
                       if (snap.connectionState == ConnectionState.waiting) {
                         return const Center(
-                          child: Text("Loading news...",
-                              style: TextStyle(color: Colors.white70)),
+                          child: Text(
+                            "Loading news...",
+                            style: TextStyle(color: Colors.white70),
+                          ),
                         );
                       }
+
                       if (snap.hasError) {
                         return const Center(
-                          child: Text("Couldn't load news.",
-                              style: TextStyle(color: Colors.white70)),
+                          child: Text(
+                            "Couldn't load news.",
+                            style: TextStyle(color: Colors.white70),
+                          ),
                         );
                       }
+
                       final items = snap.data ?? [];
                       if (items.isEmpty) {
                         return const Center(
-                          child: Text("No news available.",
-                              style: TextStyle(color: Colors.white70)),
+                          child: Text(
+                            "No news available.",
+                            style: TextStyle(color: Colors.white70),
+                          ),
                         );
                       }
 
@@ -290,8 +253,9 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
                         itemBuilder: (context, i) {
                           final n = items[i];
                           final rawTitle = (n["title"] ?? "").toString().trim();
-                          final title =
-                              rawTitle.isNotEmpty ? rawTitle : "New update from JCCA";
+                          final title = rawTitle.isNotEmpty
+                              ? rawTitle
+                              : "New update from JCCA";
                           final link = (n["link"] ?? "").toString();
 
                           return InkWell(
@@ -313,8 +277,11 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
                                       color: Colors.white10,
                                       borderRadius: BorderRadius.circular(12),
                                     ),
-                                    child: const Icon(Icons.newspaper,
-                                        color: Colors.white, size: 22),
+                                    child: const Icon(
+                                      Icons.newspaper,
+                                      color: Colors.white,
+                                      size: 22,
+                                    ),
                                   ),
                                   const SizedBox(height: 14),
                                   Text(
@@ -337,7 +304,9 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
                                       Text(
                                         "Read more",
                                         style: TextStyle(
-                                            color: Colors.white54, fontSize: 12),
+                                          color: Colors.white54,
+                                          fontSize: 12,
+                                        ),
                                       ),
                                     ],
                                   ),
@@ -355,140 +324,6 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
           ),
         ),
       ),
-    );
-  }
-
-  // ---------------- Projects view: Available + My projects
-  Widget _projectsView(Color card) {
-    return Container(
-      padding: const EdgeInsets.all(6),
-      decoration: BoxDecoration(
-        color: Colors.white10,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white12),
-      ),
-      child: DefaultTabController(
-        length: 2,
-        child: Column(
-          children: [
-            const TabBar(
-              indicatorSize: TabBarIndicatorSize.tab,
-              labelColor: Colors.black,
-              unselectedLabelColor: Colors.white70,
-              dividerColor: Colors.transparent,
-              indicator: BoxDecoration(
-                color: Color(0xFF8BE3B5),
-                borderRadius: BorderRadius.all(Radius.circular(12)),
-              ),
-              tabs: [
-                Tab(text: "Available"),
-                Tab(text: "My Projects"),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Expanded(
-              child: TabBarView(
-                children: [
-                  _ProjectsList(
-                    future: _availableFuture,
-                    emptyText: "No available projects right now.",
-                    onOpenDetails: _openProjectDetails,
-                  ),
-                  _ProjectsList(
-                    future: _myFuture,
-                    emptyText: "No assigned projects yet.",
-                    onOpenDetails: _openProjectDetails,
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ---------------- Messages view: notifications
-  Widget _messagesView(Color card) {
-    return FutureBuilder<List<dynamic>>(
-      future: _messagesFuture,
-      builder: (context, snap) {
-        if (snap.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (snap.hasError) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Text(
-                "Failed to load messages: ${snap.error}",
-                style: const TextStyle(color: Colors.redAccent),
-              ),
-            ),
-          );
-        }
-
-        final items = (snap.data ?? [])
-            .whereType<Map>()
-            .map((e) => (e as Map).cast<String, dynamic>())
-            .toList();
-
-        if (items.isEmpty) {
-          return const Center(
-            child: Text("No messages yet.",
-                style: TextStyle(color: Colors.white70)),
-          );
-        }
-
-        items.sort((a, b) {
-          final da = DateTime.tryParse((a["createdAt"] ?? "").toString()) ?? DateTime(1970);
-          final db = DateTime.tryParse((b["createdAt"] ?? "").toString()) ?? DateTime(1970);
-          return db.compareTo(da);
-        });
-
-        return ListView.separated(
-          padding: const EdgeInsets.only(top: 8),
-          itemCount: items.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 10),
-          itemBuilder: (context, i) {
-            final n = items[i];
-            final id = (n["_id"] ?? "").toString();
-            final title = (n["title"] ?? "Notification").toString();
-            final body = (n["body"] ?? "").toString();
-            final projectId = (n["projectId"] ?? "").toString();
-
-            return Container(
-              decoration: BoxDecoration(
-                color: card,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: Colors.white12),
-              ),
-              child: ListTile(
-                title: Text(title,
-                    style: const TextStyle(
-                        color: Colors.white, fontWeight: FontWeight.w800)),
-                subtitle: Padding(
-                  padding: const EdgeInsets.only(top: 6),
-                  child: Text(body,
-                      style: const TextStyle(color: Colors.white70)),
-                ),
-                trailing: IconButton(
-                  icon: const Icon(Icons.open_in_new, color: Colors.white70),
-                  onPressed: projectId.isEmpty ? null : () => _openProjectDetails(projectId),
-                ),
-                onTap: () async {
-                  if (id.isNotEmpty) {
-                    try {
-                      await _notificationService.markAsRead(id);
-                    } catch (_) {}
-                  }
-                  if (projectId.isNotEmpty) _openProjectDetails(projectId);
-                },
-              ),
-            );
-          },
-        );
-      },
     );
   }
 }
@@ -521,33 +356,34 @@ class _ProjectsList extends StatelessWidget {
           return const Center(child: CircularProgressIndicator());
         }
         if (snap.hasError) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Text(
-                "Error: ${snap.error}",
-                style: const TextStyle(color: Colors.redAccent),
-              ),
+          return Padding(
+            padding: const EdgeInsets.all(14),
+            child: Text(
+              "Error: ${snap.error}",
+              style: const TextStyle(color: Colors.redAccent),
             ),
           );
         }
 
         final items = snap.data ?? [];
         if (items.isEmpty) {
-          return Center(
-            child: Text(emptyText,
-                style: const TextStyle(color: Colors.white70)),
+          return Padding(
+            padding: const EdgeInsets.all(12),
+            child:
+                Text(emptyText, style: const TextStyle(color: Colors.white70)),
           );
         }
 
         return ListView.separated(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
           padding: const EdgeInsets.fromLTRB(0, 6, 0, 6),
           itemCount: items.length,
           separatorBuilder: (_, __) => const SizedBox(height: 10),
           itemBuilder: (context, i) {
             final p = (items[i] as Map).cast<String, dynamic>();
-            final id = (p["_id"] ?? p["id"] ?? "").toString();
 
+            final id = (p["_id"] ?? p["id"] ?? "").toString();
             final title = (p["title"] ?? p["name"] ?? "Project").toString();
             final location = (p["location"] ?? "").toString();
             final status = (p["status"] ?? "").toString();

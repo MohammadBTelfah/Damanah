@@ -3,12 +3,12 @@ import 'package:flutter/material.dart';
 import '../services/session_service.dart';
 import '../config/api_config.dart';
 
-// استدعاء الصفحات (تأكدنا من وجودها سابقاً)
+// ✅ استدعاء الصفحات بمساراتها الصحيحة
 import 'client_home_screen.dart';
 import 'contractor_home_screen.dart';
 import 'profile_screen.dart';
-import 'my_projects_page.dart';
-import 'contractors_page.dart';
+import 'my_projects_page.dart'; 
+import 'contractors_page.dart'; 
 
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
@@ -44,9 +44,9 @@ class _MainShellState extends State<MainShell> {
     final role = (_user?["role"] ?? "client").toString().toLowerCase().trim();
     final isContractor = role == "contractor";
 
-    // ✅ تعريف الصفحات بناءً على الصلاحية
+    // ✅ تعريف الصفحات
     final List<Widget> pages = [
-      // الصفحة 0: الرئيسية
+      // 0: الرئيسية
       isContractor
           ? ContractorHomeScreen(
               user: _user,
@@ -59,16 +59,16 @@ class _MainShellState extends State<MainShell> {
               onRefreshUser: _loadUser,
               onOpenProfile: _goToProfileTab,
             ),
+      
+      // 1: المشاريع
+      const MyProjectsPage(), 
 
-      // الصفحة 1: المشاريع
-      const MyProjectsPage(),
+      // 2: العروض / المقاولين
+      isContractor 
+          ? const _Placeholder(title: "My Offers") 
+          : const ContractorsPage(), 
 
-      // الصفحة 2: المقاولين (للعميل) / العروض (للمقاول)
-      isContractor
-          ? const _Placeholder(title: "My Offers")
-          : const ContractorsPage(),
-
-      // الصفحة 3: الملف الشخصي
+      // 3: الملف الشخصي
       if (_user != null)
         ProfileScreen(
           user: _user!,
@@ -82,11 +82,11 @@ class _MainShellState extends State<MainShell> {
 
     return Scaffold(
       backgroundColor: const Color(0xFF0F261F),
-
-      // ✅ استخدام IndexedStack للحفاظ على حالة الصفحات
+      
+      // الحفاظ على حالة الصفحات
       body: IndexedStack(index: _index, children: pages),
-
-      // ✅ استخدام التصميم الحديث (الخاص بك)
+      
+      // الشريط السفلي الحديث
       bottomNavigationBar: NavigationBarTheme(
         data: NavigationBarThemeData(
           backgroundColor: const Color(0xFF0F261F),
@@ -94,16 +94,10 @@ class _MainShellState extends State<MainShell> {
           labelTextStyle: WidgetStateProperty.resolveWith((states) {
             if (states.contains(WidgetState.selected)) {
               return const TextStyle(
-                color: Color(0xFF9EE7B7),
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-              );
+                  color: Color(0xFF9EE7B7), fontSize: 12, fontWeight: FontWeight.bold);
             }
             return const TextStyle(
-              color: Colors.white60,
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-            );
+                color: Colors.white60, fontSize: 12, fontWeight: FontWeight.w500);
           }),
           iconTheme: WidgetStateProperty.resolveWith((states) {
             if (states.contains(WidgetState.selected)) {
@@ -113,7 +107,7 @@ class _MainShellState extends State<MainShell> {
           }),
         ),
         child: NavigationBar(
-          height: 70,
+          height: 70, 
           elevation: 0,
           selectedIndex: _index,
           onDestinationSelected: (i) => setState(() => _index = i),
@@ -129,16 +123,8 @@ class _MainShellState extends State<MainShell> {
               label: "Projects",
             ),
             NavigationDestination(
-              icon: Icon(
-                isContractor
-                    ? Icons.assignment_outlined
-                    : Icons.engineering_outlined,
-              ),
-              selectedIcon: Icon(
-                isContractor
-                    ? Icons.assignment_rounded
-                    : Icons.engineering_rounded,
-              ),
+              icon: Icon(isContractor ? Icons.assignment_outlined : Icons.engineering_outlined),
+              selectedIcon: Icon(isContractor ? Icons.assignment_rounded : Icons.engineering_rounded),
               label: isContractor ? "Offers" : "Contractors",
             ),
             const NavigationDestination(
@@ -153,7 +139,6 @@ class _MainShellState extends State<MainShell> {
   }
 }
 
-// ويدجت التحميل
 class _LoadingPage extends StatelessWidget {
   const _LoadingPage();
   @override
@@ -164,7 +149,6 @@ class _LoadingPage extends StatelessWidget {
   }
 }
 
-// ويدجت للصفحات غير الجاهزة
 class _Placeholder extends StatelessWidget {
   final String title;
   const _Placeholder({required this.title});
@@ -175,11 +159,7 @@ class _Placeholder extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.construction,
-              size: 60,
-              color: Colors.white.withOpacity(0.2),
-            ),
+            Icon(Icons.construction, size: 60, color: Colors.white.withOpacity(0.2)),
             const SizedBox(height: 16),
             Text(
               "$title\n(Coming Soon)",
