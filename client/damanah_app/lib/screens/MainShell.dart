@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 
 import '../services/session_service.dart';
-import '../config/api_config.dart'; // ✅ ADD THIS
+import '../config/api_config.dart';
 
 import 'client_home_screen.dart';
 import 'profile_screen.dart';
 import 'contractor_home_screen.dart';
+import 'contractor_projects_page.dart';
+import 'contractor_notifications_page.dart';
+import 'notifications_page.dart';
 
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
@@ -18,7 +21,6 @@ class _MainShellState extends State<MainShell> {
   int _index = 0;
   Map<String, dynamic>? _user;
 
-  // ✅ FIX: استخدم الرابط الحقيقي
   String get baseUrl => ApiConfig.baseUrl;
 
   @override
@@ -44,24 +46,30 @@ class _MainShellState extends State<MainShell> {
     final home = role == "contractor"
         ? ContractorHomeScreen(
             user: _user,
-            baseUrl: baseUrl, // ✅ now real url
+            baseUrl: baseUrl,
             onRefreshUser: _loadUser,
           )
         : ClientHomeScreen(
             user: _user,
-            baseUrl: baseUrl, // ✅ now real url
+            baseUrl: baseUrl,
             onRefreshUser: _loadUser,
             onOpenProfile: _goToProfileTab,
           );
 
+    final projectsPage =
+        role == "contractor" ? const ContractorProjectsPage() : const _Placeholder(title: "Projects");
+
+    final messagesPage =
+        role == "contractor" ? const ContractorNotificationsPage() : const NotificationsPage();
+
     final pages = <Widget>[
       home,
-      const _Placeholder(title: "Projects"),
-      const _Placeholder(title: "Messages"),
+      projectsPage,
+      messagesPage,
       if (_user != null)
         ProfileScreen(
           user: _user!,
-          baseUrl: baseUrl, // ✅ now real url
+          baseUrl: baseUrl,
           isRoot: true,
           onRefreshUser: _loadUser,
         )
