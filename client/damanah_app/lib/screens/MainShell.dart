@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../services/session_service.dart';
 import '../config/api_config.dart';
 
-// ✅ استدعاء الصفحات بمساراتها الصحيحة
+// ✅ استدعاء الصفحات
 import 'client_home_screen.dart';
 import 'contractor_home_screen.dart';
 import 'profile_screen.dart';
@@ -36,6 +36,7 @@ class _MainShellState extends State<MainShell> {
   }
 
   void _goToProfileTab() {
+    // بما أن ترتيب البروفايل هو الأخير دائماً (رقم 3)
     setState(() => _index = 3);
   }
 
@@ -44,49 +45,70 @@ class _MainShellState extends State<MainShell> {
     final role = (_user?["role"] ?? "client").toString().toLowerCase().trim();
     final isContractor = role == "contractor";
 
-    // ✅ تعريف الصفحات
-    final List<Widget> pages = [
-      // 0: الرئيسية
-      isContractor
-          ? ContractorHomeScreen(
-              user: _user,
-              baseUrl: baseUrl,
-              onRefreshUser: _loadUser,
-            )
-          : ClientHomeScreen(
-              user: _user,
-              baseUrl: baseUrl,
-              onRefreshUser: _loadUser,
-              onOpenProfile: _goToProfileTab,
-            ),
-      
-      // 1: المشاريع
-      const MyProjectsPage(), 
+    // ====================================================
+    // 🏗️ فصل القوائم (Shells) بناءً على الدور
+    // ====================================================
 
-      // 2: العروض / المقاولين
-      isContractor 
-          ? const _Placeholder(title: "My Offers") 
-          : const ContractorsPage(), 
+    List<Widget> pages;
+    List<NavigationDestination> destinations;
 
-      // 3: الملف الشخصي
-      if (_user != null)
-        ProfileScreen(
-          user: _user!,
+    if (isContractor) {
+      // 👷‍♂️ إعدادات المقاول (Contractor Shell)
+      pages = [
+        ContractorHomeScreen(
+          user: _user,
           baseUrl: baseUrl,
-          isRoot: true,
           onRefreshUser: _loadUser,
-        )
-      else
-        const _LoadingPage(),
-    ];
+        ),
+        const _Placeholder(title: "My Works"), // صفحة مشاريع المقاول
+        const _Placeholder(title: "Offers"),   // صفحة العروض المقدمة
+        if (_user != null)
+          ProfileScreen(user: _user!, baseUrl: baseUrl, isRoot: true, onRefreshUser: _loadUser)
+        else
+          const _LoadingPage(),
+      ];
+
+      destinations = const [
+        NavigationDestination(icon: Icon(Icons.grid_view_outlined), selectedIcon: Icon(Icons.grid_view_rounded), label: "Dashboard"),
+        NavigationDestination(icon: Icon(Icons.assignment_outlined), selectedIcon: Icon(Icons.assignment_rounded), label: "Works"),
+        NavigationDestination(icon: Icon(Icons.local_offer_outlined), selectedIcon: Icon(Icons.local_offer_rounded), label: "Offers"),
+        NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person_rounded), label: "Profile"),
+      ];
+
+    } else {
+      // 👤 إعدادات العميل (Client Shell)
+      pages = [
+        ClientHomeScreen(
+          user: _user,
+          baseUrl: baseUrl,
+          onRefreshUser: _loadUser,
+          onOpenProfile: _goToProfileTab,
+        ),
+        const MyProjectsPage(), // صفحة مشاريع العميل
+        const ContractorsPage(), // صفحة البحث عن مقاولين
+        if (_user != null)
+          ProfileScreen(user: _user!, baseUrl: baseUrl, isRoot: true, onRefreshUser: _loadUser)
+        else
+          const _LoadingPage(),
+      ];
+
+      destinations = const [
+        NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home_rounded), label: "Home"),
+        NavigationDestination(icon: Icon(Icons.folder_copy_outlined), selectedIcon: Icon(Icons.folder_copy_rounded), label: "Projects"),
+        NavigationDestination(icon: Icon(Icons.engineering_outlined), selectedIcon: Icon(Icons.engineering_rounded), label: "Contractors"),
+        NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person_rounded), label: "Profile"),
+      ];
+    }
+
+    // ====================================================
 
     return Scaffold(
       backgroundColor: const Color(0xFF0F261F),
       
-      // الحفاظ على حالة الصفحات
+      // ✅ عرض الصفحة المناسبة حسب الدور والفهرس
       body: IndexedStack(index: _index, children: pages),
       
-      // الشريط السفلي الحديث
+      // ✅ عرض البار السفلي المناسب حسب الدور
       bottomNavigationBar: NavigationBarTheme(
         data: NavigationBarThemeData(
           backgroundColor: const Color(0xFF0F261F),
@@ -111,28 +133,7 @@ class _MainShellState extends State<MainShell> {
           elevation: 0,
           selectedIndex: _index,
           onDestinationSelected: (i) => setState(() => _index = i),
-          destinations: [
-            const NavigationDestination(
-              icon: Icon(Icons.grid_view_outlined),
-              selectedIcon: Icon(Icons.grid_view_rounded),
-              label: "Home",
-            ),
-            const NavigationDestination(
-              icon: Icon(Icons.folder_copy_outlined),
-              selectedIcon: Icon(Icons.folder_copy_rounded),
-              label: "Projects",
-            ),
-            NavigationDestination(
-              icon: Icon(isContractor ? Icons.assignment_outlined : Icons.engineering_outlined),
-              selectedIcon: Icon(isContractor ? Icons.assignment_rounded : Icons.engineering_rounded),
-              label: isContractor ? "Offers" : "Contractors",
-            ),
-            const NavigationDestination(
-              icon: Icon(Icons.person_outline),
-              selectedIcon: Icon(Icons.person_rounded),
-              label: "Profile",
-            ),
-          ],
+          destinations: destinations, // ✅ نمرر القائمة التي حددناها فوق
         ),
       ),
     );

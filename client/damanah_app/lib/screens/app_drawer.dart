@@ -5,6 +5,7 @@ import 'role_selection_screen.dart';
 import 'create_project_flow.dart'; // ✅ صفحة إنشاء مشروع
 import 'my_projects_page.dart'; // ✅ صفحة مشاريعي
 import 'contractors_page.dart'; // ✅ صفحة المقاولين
+import 'contracts_page.dart';
 
 class AppDrawer extends StatefulWidget {
   final Map<String, dynamic> user;
@@ -204,7 +205,7 @@ class _AppDrawerState extends State<AppDrawer> {
                     _item(
                       Icons.description_outlined,
                       "Contracts",
-                      () => _showSnack("Contracts module coming soon"),
+                      () => _navTo(const ContractsPage()),
                     ),
                   ],
 
@@ -222,7 +223,7 @@ class _AppDrawerState extends State<AppDrawer> {
                     _item(
                       Icons.description_outlined,
                       "Contracts",
-                      () => _showSnack("Contracts module coming soon"),
+                      () => _navTo(const ContractsPage()),
                     ),
                   ],
                 ],
