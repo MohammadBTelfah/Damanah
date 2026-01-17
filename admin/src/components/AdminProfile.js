@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useRef, useState, useEffect, useCallback } from "react";
 import {
   Box,
   Typography,
@@ -7,19 +7,27 @@ import {
   Alert,
   Avatar,
   CircularProgress,
-  Divider,
   IconButton,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
-  Tooltip,
+  Grid,
+  Container,
+  Paper,
+  Divider,
+  Stack,
+  Chip
 } from "@mui/material";
-import EditIcon from "@mui/icons-material/Edit";
-import PhotoCameraIcon from "@mui/icons-material/PhotoCamera";
-import LockResetIcon from "@mui/icons-material/LockReset";
-import CloseIcon from "@mui/icons-material/Close";
+
+// Icons
+import PhotoCamera from "@mui/icons-material/PhotoCamera";
 import SaveIcon from "@mui/icons-material/Save";
+import LockIcon from "@mui/icons-material/Lock";
+import PersonOutlineIcon from "@mui/icons-material/PersonOutline";
+import PhoneIphoneIcon from "@mui/icons-material/PhoneIphone";
+import MailOutlineIcon from "@mui/icons-material/MailOutline";
+import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 
 import { adminGetMe, adminUpdateMe, adminChangePassword } from "../Service/AdminMeApi";
 
@@ -33,29 +41,27 @@ function toFullImageUrl(pathOrUrl) {
 }
 
 export default function AdminProfile() {
-  const [loading, setLoading] = React.useState(true);
-  const [saving, setSaving] = React.useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [me, setMe] = useState(null);
 
-  const [error, setError] = React.useState("");
-  const [success, setSuccess] = React.useState("");
+  // Form States
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [pickedFile, setPickedFile] = useState(null);
+  const [previewImg, setPreviewImg] = useState(null);
 
-  const [me, setMe] = React.useState(null);
+  // Password Modal
+  const [pwOpen, setPwOpen] = useState(false);
+  const [pwLoading, setPwLoading] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
 
-  const [name, setName] = React.useState("");
-  const [phone, setPhone] = React.useState("");
-  const [pickedFile, setPickedFile] = React.useState(null);
+  const fileInputRef = useRef(null);
 
-  const [isEditingName, setIsEditingName] = React.useState(false);
-
-  // password modal
-  const [pwOpen, setPwOpen] = React.useState(false);
-  const [pwLoading, setPwLoading] = React.useState(false);
-  const [currentPassword, setCurrentPassword] = React.useState("");
-  const [newPassword, setNewPassword] = React.useState("");
-
-  const fileInputRef = React.useRef(null);
-
-  const load = React.useCallback(async () => {
+  const load = useCallback(async () => {
     setError("");
     setSuccess("");
     setLoading(true);
@@ -72,7 +78,7 @@ export default function AdminProfile() {
     }
   }, []);
 
-  React.useEffect(() => {
+  useEffect(() => {
     load();
   }, [load]);
 
@@ -80,26 +86,26 @@ export default function AdminProfile() {
     try {
       const raw = localStorage.getItem(SESSION_KEY);
       if (!raw) return;
-
       const s = JSON.parse(raw);
       const rawImg = updatedUser?.profileImage;
       const fullImg = rawImg ? toFullImageUrl(rawImg) : s?.user?.image;
-
       const next = {
         ...s,
-        user: {
-          ...s.user,
-          name: updatedUser?.name ?? s.user?.name,
-          email: updatedUser?.email ?? s.user?.email,
-          image: fullImg,
-        },
+        user: { ...s.user, ...updatedUser, image: fullImg },
       };
       localStorage.setItem(SESSION_KEY, JSON.stringify(next));
     } catch {}
   };
 
   const openFilePicker = () => fileInputRef.current?.click();
-  const handlePickFile = (e) => setPickedFile(e.target.files?.[0] || null);
+  
+  const handlePickFile = (e) => {
+    const file = e.target.files?.[0];
+    if (file) {
+        setPickedFile(file);
+        setPreviewImg(URL.createObjectURL(file));
+    }
+  };
 
   const handleUpdate = async () => {
     setError("");
@@ -107,27 +113,16 @@ export default function AdminProfile() {
     setSaving(true);
     try {
       const res = await adminUpdateMe({ name, phone, profileImageFile: pickedFile });
-      setSuccess(res?.message || "Account updated");
-
+      setSuccess(res?.message || "Profile updated successfully");
       const updatedUser = res?.user;
       setMe(updatedUser);
       updateSessionUser(updatedUser);
-
       setPickedFile(null);
-      setIsEditingName(false);
     } catch (e) {
       setError(e?.response?.data?.message || e?.message || "Update failed");
     } finally {
       setSaving(false);
     }
-  };
-
-  const handleOpenPw = () => {
-    setError("");
-    setSuccess("");
-    setCurrentPassword("");
-    setNewPassword("");
-    setPwOpen(true);
   };
 
   const handleChangePassword = async () => {
@@ -138,6 +133,8 @@ export default function AdminProfile() {
       const res = await adminChangePassword({ currentPassword, newPassword });
       setSuccess(res?.message || "Password changed successfully");
       setPwOpen(false);
+      setCurrentPassword("");
+      setNewPassword("");
     } catch (e) {
       setError(e?.response?.data?.message || e?.message || "Change password failed");
     } finally {
@@ -147,187 +144,218 @@ export default function AdminProfile() {
 
   if (loading) {
     return (
-      <Box sx={{ display: "flex", justifyContent: "center", py: 6 }}>
+      <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", height: "80vh" }}>
         <CircularProgress />
       </Box>
     );
   }
 
-  const avatarSrc = toFullImageUrl(me?.profileImage);
+  const avatarSrc = previewImg || toFullImageUrl(me?.profileImage);
 
   return (
-    <Box sx={{ width: "100%", p: { xs: 2, md: 3 } }}>
-      {/* ===== Title ===== */}
-      <Typography variant="h4" sx={{ fontWeight: 900, mb: 2 }}>
-        Admin Profile
+    // استخدمنا Container xl ليكون العرض واسع ومريح للعين
+    <Container maxWidth="xl" sx={{ py: 4 }}>
+      
+      {/* Header Title */}
+      <Typography variant="h4" sx={{ fontWeight: 800, mb: 4, letterSpacing: 1 }}>
+        Account Settings
       </Typography>
 
-      {error ? <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert> : null}
-      {success ? <Alert severity="success" sx={{ mb: 2 }}>{success}</Alert> : null}
+      {error && <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>}
+      {success && <Alert severity="success" sx={{ mb: 3 }}>{success}</Alert>}
 
-      {/* ===== Header Bar (Full width) ===== */}
-      <Box
-        sx={{
-          width: "100%",
-          borderRadius: 3,
-          p: 2.5,
-          border: "1px solid rgba(255,255,255,0.08)",
-          bgcolor: "rgba(255,255,255,0.03)",
-          display: "flex",
-          alignItems: "center",
-          gap: 2,
-        }}
-      >
-        {/* avatar */}
-        <Box sx={{ position: "relative" }}>
-          <Avatar src={avatarSrc} sx={{ width: 84, height: 84 }} />
-          <Tooltip title="Change photo">
-            <IconButton
-              onClick={openFilePicker}
-              sx={{
-                position: "absolute",
-                right: -6,
-                bottom: -6,
-                bgcolor: "rgba(0,0,0,0.6)",
-                border: "1px solid rgba(255,255,255,0.12)",
-                "&:hover": { bgcolor: "rgba(0,0,0,0.8)" },
-              }}
-            >
-              <PhotoCameraIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          <input ref={fileInputRef} hidden type="file" accept="image/*" onChange={handlePickFile} />
-        </Box>
+      <Grid container spacing={4}>
+        
+        {/* === LEFT COLUMN: User Identity Card === */}
+        <Grid item xs={12} md={4} lg={3}>
+          <Paper 
+            elevation={3} 
+            sx={{ 
+              p: 4, 
+              textAlign: "center", 
+              borderRadius: 4,
+              bgcolor: 'rgba(30,30,30, 0.6)', 
+              backdropFilter: 'blur(10px)',
+              border: '1px solid rgba(255,255,255,0.08)'
+            }}
+          >
+            <Box position="relative" display="inline-block" mb={2}>
+              <Avatar
+                src={avatarSrc}
+                sx={{ width: 140, height: 140, mx: "auto", border: '4px solid #333' }}
+              />
+              <IconButton
+                onClick={openFilePicker}
+                sx={{
+                  position: "absolute",
+                  bottom: 5,
+                  right: 5,
+                  bgcolor: "primary.main",
+                  color: "white",
+                  "&:hover": { bgcolor: "primary.dark" },
+                  width: 40, height: 40
+                }}
+              >
+                <PhotoCamera fontSize="small" />
+              </IconButton>
+              <input ref={fileInputRef} hidden type="file" accept="image/*" onChange={handlePickFile} />
+            </Box>
 
-        {/* name */}
-        <Box sx={{ flex: 1, minWidth: 240 }}>
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-            {!isEditingName ? (
-              <>
-                <Typography sx={{ fontWeight: 900, fontSize: 20 }}>
-                  {me?.name || "—"}
-                </Typography>
-                <Tooltip title="Edit name">
-                  <IconButton size="small" onClick={() => setIsEditingName(true)}>
-                    <EditIcon fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-              </>
-            ) : (
-              <>
-                <TextField
-                  size="small"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  sx={{ maxWidth: 320 }}
-                />
-                <Tooltip title="Done">
-                  <IconButton size="small" onClick={() => setIsEditingName(false)}>
-                    <SaveIcon fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title="Cancel">
-                  <IconButton
-                    size="small"
-                    onClick={() => {
-                      setName(me?.name || "");
-                      setIsEditingName(false);
-                    }}
-                  >
-                    <CloseIcon fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-              </>
-            )}
-          </Box>
-
-          {pickedFile ? (
-            <Typography sx={{ mt: 0.5, opacity: 0.75, fontSize: 13 }}>
-              Selected image: {pickedFile.name}
+            <Typography variant="h5" fontWeight="bold" gutterBottom>
+              {me?.name}
             </Typography>
-          ) : null}
-        </Box>
+            
+            <Chip 
+              icon={<AdminPanelSettingsIcon fontSize="small"/>} 
+              label={me?.role?.toUpperCase()} 
+              color="primary" 
+              variant="outlined" 
+              size="small" 
+              sx={{ mb: 3, fontWeight: 'bold' }} 
+            />
 
-        {/* actions right */}
-        <Box sx={{ display: "flex", gap: 1 }}>
-          <Button
-            startIcon={<LockResetIcon />}
-            variant="outlined"
-            onClick={handleOpenPw}
-            sx={{ fontWeight: 900 }}
+            <Divider sx={{ my: 2, borderColor: 'rgba(255,255,255,0.1)' }} />
+
+            <Stack spacing={2} sx={{ textAlign: 'left', mt: 3 }}>
+                <Box display="flex" alignItems="center" gap={2} sx={{ opacity: 0.8 }}>
+                    <MailOutlineIcon color="action" />
+                    <Typography variant="body2">{me?.email}</Typography>
+                </Box>
+                <Box display="flex" alignItems="center" gap={2} sx={{ opacity: 0.8 }}>
+                    <PhoneIphoneIcon color="action" />
+                    <Typography variant="body2">{phone || "No phone added"}</Typography>
+                </Box>
+            </Stack>
+          </Paper>
+        </Grid>
+
+        {/* === RIGHT COLUMN: Edit Form & Security === */}
+        <Grid item xs={12} md={8} lg={9}>
+          <Paper 
+            elevation={3} 
+            sx={{ 
+                p: { xs: 3, md: 5 }, 
+                borderRadius: 4,
+                bgcolor: 'rgba(30,30,30, 0.6)', 
+                backdropFilter: 'blur(10px)',
+                border: '1px solid rgba(255,255,255,0.08)'
+            }}
           >
-            Change Password
-          </Button>
+            {/* Section 1: Basic Info */}
+            <Box mb={4}>
+                <Typography variant="h6" fontWeight="bold" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 3 }}>
+                    <PersonOutlineIcon color="primary" /> Basic Information
+                </Typography>
+                
+                <Grid container spacing={3}>
+                    <Grid item xs={12} md={6}>
+                        <TextField
+                            fullWidth
+                            label="Full Name"
+                            value={name}
+                            onChange={(e) => setName(e.target.value)}
+                            variant="outlined"
+                        />
+                    </Grid>
+                    <Grid item xs={12} md={6}>
+                        <TextField
+                            fullWidth
+                            label="Phone Number"
+                            value={phone}
+                            onChange={(e) => setPhone(e.target.value)}
+                            variant="outlined"
+                        />
+                    </Grid>
+                    <Grid item xs={12}>
+                        <TextField
+                            fullWidth
+                            label="Email (Read Only)"
+                            value={me?.email || ""}
+                            disabled
+                            variant="filled"
+                        />
+                    </Grid>
+                </Grid>
 
-          <Button
-            variant="contained"
-            onClick={handleUpdate}
-            disabled={saving}
-            sx={{ fontWeight: 900 }}
-          >
-            {saving ? "Saving..." : "Save"}
-          </Button>
-        </Box>
-      </Box>
+                <Box mt={3} display="flex" justifyContent="flex-end">
+                    <Button 
+                        variant="contained" 
+                        size="large"
+                        startIcon={<SaveIcon />}
+                        onClick={handleUpdate}
+                        disabled={saving}
+                        sx={{ px: 4, py: 1, borderRadius: 2 }}
+                    >
+                        {saving ? "Saving..." : "Save Changes"}
+                    </Button>
+                </Box>
+            </Box>
 
-      <Divider sx={{ my: 2.5 }} />
+            <Divider sx={{ my: 4, borderColor: 'rgba(255,255,255,0.1)' }} />
 
-      {/* ===== Settings Body (full width, clean) ===== */}
-      <Typography sx={{ fontWeight: 900, mb: 1.5 }}>Contact info</Typography>
+            {/* Section 2: Security */}
+            <Box>
+                <Typography variant="h6" fontWeight="bold" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                    <LockIcon color="error" /> Security & Password
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                    Ensure your account is using a long, random password to stay secure.
+                </Typography>
 
-      <Box
-        sx={{
-          width: "100%",
-          display: "grid",
-          gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" },
-          gap: 2,
-        }}
+                <Button 
+                    variant="outlined" 
+                    color="error" 
+                    size="large"
+                    onClick={() => setPwOpen(true)}
+                    sx={{ px: 4, py: 1, borderRadius: 2 }}
+                >
+                    Change Password
+                </Button>
+            </Box>
+          </Paper>
+        </Grid>
+      </Grid>
+
+      {/* Password Dialog */}
+      <Dialog 
+        open={pwOpen} 
+        onClose={() => !pwLoading && setPwOpen(false)} 
+        fullWidth 
+        maxWidth="sm"
+        PaperProps={{ sx: { borderRadius: 3, p: 1, bgcolor: '#1e1e1e' } }}
       >
-        <TextField label="Email" value={me?.email || ""} disabled fullWidth />
-        <TextField
-          label="Phone"
-          value={phone}
-          onChange={(e) => setPhone(e.target.value)}
-          fullWidth
-        />
-      </Box>
-
-      {/* ===== Password Modal ===== */}
-      <Dialog open={pwOpen} onClose={() => !pwLoading && setPwOpen(false)} fullWidth maxWidth="sm">
-        <DialogTitle sx={{ fontWeight: 900 }}>Change password</DialogTitle>
-        <DialogContent sx={{ pt: 1 }}>
-          <Box sx={{ display: "grid", gap: 2, mt: 1 }}>
+        <DialogTitle sx={{ fontWeight: 800 }}>Change Password</DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: "grid", gap: 3, mt: 1 }}>
             <TextField
-              label="Current password"
+              label="Current Password"
               type="password"
               value={currentPassword}
               onChange={(e) => setCurrentPassword(e.target.value)}
               fullWidth
             />
             <TextField
-              label="New password"
+              label="New Password"
               type="password"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
-              helperText="Min 8 chars, uppercase, lowercase, number, special char."
               fullWidth
+              helperText="Must be at least 8 characters."
             />
           </Box>
         </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={() => setPwOpen(false)} disabled={pwLoading}>
-            Cancel
-          </Button>
+        <DialogActions sx={{ px: 3, pb: 3 }}>
+          <Button onClick={() => setPwOpen(false)} color="inherit">Cancel</Button>
           <Button
             variant="contained"
+            color="primary"
             onClick={handleChangePassword}
             disabled={pwLoading || !currentPassword || !newPassword}
-            sx={{ fontWeight: 900 }}
           >
-            {pwLoading ? "Updating..." : "Update"}
+            {pwLoading ? "Updating..." : "Confirm"}
           </Button>
         </DialogActions>
       </Dialog>
-    </Box>
+    </Container>
   );
 }

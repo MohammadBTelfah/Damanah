@@ -4,7 +4,6 @@ import DashboardLayoutAccount from "./components/AdminDashboard";
 import AdminRegister from "./components/AdminRegister";
 import AdminVerifyEmail from "./components/AdminVerifyEmail";
 import AdminLogin from "./components/AdminLogin";
-
 import "./App.css";
 
 function App() {
