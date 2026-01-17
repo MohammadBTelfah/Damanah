@@ -42,11 +42,9 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
 
   Future<List<dynamic>>? _availableFuture;
   Future<List<dynamic>>? _myFuture;
-
-  Future<List<Map<String, dynamic>>>? _newsFuture;
   Future<List<dynamic>>? _messagesFuture;
 
-  int _selectedIndex = 0; // 0=Projects, 1=Messages
+  Future<List<Map<String, dynamic>>>? _newsFuture;
 
   @override
   void initState() {
@@ -61,9 +59,7 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.user != widget.user) {
       _syncUserAndLoad();
-      setState(() {
-        _messagesFuture = _notificationService.getMyNotifications();
-      });
+      setState(() => _messagesFuture = _notificationService.getMyNotifications());
     }
   }
 
@@ -112,17 +108,6 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
     );
   }
 
-  void _onBottomNavTap(int idx) {
-    setState(() => _selectedIndex = idx);
-
-    // refresh notifications when opening Messages
-    if (idx == 1) {
-      setState(() {
-        _messagesFuture = _notificationService.getMyNotifications();
-      });
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     const bgTop = Color(0xFF0F261F);
@@ -162,257 +147,268 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
           ),
           child: RefreshIndicator(
             onRefresh: _refreshAll,
-            child: Column(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
               children: [
-                // ===== Top Bar =====
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 10),
-                  child: Row(
-                    children: [
-                      GestureDetector(
-                        onTap: () {
-                          if (user == null) return;
-                          _scaffoldKey.currentState?.openDrawer();
-                        },
-                        child: CircleAvatar(
-                          radius: 18,
-                          backgroundColor: Colors.white12,
-                          backgroundImage:
-                              profileUrl != null ? NetworkImage(profileUrl) : null,
-                          child: profileUrl == null
-                              ? const Icon(Icons.person, color: Colors.white)
-                              : null,
-                        ),
+                // Top Bar
+                Row(
+                  children: [
+                    GestureDetector(
+                      onTap: () {
+                        if (user == null) return;
+                        _scaffoldKey.currentState?.openDrawer();
+                      },
+                      child: CircleAvatar(
+                        radius: 18,
+                        backgroundColor: Colors.white12,
+                        backgroundImage:
+                            profileUrl != null ? NetworkImage(profileUrl) : null,
+                        child: profileUrl == null
+                            ? const Icon(Icons.person, color: Colors.white)
+                            : null,
                       ),
-                      const Expanded(
-                        child: Center(
-                          child: Text(
-                            'Home',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 18,
-                              fontWeight: FontWeight.w600,
-                            ),
+                    ),
+                    const Expanded(
+                      child: Center(
+                        child: Text(
+                          'Home',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ),
-                      IconButton(
-                        onPressed: () => _onBottomNavTap(1),
-                        icon: const Icon(Icons.notifications_none, color: Colors.white),
-                      ),
-                    ],
-                  ),
+                    ),
+                    IconButton(
+                      onPressed: () {
+                        // jump to Messages tab by scrolling? (keep simple)
+                      },
+                      icon: const Icon(Icons.notifications_none, color: Colors.white),
+                    ),
+                  ],
                 ),
 
-                // ===== Welcome =====
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      "Welcome back,\n$name",
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 26,
-                        fontWeight: FontWeight.w800,
-                        height: 1.05,
-                      ),
-                    ),
+                const SizedBox(height: 18),
+
+                Text(
+                  "Welcome back,\n$name",
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 28,
+                    fontWeight: FontWeight.w800,
+                    height: 1.1,
                   ),
                 ),
 
                 const SizedBox(height: 14),
 
-                // ===== Body =====
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: _selectedIndex == 0
-                        ? _projectsView(card, primary)
-                        : _messagesView(card),
+                // ✅ Internal Tabs: Projects / Messages (no bottom nav)
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: Colors.white10,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.white12),
                   ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-
-      // ===== Bottom Navigation =====
-      bottomNavigationBar: BottomNavigationBar(
-        backgroundColor: const Color(0xFF0C1712),
-        selectedItemColor: primary,
-        unselectedItemColor: Colors.white70,
-        currentIndex: _selectedIndex,
-        onTap: _onBottomNavTap,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.work_outline), label: "Projects"),
-          BottomNavigationBarItem(icon: Icon(Icons.message_outlined), label: "Messages"),
-        ],
-      ),
-    );
-  }
-
-  // ---------------- Projects ----------------
-  Widget _projectsView(Color card, Color primary) {
-    return ListView(
-      padding: EdgeInsets.zero,
-      children: [
-        // Tabs (Available / My Projects)
-        Container(
-          padding: const EdgeInsets.all(6),
-          decoration: BoxDecoration(
-            color: Colors.white10,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.white12),
-          ),
-          child: DefaultTabController(
-            length: 2,
-            child: Column(
-              children: [
-                TabBar(
-                  indicatorSize: TabBarIndicatorSize.tab,
-                  labelColor: Colors.black,
-                  unselectedLabelColor: Colors.white70,
-                  dividerColor: Colors.transparent,
-                  indicator: BoxDecoration(
-                    color: primary,
-                    borderRadius: const BorderRadius.all(Radius.circular(12)),
-                  ),
-                  tabs: const [
-                    Tab(text: "Available Projects"),
-                    Tab(text: "My Projects"),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                SizedBox(
-                  height: 520,
-                  child: TabBarView(
-                    children: [
-                      _ProjectsList(
-                        future: _availableFuture,
-                        emptyText: "No available projects right now.",
-                        onOpenDetails: _openProjectDetails,
-                      ),
-                      _ProjectsList(
-                        future: _myFuture,
-                        emptyText: "No assigned projects yet.",
-                        onOpenDetails: _openProjectDetails,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-
-        const SizedBox(height: 18),
-
-        // News (English + LTR)
-        const Text(
-          "Latest JCCA News",
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 18,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        const SizedBox(height: 12),
-
-        SizedBox(
-          height: 150,
-          child: FutureBuilder<List<Map<String, dynamic>>>(
-            future: _newsFuture,
-            builder: (context, snap) {
-              if (snap.connectionState == ConnectionState.waiting) {
-                return const Center(
-                  child: Text("Loading news...", style: TextStyle(color: Colors.white70)),
-                );
-              }
-
-              if (snap.hasError) {
-                return const Center(
-                  child: Text("Couldn't load news.", style: TextStyle(color: Colors.white70)),
-                );
-              }
-
-              final items = snap.data ?? [];
-              if (items.isEmpty) {
-                return const Center(
-                  child: Text("No news available.", style: TextStyle(color: Colors.white70)),
-                );
-              }
-
-              return ListView.separated(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                itemCount: items.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 12),
-                itemBuilder: (context, i) {
-                  final n = items[i];
-                  final rawTitle = (n["title"] ?? "").toString().trim();
-                  final title = rawTitle.isNotEmpty ? rawTitle : "New update from JCCA";
-                  final link = (n["link"] ?? "").toString();
-
-                  return InkWell(
-                    onTap: () => _openUrl(link),
-                    child: Container(
-                      width: 260,
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: card,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: Colors.white12),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              color: Colors.white10,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: const Icon(Icons.newspaper, color: Colors.white, size: 22),
+                  child: DefaultTabController(
+                    length: 2,
+                    child: Column(
+                      children: [
+                        const TabBar(
+                          indicatorSize: TabBarIndicatorSize.tab,
+                          labelColor: Colors.black,
+                          unselectedLabelColor: Colors.white70,
+                          dividerColor: Colors.transparent,
+                          indicator: BoxDecoration(
+                            color: primary,
+                            borderRadius: BorderRadius.all(Radius.circular(12)),
                           ),
-                          const SizedBox(height: 14),
-                          Text(
-                            title,
-                            maxLines: 3,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700,
-                              height: 1.3,
-                            ),
-                          ),
-                          const Spacer(),
-                          Row(
-                            children: const [
-                              Icon(Icons.open_in_new, color: Colors.white54, size: 16),
-                              SizedBox(width: 6),
-                              Text(
-                                "Read more",
-                                style: TextStyle(color: Colors.white54, fontSize: 12),
-                              ),
+                          tabs: [
+                            Tab(text: "Projects"),
+                            Tab(text: "Messages"),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        SizedBox(
+                          height: 620,
+                          child: TabBarView(
+                            children: [
+                              _projectsView(card),
+                              _messagesView(card),
                             ],
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-                  );
-                },
-              );
-            },
+                  ),
+                ),
+
+                const SizedBox(height: 18),
+
+                // News (English + LTR)
+                const Text(
+                  "Latest JCCA News",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                SizedBox(
+                  height: 150,
+                  child: FutureBuilder<List<Map<String, dynamic>>>(
+                    future: _newsFuture,
+                    builder: (context, snap) {
+                      if (snap.connectionState == ConnectionState.waiting) {
+                        return const Center(
+                          child: Text("Loading news...",
+                              style: TextStyle(color: Colors.white70)),
+                        );
+                      }
+                      if (snap.hasError) {
+                        return const Center(
+                          child: Text("Couldn't load news.",
+                              style: TextStyle(color: Colors.white70)),
+                        );
+                      }
+                      final items = snap.data ?? [];
+                      if (items.isEmpty) {
+                        return const Center(
+                          child: Text("No news available.",
+                              style: TextStyle(color: Colors.white70)),
+                        );
+                      }
+
+                      return ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        itemCount: items.length,
+                        separatorBuilder: (_, __) => const SizedBox(width: 12),
+                        itemBuilder: (context, i) {
+                          final n = items[i];
+                          final rawTitle = (n["title"] ?? "").toString().trim();
+                          final title =
+                              rawTitle.isNotEmpty ? rawTitle : "New update from JCCA";
+                          final link = (n["link"] ?? "").toString();
+
+                          return InkWell(
+                            onTap: () => _openUrl(link),
+                            child: Container(
+                              width: 260,
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: card,
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(color: Colors.white12),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(10),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white10,
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: const Icon(Icons.newspaper,
+                                        color: Colors.white, size: 22),
+                                  ),
+                                  const SizedBox(height: 14),
+                                  Text(
+                                    title,
+                                    maxLines: 3,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w700,
+                                      height: 1.3,
+                                    ),
+                                  ),
+                                  const Spacer(),
+                                  Row(
+                                    children: const [
+                                      Icon(Icons.open_in_new,
+                                          color: Colors.white54, size: 16),
+                                      SizedBox(width: 6),
+                                      Text(
+                                        "Read more",
+                                        style: TextStyle(
+                                            color: Colors.white54, fontSize: 12),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
-      ],
+      ),
     );
   }
 
-  // ---------------- Messages (Notifications) ----------------
+  // ---------------- Projects view: Available + My projects
+  Widget _projectsView(Color card) {
+    return Container(
+      padding: const EdgeInsets.all(6),
+      decoration: BoxDecoration(
+        color: Colors.white10,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white12),
+      ),
+      child: DefaultTabController(
+        length: 2,
+        child: Column(
+          children: [
+            const TabBar(
+              indicatorSize: TabBarIndicatorSize.tab,
+              labelColor: Colors.black,
+              unselectedLabelColor: Colors.white70,
+              dividerColor: Colors.transparent,
+              indicator: BoxDecoration(
+                color: Color(0xFF8BE3B5),
+                borderRadius: BorderRadius.all(Radius.circular(12)),
+              ),
+              tabs: [
+                Tab(text: "Available"),
+                Tab(text: "My Projects"),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Expanded(
+              child: TabBarView(
+                children: [
+                  _ProjectsList(
+                    future: _availableFuture,
+                    emptyText: "No available projects right now.",
+                    onOpenDetails: _openProjectDetails,
+                  ),
+                  _ProjectsList(
+                    future: _myFuture,
+                    emptyText: "No assigned projects yet.",
+                    onOpenDetails: _openProjectDetails,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ---------------- Messages view: notifications
   Widget _messagesView(Color card) {
     return FutureBuilder<List<dynamic>>(
       future: _messagesFuture,
@@ -439,46 +435,27 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
 
         if (items.isEmpty) {
           return const Center(
-            child: Text("No messages yet.", style: TextStyle(color: Colors.white70)),
+            child: Text("No messages yet.",
+                style: TextStyle(color: Colors.white70)),
           );
         }
 
-        // sort by date desc
         items.sort((a, b) {
           final da = DateTime.tryParse((a["createdAt"] ?? "").toString()) ?? DateTime(1970);
           final db = DateTime.tryParse((b["createdAt"] ?? "").toString()) ?? DateTime(1970);
           return db.compareTo(da);
         });
 
-        // Keep most relevant types on top (optional)
-        // You can comment this out if you want all types.
-        final preferred = <String>{"offer_created", "offer_updated", "offer_accepted"};
-        final filtered = items.where((n) {
-          final t = (n["type"] ?? "").toString();
-          return preferred.contains(t);
-        }).toList();
-
-        final list = filtered.isNotEmpty ? filtered : items;
-
         return ListView.separated(
           padding: const EdgeInsets.only(top: 8),
-          itemCount: list.length,
+          itemCount: items.length,
           separatorBuilder: (_, __) => const SizedBox(height: 10),
           itemBuilder: (context, i) {
-            final n = list[i];
-
+            final n = items[i];
             final id = (n["_id"] ?? "").toString();
             final title = (n["title"] ?? "Notification").toString();
             final body = (n["body"] ?? "").toString();
-            final type = (n["type"] ?? "").toString();
             final projectId = (n["projectId"] ?? "").toString();
-
-            final createdAtRaw = (n["createdAt"] ?? "").toString();
-            final createdAt = DateTime.tryParse(createdAtRaw);
-
-            IconData icon = Icons.notifications;
-            if (type == "offer_accepted") icon = Icons.check_circle_outline;
-            if (type == "offer_created" || type == "offer_updated") icon = Icons.send_outlined;
 
             return Container(
               decoration: BoxDecoration(
@@ -487,31 +464,19 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
                 border: Border.all(color: Colors.white12),
               ),
               child: ListTile(
-                leading: Icon(icon, color: Colors.white),
-                title: Text(
-                  title,
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
-                ),
-                subtitle: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const SizedBox(height: 6),
-                    Text(body, style: const TextStyle(color: Colors.white70)),
-                    if (createdAt != null) ...[
-                      const SizedBox(height: 6),
-                      Text(
-                        createdAt.toLocal().toString(),
-                        style: const TextStyle(color: Colors.white54, fontSize: 12),
-                      ),
-                    ],
-                  ],
+                title: Text(title,
+                    style: const TextStyle(
+                        color: Colors.white, fontWeight: FontWeight.w800)),
+                subtitle: Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(body,
+                      style: const TextStyle(color: Colors.white70)),
                 ),
                 trailing: IconButton(
                   icon: const Icon(Icons.open_in_new, color: Colors.white70),
                   onPressed: projectId.isEmpty ? null : () => _openProjectDetails(projectId),
                 ),
                 onTap: () async {
-                  // mark read then open
                   if (id.isNotEmpty) {
                     try {
                       await _notificationService.markAsRead(id);
@@ -570,7 +535,8 @@ class _ProjectsList extends StatelessWidget {
         final items = snap.data ?? [];
         if (items.isEmpty) {
           return Center(
-            child: Text(emptyText, style: const TextStyle(color: Colors.white70)),
+            child: Text(emptyText,
+                style: const TextStyle(color: Colors.white70)),
           );
         }
 
@@ -580,8 +546,8 @@ class _ProjectsList extends StatelessWidget {
           separatorBuilder: (_, __) => const SizedBox(height: 10),
           itemBuilder: (context, i) {
             final p = (items[i] as Map).cast<String, dynamic>();
-
             final id = (p["_id"] ?? p["id"] ?? "").toString();
+
             final title = (p["title"] ?? p["name"] ?? "Project").toString();
             final location = (p["location"] ?? "").toString();
             final status = (p["status"] ?? "").toString();
@@ -606,10 +572,12 @@ class _ProjectsList extends StatelessWidget {
                   ),
                   const SizedBox(height: 6),
                   if (location.isNotEmpty)
-                    Text(location, style: const TextStyle(color: Colors.white70)),
+                    Text(location,
+                        style: const TextStyle(color: Colors.white70)),
                   if (status.isNotEmpty) ...[
                     const SizedBox(height: 6),
-                    Text("Status: $status", style: const TextStyle(color: Colors.white60)),
+                    Text("Status: $status",
+                        style: const TextStyle(color: Colors.white60)),
                   ],
                   const SizedBox(height: 10),
                   Align(
