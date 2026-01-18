@@ -124,16 +124,18 @@ class NotificationService {
 
   // ✅ NEW: Delete Single Notification
   /// DELETE /api/notifications/:id
-  Future<void> deleteNotification(String id) async {
-    final token = await _mustToken();
-    final uri = Uri.parse(ApiConfig.join("/api/notifications/$id"));
-
-    final res = await http.delete(uri, headers: _authHeaders(token)).timeout(
-      const Duration(seconds: 20),
-    );
-
-    if (res.statusCode == 200) return;
-    
-    throw Exception("(${res.statusCode}) ${_errMsg(res)}");
+  Future<bool> deleteNotification(String id) async {
+    try {
+      final token = await _mustToken(); // تأكد أن دالة التوكن موجودة
+      final uri = Uri.parse(ApiConfig.join("/api/notifications/$id"));
+      
+      final res = await http.delete(uri, headers: _authHeaders(token));
+      
+      // إذا كان الرد 200 يعني تم الحذف بنجاح
+      return res.statusCode == 200;
+    } catch (e) {
+      print("Error deleting notification: $e");
+      return false; // فشل الحذف
+    }
   }
 }

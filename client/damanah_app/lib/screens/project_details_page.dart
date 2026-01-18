@@ -635,6 +635,7 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
       ],
     );
   }
+  
 
   Widget _buildOfferCard(dynamic o) {
     final m = (o as Map);
@@ -725,6 +726,8 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
     );
   }
 
+  
+
   Future<void> _acceptOffer(String offerId) async {
     setState(() => _accepting = true);
     try {
@@ -745,6 +748,7 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
       if (mounted) setState(() => _accepting = false);
     }
   }
+  
 
   // ====================== Styling Helpers ======================
 

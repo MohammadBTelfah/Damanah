@@ -73,19 +73,20 @@ exports.getAvailableContractors = async (req, res) => {
       isActive: true,
     }).select("_id name email phone profileImage");
 
-    const baseUrl = getBaseUrl(req);
+    const baseUrl = getBaseUrl(req);  // تأكد من أن baseUrl يحتوي على البروتوكول (http:// أو https://)
     const list = contractors.map((c) => {
       const obj = c.toObject();
       return {
         ...obj,
         profileImageUrl: obj.profileImage
-          ? String(obj.profileImage).startsWith("http")
-            ? obj.profileImage
-            : `${baseUrl}${obj.profileImage}`
-          : null,
+          ? obj.profileImage.startsWith("http")  // إذا كان الرابط يحتوي على بروتوكول (مثل http:// أو https://)
+            ? obj.profileImage  // إذا كان الرابط يحتوي على بروتوكول، نتركه كما هو
+            : `${baseUrl}${obj.profileImage}`  // إذا كان الرابط محليًا، ندمج baseUrl مع المسار
+          : null,  // إذا كانت الصورة غير موجودة، نضع القيمة null
       };
     });
-    return res.json(list);
+
+    return res.json(list);  // إرجاع القائمة للمستعرض
   } catch (err) {
     console.error("getAvailableContractors error:", err);
     return res
@@ -201,30 +202,39 @@ exports.publishProject = async (req, res) => {
 // =======================
 // Contractor - Available projects
 // =======================
+// projectController.js
+
 exports.getAvailableProjectsForContractor = async (req, res) => {
   try {
     const contractorId = req.user._id;
+    const baseUrl = getBaseUrl(req); // نستخدم الهيلبر الموجود عندك
 
     const projects = await Project.find({
-      status: "open",
-      contractor: null,
       $or: [
-        { sharedWith: contractorId },
-        { sharedWith: { $exists: false } },
-        { sharedWith: { $size: 0 } },
-      ],
+        { status: "open", contractor: null }, 
+        { contractor: contractorId, status: { $in: ["open", "in_progress"] } }
+      ]
     })
-      .populate("owner", "name email")
-      .sort({ createdAt: -1 });
+    .sort({ createdAt: -1 })
+    .populate("owner", "name profileImage city"); 
 
-    return res.json({ projects });
+    // ✅ تعديل الروابط لتصبح كاملة قبل الإرسال
+    const processedProjects = projects.map(project => {
+      const p = project.toObject();
+      if (p.owner && p.owner.profileImage) {
+        p.owner.profileImage = p.owner.profileImage.startsWith('http') 
+          ? p.owner.profileImage 
+          : `${baseUrl}${p.owner.profileImage.replaceAll('\\', '/')}`;
+      }
+      return p;
+    });
+
+    return res.json(processedProjects);
   } catch (err) {
-    console.error("getAvailableProjectsForContractor error:", err);
+    console.error("Error in getAvailableProjectsForContractor:", err);
     return res.status(500).json({ message: "Server error" });
   }
-};
-
-// =======================
+};// =======================
 // Contractor - My projects
 // =======================
 exports.getMyProjectsForContractor = async (req, res) => {
@@ -389,6 +399,36 @@ exports.createOffer = async (req, res) => {
 };
 
 // =======================
+// Update Project Status
+// =======================
+// projectController.js
+exports.updateProjectStatus = async (req, res) => {
+  try {
+    const { id } = req.params; // تأكد أن الاسم يطابق الراوتر (:id)
+    const { status } = req.body;
+
+    const project = await Project.findById(id);
+    if (!project) {
+      return res.status(404).json({ message: "المشروع غير موجود" });
+    }
+
+    // السماح للمقاول المسجل في المشروع فقط بالتحديث
+    // تأكد أن حقل المقاول في موديل المشروع اسمه contractor
+    if (String(project.contractor) !== String(req.user._id)) {
+      return res.status(403).json({ message: "فقط المقاول المسؤول عن المشروع يمكنه تغيير الحالة" });
+    }
+
+    project.status = status;
+    await project.save();
+
+    return res.status(200).json({
+      message: "تم تحديث الحالة بنجاح",
+      project,
+    });
+  } catch (err) {
+    return res.status(500).json({ message: "خطأ في السيرفر", error: err.message });
+  }
+};
 // Get offers
 // =======================
 exports.getProjectOffers = async (req, res) => {

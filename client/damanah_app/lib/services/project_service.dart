@@ -378,51 +378,51 @@ class ProjectService {
 
     throw Exception("(${res.statusCode}) ${_errMsg(res)}");
   }
-/// GET /api/projects/:projectId/offers  (Client only)
-Future<List<dynamic>> getProjectOffers({required String projectId}) async {
-  final token = await _mustToken();
-  final uri = Uri.parse(ApiConfig.join("/api/projects/$projectId/offers"));
 
-  final res = await http
-      .get(uri, headers: _authHeaders(token))
-      .timeout(const Duration(seconds: 30));
+  /// GET /api/projects/:projectId/offers  (Client only)
+  Future<List<dynamic>> getProjectOffers({required String projectId}) async {
+    final token = await _mustToken();
+    final uri = Uri.parse(ApiConfig.join("/api/projects/$projectId/offers"));
 
-  final decoded = _safeDecode(res.body);
+    final res = await http
+        .get(uri, headers: _authHeaders(token))
+        .timeout(const Duration(seconds: 30));
 
-  if (res.statusCode == 200) {
-    if (decoded is List) return decoded;
-    return [];
+    final decoded = _safeDecode(res.body);
+
+    if (res.statusCode == 200) {
+      if (decoded is List) return decoded;
+      return [];
+    }
+
+    throw Exception("(${res.statusCode}) ${_errMsg(res)}");
   }
 
-  throw Exception("(${res.statusCode}) ${_errMsg(res)}");
-}
+  /// PATCH /api/projects/:projectId/offers/:offerId/accept  (Client only)
+  Future<void> acceptOffer({
+    required String projectId,
+    required String offerId,
+  }) async {
+    final token = await _mustToken();
+    final uri = Uri.parse(
+      ApiConfig.join("/api/projects/$projectId/offers/$offerId/accept"),
+    );
 
-/// PATCH /api/projects/:projectId/offers/:offerId/accept  (Client only)
-Future<void> acceptOffer({
-  required String projectId,
-  required String offerId,
-}) async {
-  final token = await _mustToken();
-  final uri = Uri.parse(
-    ApiConfig.join("/api/projects/$projectId/offers/$offerId/accept"),
-  );
+    final res = await http
+        .patch(uri, headers: _authHeaders(token))
+        .timeout(const Duration(seconds: 30));
 
-  final res = await http
-      .patch(uri, headers: _authHeaders(token))
-      .timeout(const Duration(seconds: 30));
+    if (res.statusCode == 200) return;
 
-  if (res.statusCode == 200) return;
+    throw Exception("(${res.statusCode}) ${_errMsg(res)}");
+  }
 
-  throw Exception("(${res.statusCode}) ${_errMsg(res)}");
-}
-
-// =========================
+  // =========================
   // Tips & Community
   // =========================
 
   /// GET /api/tips
   Future<List<dynamic>> getTips() async {
-    // نستخدم try-catch هنا لضمان عدم توقف التطبيق إذا فشل تحميل النصائح
     try {
       final token = await _mustToken();
       final uri = Uri.parse(ApiConfig.join("/api/tips"));
@@ -435,14 +435,56 @@ Future<void> acceptOffer({
 
       if (res.statusCode == 200) {
         if (decoded is List) return decoded;
-        return []; // إرجاع قائمة فارغة في حال كان الشكل غير صحيح
+        return [];
       }
     } catch (e) {
-      // في حال حدوث أي خطأ، نعيد قائمة فارغة كي لا تظهر رسالة خطأ مزعجة في الصفحة الرئيسية
       return [];
     }
     return [];
   }
+
+  /// PATCH /api/projects/:id/status (Client/Contractor/Admin)
+  Future<void> updateProjectStatus({
+  required String projectId,  // معطى مسمى
+  required String newStatus,  // معطى مسمى
+}) async {
+  final token = await _mustToken();
+  final uri = Uri.parse(ApiConfig.join("/api/projects/$projectId/status"));
+
+  final res = await http
+      .patch(
+        uri,
+        headers: _authHeaders(token, json: true),
+        body: jsonEncode({"status": newStatus}),
+      )
+      .timeout(const Duration(seconds: 30));
+
+  if (res.statusCode == 200) return;
+
+  throw Exception("(${res.statusCode}) ${_errMsg(res)}");
+}
+
+  // =========================
+
+  /// GET /api/projects/client/my-offers  (Client only)
+  Future<List<dynamic>> getMyOffers() async {
+    final token = await _mustToken();
+    final uri = Uri.parse(ApiConfig.join("/api/projects/client/my-offers"));
+
+    final res = await http
+        .get(uri, headers: _authHeaders(token))
+        .timeout(const Duration(seconds: 30));
+
+    final decoded = _safeDecode(res.body);
+
+    if (res.statusCode == 200) {
+      if (decoded is List) return decoded;
+      return [];
+    }
+
+    throw Exception("(${res.statusCode}) ${_errMsg(res)}");
+  }
+
   /// GET /api/projects/client/recent-offers
   Future<List<dynamic>> getRecentOffers() async {
     try {
@@ -460,11 +502,10 @@ Future<void> acceptOffer({
         return [];
       }
     } catch (e) {
-      // نتجاهل الأخطاء لعدم إيقاف الشاشة
+      return [];
     }
     return [];
   }
-  
 
   /// GET /api/projects/contractor/my
   Future<List<dynamic>> getMyProjectsForContractor() async {

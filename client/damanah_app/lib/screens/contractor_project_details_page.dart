@@ -358,6 +358,8 @@ class _ContractorProjectDetailsPageState
     );
   }
 
+  
+
   Widget _offerCard({required bool isUpdate}) {
     return _card(
       child: Column(

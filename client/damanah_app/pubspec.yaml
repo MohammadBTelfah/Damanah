@@ -40,6 +40,8 @@ dependencies:
   http_parser: ^4.0.2
   url_launcher: ^6.3.2
   carousel_slider: ^5.1.1
+  logger: ^1.0.0
+
 
 
 
