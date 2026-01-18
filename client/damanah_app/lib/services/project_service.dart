@@ -333,6 +333,7 @@ class ProjectService {
   // =========================
 
   /// GET /api/projects/contractor/available
+/// GET /api/projects/contractor/available
   Future<List<dynamic>> getAvailableProjectsForContractor() async {
     final token = await _mustToken();
     final uri = Uri.parse(ApiConfig.join("/api/projects/contractor/available"));
@@ -344,17 +345,18 @@ class ProjectService {
     final decoded = _safeDecode(res.body);
 
     if (res.statusCode == 200) {
+      // ✅ التعديل هنا لضمان التعامل مع البيانات بشكل آمن
       if (decoded is Map && decoded["projects"] is List) {
         return List.from(decoded["projects"]);
       }
-      if (decoded is List) return decoded;
+      if (decoded is List) {
+        return decoded;
+      }
       return [];
     }
 
     throw Exception("(${res.statusCode}) ${_errMsg(res)}");
-  }
-
-  /// POST /api/projects/:projectId/offers
+  }  /// POST /api/projects/:projectId/offers
   Future<void> createOffer({
     required String projectId,
     required double price,
