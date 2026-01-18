@@ -75,7 +75,7 @@ class AuthChoiceScreen extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    isClient ? "Welcome to Damanah" : "Welcome Contractor",
+                    isClient ? "Welcome to Dhamanah" : "Welcome Contractor",
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 28,
