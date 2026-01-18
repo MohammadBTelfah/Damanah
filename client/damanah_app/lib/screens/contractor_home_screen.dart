@@ -3,9 +3,11 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../services/session_service.dart';
 import '../services/project_service.dart';
+import '../services/contract_service.dart'; // ✅ استدعاء سيرفس العقود الجديد
 import '../services/jcca_news_service.dart';
 import 'app_drawer.dart';
 import 'contractor_project_details_page.dart';
+import 'contractor_stats_pages.dart'; 
 
 String _joinUrl(String base, String path) {
   final b = base.endsWith('/') ? base.substring(0, base.length - 1) : base;
@@ -31,25 +33,37 @@ class ContractorHomeScreen extends StatefulWidget {
 
 class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  
+  // ✅ تعريف الخدمات بناءً على الملفات التي أرسلتها
   final ProjectService _projectService = ProjectService();
-
+  final ContractService _contractService = ContractService(); // ✅ هنا نستخدم سيرفس العقود
   final JccaNewsService _newsService = JccaNewsService();
+
+  // State
+  Map<String, dynamic>? _userLocal;
+  Future<List<dynamic>>? _availableProjectsFuture;
   Future<List<Map<String, dynamic>>>? _newsFuture;
 
-  Map<String, dynamic>? _userLocal;
-  Future<List<dynamic>>? _availableFuture;
+  // إحصائيات لوحة التحكم
+  int _worksCount = 0;
+  int _offersCount = 0;
+  int _contractsCount = 0;
+  bool _loadingStats = true;
 
   @override
   void initState() {
     super.initState();
     _syncUserAndLoad();
-    _newsFuture = _newsService.fetchNews(limit: 5);
+    _loadNews();
+    _loadDashboardStats(); // ✅ تحميل الأرقام عند فتح الصفحة
   }
 
   @override
   void didUpdateWidget(covariant ContractorHomeScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.user != widget.user) _syncUserAndLoad();
+    if (oldWidget.user != widget.user) {
+      _syncUserAndLoad();
+    }
   }
 
   Future<void> _syncUserAndLoad() async {
@@ -58,27 +72,78 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
 
     setState(() => _userLocal = u);
 
-    final role = (u?["role"] ?? "").toString().toLowerCase().trim();
-    if (role != "contractor") {
-      setState(() => _availableFuture = Future.value([]));
-      return;
+    // تحميل المشاريع المتاحة (Client Requests) باستخدام ProjectService
+    setState(() {
+      _availableProjectsFuture = _projectService.getAvailableProjectsForContractor();
+    });
+  }
+
+  // ✅ دالة جلب الإحصائيات (معدلة حسب ملفاتك)
+  Future<void> _loadDashboardStats() async {
+    if (!mounted) return;
+    setState(() => _loadingStats = true);
+
+    // متغيرات مؤقتة
+    int works = 0;
+    int offers = 0;
+    int contracts = 0;
+
+    // 1. محاولة جلب الأعمال (My Works)
+    try {
+      final res = await _projectService.getMyProjectsForContractor();
+      works = res.length;
+    } catch (e) {
+      print("Error loading works: $e");
     }
 
+    // 2. محاولة جلب العقود (Contracts)
+    try {
+      final res = await _contractService.getMyContracts();
+      contracts = res.length;
+    } catch (e) {
+      print("Error loading contracts: $e");
+      // غالباً الخطأ هنا لأن صيغة الرد قد تكون Map وليست List
+    }
+
+    // 3. محاولة جلب العروض (Offers)
+    try {
+      // final res = await _projectService.getMyOffers(); 
+      // offers = res.length;
+      offers = 0; // مؤقتاً حتى تجهز الـ API
+    } catch (e) {
+      print("Error loading offers: $e");
+    }
+
+    if (!mounted) return;
+    
+    // تحديث الواجهة بالأرقام التي نجحنا في جلبها
     setState(() {
-      _availableFuture = _projectService.getAvailableProjectsForContractor();
+      _worksCount = works;
+      _contractsCount = contracts;
+      _offersCount = offers;
+      _loadingStats = false;
+    });
+  }
+
+  void _loadNews() {
+    setState(() {
+      _newsFuture = _newsService.fetchNews(limit: 5);
     });
   }
 
   Future<void> _refreshAll() async {
     await widget.onRefreshUser();
     await _syncUserAndLoad();
-    setState(() => _newsFuture = _newsService.fetchNews(limit: 5));
+    _loadNews();
+    await _loadDashboardStats(); // تحديث الأرقام عند السحب
   }
 
   Future<void> _openUrl(String url) async {
     final uri = Uri.tryParse(url);
     if (uri == null) return;
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
   }
 
   void _openProjectDetails(String projectId) {
@@ -94,14 +159,14 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
   Widget build(BuildContext context) {
     const bgTop = Color(0xFF0F261F);
     const bgBottom = Color(0xFF0B1D17);
-    const card = Color(0xFF1B3A35);
-
+    
     final user = _userLocal;
     final name = (user?["name"] ?? "Contractor").toString();
-    final profilePath =
-        (user?["profileImage"] ?? user?["avatar"] ?? "").toString();
-    final profileUrl =
-        profilePath.isNotEmpty ? _joinUrl(widget.baseUrl, profilePath) : null;
+    final profilePath = (user?["profileImage"] ?? "").toString();
+    
+    final profileUrl = (profilePath.isNotEmpty && !profilePath.startsWith("http"))
+        ? _joinUrl(widget.baseUrl, profilePath)
+        : (profilePath.startsWith("http") ? profilePath : null);
 
     return Scaffold(
       key: _scaffoldKey,
@@ -127,10 +192,12 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
           ),
           child: RefreshIndicator(
             onRefresh: _refreshAll,
+            color: const Color(0xFF9EE7B7),
+            backgroundColor: const Color(0xFF1B3A35),
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 30),
               children: [
-                // Top Bar
+                // 1. Header
                 Row(
                   children: [
                     GestureDetector(
@@ -139,36 +206,23 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
                         _scaffoldKey.currentState?.openDrawer();
                       },
                       child: CircleAvatar(
-                        radius: 18,
+                        radius: 22,
                         backgroundColor: Colors.white12,
-                        backgroundImage:
-                            profileUrl != null ? NetworkImage(profileUrl) : null,
+                        backgroundImage: profileUrl != null ? NetworkImage(profileUrl) : null,
                         child: profileUrl == null
                             ? const Icon(Icons.person, color: Colors.white)
                             : null,
                       ),
                     ),
-                    const Expanded(
-                      child: Center(
-                        child: Text(
-                          'Home',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ),
+                    const Spacer(),
                     IconButton(
-                      onPressed: () {},
-                      icon: const Icon(Icons.notifications_none,
-                          color: Colors.white),
+                      onPressed: () {}, 
+                      icon: const Icon(Icons.notifications_outlined, color: Colors.white, size: 28),
                     ),
                   ],
                 ),
 
-                const SizedBox(height: 18),
+                const SizedBox(height: 24),
 
                 Text(
                   "Welcome back,\n$name",
@@ -176,143 +230,128 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
                     color: Colors.white,
                     fontSize: 28,
                     fontWeight: FontWeight.w800,
-                    height: 1.1,
+                    height: 1.2,
                   ),
                 ),
 
-                const SizedBox(height: 14),
+                const SizedBox(height: 24),
 
-                // ✅ Client requests only
+                // ===============================================
+                // ✅ 2. OVERVIEW SECTION (My Works, Offers, Contracts)
+                // ===============================================
+                const Text(
+                  "Overview",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                
+                Row(
+                  children: [
+                    Expanded(
+                      child: _StatCard(
+                        title: "My Works",
+                        count: _loadingStats ? "..." : "$_worksCount",
+                        icon: Icons.engineering,
+                        color: const Color(0xFFFFA726), // Orange
+                        onTap: () {
+                          Navigator.push(context, MaterialPageRoute(builder: (_) => const MyWorksPage()));
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _StatCard(
+                        title: "Offers",
+                        count: _loadingStats ? "..." : "$_offersCount",
+                        icon: Icons.local_offer,
+                        color: const Color(0xFF29B6F6), // Light Blue
+                        onTap: () {
+                          Navigator.push(context, MaterialPageRoute(builder: (_) => const MyOffersPage()));
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _StatCard(
+                        title: "Contracts",
+                        count: _loadingStats ? "..." : "$_contractsCount",
+                        icon: Icons.description,
+                        color: const Color(0xFF66BB6A), // Green
+                        onTap: () {
+                          Navigator.push(context, MaterialPageRoute(builder: (_) => const MyContractsPage()));
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 30),
+
+                // 3. Client Requests
                 const Text(
                   "Client Requests",
                   style: TextStyle(
                     color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 16),
 
                 _ProjectsList(
-                  future: _availableFuture,
+                  future: _availableProjectsFuture,
                   emptyText: "No client requests right now.",
                   onOpenDetails: _openProjectDetails,
                 ),
 
-                const SizedBox(height: 18),
+                const SizedBox(height: 30),
 
-                // ✅ News
+                // 4. News
                 const Text(
                   "Latest JCCA News",
                   style: TextStyle(
                     color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 16),
 
                 SizedBox(
-                  height: 150,
+                  height: 170,
                   child: FutureBuilder<List<Map<String, dynamic>>>(
                     future: _newsFuture,
                     builder: (context, snap) {
                       if (snap.connectionState == ConnectionState.waiting) {
-                        return const Center(
-                          child: Text(
-                            "Loading news...",
-                            style: TextStyle(color: Colors.white70),
-                          ),
-                        );
+                        return const Center(child: CircularProgressIndicator(color: Color(0xFF9EE7B7)));
                       }
-
-                      if (snap.hasError) {
-                        return const Center(
-                          child: Text(
-                            "Couldn't load news.",
-                            style: TextStyle(color: Colors.white70),
+                      final newsList = snap.data ?? [];
+                      
+                      if (newsList.isEmpty) {
+                        return Container(
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.05),
+                            borderRadius: BorderRadius.circular(16),
                           ),
-                        );
-                      }
-
-                      final items = snap.data ?? [];
-                      if (items.isEmpty) {
-                        return const Center(
-                          child: Text(
-                            "No news available.",
-                            style: TextStyle(color: Colors.white70),
-                          ),
+                          child: const Center(child: Text("No news available.", style: TextStyle(color: Colors.white54))),
                         );
                       }
 
                       return ListView.separated(
                         scrollDirection: Axis.horizontal,
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
-                        itemCount: items.length,
-                        separatorBuilder: (_, __) => const SizedBox(width: 12),
-                        itemBuilder: (context, i) {
-                          final n = items[i];
-                          final rawTitle = (n["title"] ?? "").toString().trim();
-                          final title = rawTitle.isNotEmpty
-                              ? rawTitle
-                              : "New update from JCCA";
-                          final link = (n["link"] ?? "").toString();
-
-                          return InkWell(
-                            onTap: () => _openUrl(link),
-                            child: Container(
-                              width: 260,
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: card,
-                                borderRadius: BorderRadius.circular(20),
-                                border: Border.all(color: Colors.white12),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.all(10),
-                                    decoration: BoxDecoration(
-                                      color: Colors.white10,
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: const Icon(
-                                      Icons.newspaper,
-                                      color: Colors.white,
-                                      size: 22,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 14),
-                                  Text(
-                                    title,
-                                    maxLines: 3,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.w700,
-                                      height: 1.3,
-                                    ),
-                                  ),
-                                  const Spacer(),
-                                  Row(
-                                    children: const [
-                                      Icon(Icons.open_in_new,
-                                          color: Colors.white54, size: 16),
-                                      SizedBox(width: 6),
-                                      Text(
-                                        "Read more",
-                                        style: TextStyle(
-                                          color: Colors.white54,
-                                          fontSize: 12,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
+                        itemCount: newsList.length,
+                        separatorBuilder: (_, __) => const SizedBox(width: 16),
+                        itemBuilder: (context, index) {
+                          final newsItem = newsList[index];
+                          return _NewsCard(
+                            title: newsItem['title'] ?? "News Update",
+                            link: newsItem['link'] ?? "",
+                            onTap: _openUrl,
                           );
                         },
                       );
@@ -328,10 +367,79 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
   }
 }
 
+// ================== HELPER WIDGETS ==================
+
+class _StatCard extends StatelessWidget {
+  final String title;
+  final String count;
+  final IconData icon;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _StatCard({
+    required this.title,
+    required this.count,
+    required this.icon,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1B3A35),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white.withOpacity(0.08)),
+          ),
+          child: Column(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, color: color, size: 22),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                count,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                title,
+                style: const TextStyle(
+                  color: Colors.white54,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _ProjectsList extends StatelessWidget {
   final Future<List<dynamic>>? future;
   final String emptyText;
-  final void Function(String projectId) onOpenDetails;
+  final Function(String) onOpenDetails;
 
   const _ProjectsList({
     required this.future,
@@ -341,97 +449,176 @@ class _ProjectsList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const card = Color(0xFF1B3A35);
-
-    if (future == null) {
-      return const Center(
-        child: Text("Loading...", style: TextStyle(color: Colors.white70)),
-      );
-    }
-
     return FutureBuilder<List<dynamic>>(
       future: future,
-      builder: (context, snap) {
-        if (snap.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: LinearProgressIndicator(color: Color(0xFF9EE7B7), backgroundColor: Colors.white10));
         }
-        if (snap.hasError) {
-          return Padding(
-            padding: const EdgeInsets.all(14),
-            child: Text(
-              "Error: ${snap.error}",
-              style: const TextStyle(color: Colors.redAccent),
-            ),
-          );
-        }
+        
+        final projects = snapshot.data ?? [];
 
-        final items = snap.data ?? [];
-        if (items.isEmpty) {
-          return Padding(
-            padding: const EdgeInsets.all(12),
-            child:
-                Text(emptyText, style: const TextStyle(color: Colors.white70)),
+        if (projects.isEmpty) {
+          return Container(
+            padding: const EdgeInsets.all(24),
+            width: double.infinity,
+            decoration: BoxDecoration(
+              color: const Color(0xFF1B3A35),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white10),
+            ),
+            child: Text(
+              emptyText,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.white54),
+            ),
           );
         }
 
         return ListView.separated(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(0, 6, 0, 6),
-          itemCount: items.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 10),
-          itemBuilder: (context, i) {
-            final p = (items[i] as Map).cast<String, dynamic>();
-
-            final id = (p["_id"] ?? p["id"] ?? "").toString();
-            final title = (p["title"] ?? p["name"] ?? "Project").toString();
-            final location = (p["location"] ?? "").toString();
-            final status = (p["status"] ?? "").toString();
-
-            return Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: card,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.white12),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  if (location.isNotEmpty)
-                    Text(location,
-                        style: const TextStyle(color: Colors.white70)),
-                  if (status.isNotEmpty) ...[
-                    const SizedBox(height: 6),
-                    Text("Status: $status",
-                        style: const TextStyle(color: Colors.white60)),
-                  ],
-                  const SizedBox(height: 10),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: TextButton(
-                      onPressed: () {
-                        if (id.isEmpty) return;
-                        onOpenDetails(id);
-                      },
-                      child: const Text("View details"),
-                    ),
-                  ),
-                ],
-              ),
+          itemCount: projects.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 12),
+          itemBuilder: (context, index) {
+            final project = projects[index];
+            return _ProjectCard(
+              title: project['title'] ?? "Untitled Project",
+              location: project['location'] ?? "Unknown Location",
+              status: project['status'] ?? "Open",
+              onTap: () => onOpenDetails(project['_id'] ?? project['id']),
             );
           },
         );
       },
+    );
+  }
+}
+
+class _ProjectCard extends StatelessWidget {
+  final String title;
+  final String location;
+  final String status;
+  final VoidCallback onTap;
+
+  const _ProjectCard({
+    required this.title,
+    required this.location,
+    required this.status,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1B3A35),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white.withOpacity(0.08)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(Icons.assignment_outlined, color: Color(0xFF9EE7B7)),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        const Icon(Icons.location_on_outlined, color: Colors.white54, size: 14),
+                        const SizedBox(width: 4),
+                        Text(
+                          location,
+                          style: const TextStyle(color: Colors.white54, fontSize: 13),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.arrow_forward_ios, color: Colors.white24, size: 16),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _NewsCard extends StatelessWidget {
+  final String title;
+  final String link;
+  final Function(String) onTap;
+
+  const _NewsCard({
+    required this.title,
+    required this.link,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: () => onTap(link),
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        width: 240,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: const Color(0xFF234540),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.white.withOpacity(0.05)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.newspaper, color: Colors.white, size: 20),
+            ),
+            const Spacer(),
+            Text(
+              title,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14, height: 1.4),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: const [
+                Text("Read more", style: TextStyle(color: Color(0xFF9EE7B7), fontSize: 12, fontWeight: FontWeight.bold)),
+                SizedBox(width: 4),
+                Icon(Icons.arrow_forward, color: Color(0xFF9EE7B7), size: 12),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

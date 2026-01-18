@@ -3,6 +3,10 @@ const Contract = require("../models/Contract");
 // ✅ جلب العقود الخاصة بالمستخدم (سواء كان عميل أو مقاول)
 exports.getMyContracts = async (req, res) => {
   try {
+    if (!req.user || !req.user._id) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+
     const userId = req.user._id;
 
     // البحث عن العقود التي يكون فيها المستخدم هو الـ client أو الـ contractor

@@ -464,6 +464,7 @@ Future<void> acceptOffer({
     }
     return [];
   }
+  
 
   /// GET /api/projects/contractor/my
   Future<List<dynamic>> getMyProjectsForContractor() async {
