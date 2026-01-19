@@ -472,22 +472,25 @@ class ProjectService {
 
   /// GET /api/projects/client/my-offers  (Client only)
   Future<List<dynamic>> getMyOffers() async {
-    final token = await _mustToken();
-    final uri = Uri.parse(ApiConfig.join("/api/projects/client/my-offers"));
+  final token = await _mustToken();
 
-    final res = await http
-        .get(uri, headers: _authHeaders(token))
-        .timeout(const Duration(seconds: 30));
+  // ✅ للمقاول (My Submitted Offers)
+  final uri = Uri.parse(ApiConfig.join("/api/projects/contractor/my-offers"));
 
-    final decoded = _safeDecode(res.body);
+  final res = await http
+      .get(uri, headers: _authHeaders(token))
+      .timeout(const Duration(seconds: 30));
 
-    if (res.statusCode == 200) {
-      if (decoded is List) return decoded;
-      return [];
-    }
+  final decoded = _safeDecode(res.body);
 
-    throw Exception("(${res.statusCode}) ${_errMsg(res)}");
+  if (res.statusCode == 200) {
+    if (decoded is List) return decoded;
+    return [];
   }
+
+  throw Exception("(${res.statusCode}) ${_errMsg(res)}");
+}
+
 
   /// GET /api/projects/client/recent-offers
   Future<List<dynamic>> getRecentOffers() async {

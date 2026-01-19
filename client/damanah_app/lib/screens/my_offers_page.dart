@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/project_service.dart';
+import '../config/api_config.dart';
 
 class MyOffersPage extends StatefulWidget {
   const MyOffersPage({super.key});
@@ -15,18 +16,70 @@ class _MyOffersPageState extends State<MyOffersPage> {
   @override
   void initState() {
     super.initState();
-    _offersFuture = _projectService.getMyOffers();
+    _load();
   }
 
-  // دالة مساعدة لبناء الـ AppBar بنفس التصميم
+  void _load() {
+    setState(() {
+      _offersFuture = _projectService.getMyOffers();
+    });
+  }
+
   AppBar _buildAppBar(String title) {
     return AppBar(
       backgroundColor: Colors.transparent,
       elevation: 0,
-      title: Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+      title: Text(
+        title,
+        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+      ),
       centerTitle: true,
       iconTheme: const IconThemeData(color: Colors.white),
+      actions: [
+        IconButton(
+          tooltip: "Refresh",
+          onPressed: _load,
+          icon: const Icon(Icons.refresh),
+        ),
+      ],
     );
+  }
+
+  // ✅ تفسير الإكسپشن وإظهار رسالة واضحة للمستخدم
+  Map<String, String> _prettyError(Object err) {
+    final msg = err.toString();
+
+    // مثال: Exception: (404) Invalid server response
+    if (msg.contains("(404)")) {
+      return {
+        "title": "Endpoint not found (404)",
+        "details":
+            "اللينك اللي بتناديه الدالة غير موجود على السيرفر.\n"
+            "Requested: ${ApiConfig.join("/api/projects/client/my-offers")}\n\n"
+            "✅ تأكد إن الراوت موجود بالباك-إند وبنفس المسار.",
+      };
+    }
+
+    if (msg.contains("(401)") || msg.toLowerCase().contains("unauthorized")) {
+      return {
+        "title": "Unauthorized (401)",
+        "details":
+            "التوكن غير موجود أو منتهي.\n"
+            "جرب تعمل Logout/Login وتأكد إن الهيدر Authorization شغال.",
+      };
+    }
+
+    if (msg.contains("TimeoutException") || msg.contains("timed out")) {
+      return {
+        "title": "Request timeout",
+        "details": "السيرفر تأخر بالرد. جرّب مرة ثانية.",
+      };
+    }
+
+    return {
+      "title": "Something went wrong",
+      "details": msg,
+    };
   }
 
   @override
@@ -38,14 +91,53 @@ class _MyOffersPageState extends State<MyOffersPage> {
         future: _offersFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator(color: Color(0xFF9EE7B7)));
+            return const Center(
+              child: CircularProgressIndicator(color: Color(0xFF9EE7B7)),
+            );
           }
 
           if (snapshot.hasError) {
+            final info = _prettyError(snapshot.error!);
+
             return Center(
-              child: Text(
-                "Error: ${snapshot.error}",
-                style: const TextStyle(color: Colors.redAccent),
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.error_outline,
+                        size: 56, color: Colors.redAccent.withOpacity(0.9)),
+                    const SizedBox(height: 14),
+                    Text(
+                      info["title"] ?? "Error",
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      info["details"] ?? "",
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.white70, height: 1.4),
+                    ),
+                    const SizedBox(height: 18),
+                    ElevatedButton.icon(
+                      onPressed: _load,
+                      icon: const Icon(Icons.refresh),
+                      label: const Text("Try again"),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF9EE7B7),
+                        foregroundColor: const Color(0xFF0F261F),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             );
           }
@@ -57,11 +149,27 @@ class _MyOffersPageState extends State<MyOffersPage> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.local_offer_outlined, size: 60, color: Colors.white.withOpacity(0.2)),
+                  Icon(Icons.local_offer_outlined,
+                      size: 60, color: Colors.white.withOpacity(0.2)),
                   const SizedBox(height: 16),
                   const Text(
                     "You haven't submitted any offers yet.",
                     style: TextStyle(color: Colors.white54, fontSize: 16),
+                  ),
+                  const SizedBox(height: 14),
+                  OutlinedButton.icon(
+                    onPressed: _load,
+                    icon: const Icon(Icons.refresh, color: Color(0xFF9EE7B7)),
+                    label: const Text(
+                      "Refresh",
+                      style: TextStyle(color: Color(0xFF9EE7B7)),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: Color(0xFF9EE7B7)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -73,17 +181,27 @@ class _MyOffersPageState extends State<MyOffersPage> {
             itemCount: offers.length,
             separatorBuilder: (_, __) => const SizedBox(height: 16),
             itemBuilder: (context, index) {
-              final offer = offers[index];
-              
-              final title = offer['projectTitle'] ?? "Unknown Project";
-              final price = offer['price']?.toString() ?? "0";
-              final status = offer['status'] ?? "pending";
-              final dateRaw = offer['createdAt'] ?? "";
-              
+              final offer = offers[index] as Map<String, dynamic>;
+
+              // ✅ مرونة: إذا الباك إند بيرجع أسماء مختلفة
+              final title = (offer['projectTitle'] ??
+                      offer['title'] ??
+                      offer['project']?['title'] ??
+                      "Unknown Project")
+                  .toString();
+
+              final priceVal = offer['price'] ?? offer['amount'] ?? 0;
+              final price = priceVal.toString();
+
+              final status = (offer['status'] ?? "pending").toString();
+              final dateRaw = (offer['createdAt'] ??
+                      offer['date'] ??
+                      offer['submittedAt'] ??
+                      "")
+                  .toString();
+
               String date = "";
-              if (dateRaw.length >= 10) {
-                date = dateRaw.substring(0, 10);
-              }
+              if (dateRaw.length >= 10) date = dateRaw.substring(0, 10);
 
               Color statusColor = Colors.orange;
               if (status == 'accepted') statusColor = const Color(0xFF9EE7B7);
@@ -148,7 +266,7 @@ class _OfferCard extends StatelessWidget {
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 16,
-                    fontWeight: FontWeight.bold
+                    fontWeight: FontWeight.bold,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -159,8 +277,8 @@ class _OfferCard extends StatelessWidget {
                   style: const TextStyle(
                     color: Color(0xFF9EE7B7),
                     fontWeight: FontWeight.w800,
-                    fontSize: 15
-                  )
+                    fontSize: 15,
+                  ),
                 ),
                 const SizedBox(height: 4),
                 if (date.isNotEmpty)
@@ -184,7 +302,7 @@ class _OfferCard extends StatelessWidget {
               style: TextStyle(
                 color: statusColor,
                 fontSize: 11,
-                fontWeight: FontWeight.bold
+                fontWeight: FontWeight.bold,
               ),
             ),
           ),
