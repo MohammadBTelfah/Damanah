@@ -20,8 +20,8 @@ import {
 } from '@mui/icons-material';
 
 // ✅ التعديل: استخدام رابط السيرفر من متغيرات البيئة بدلاً من localhost
-const API_URL = `${process.env.REACT_APP_API_BASE_URL}/materials`; 
-
+// أضف /api يدوياً قبل /materials لضمان المسار الصحيح
+const API_URL = `${process.env.REACT_APP_API_BASE_URL}/api/materials`;
 const darkTheme = createTheme({
   palette: {
     mode: 'dark',

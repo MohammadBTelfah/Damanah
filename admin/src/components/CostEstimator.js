@@ -12,7 +12,7 @@ import {
   Inventory2 as QtyIcon
 } from '@mui/icons-material';
 
-const API_URL = "http://localhost:5000/api/materials"; 
+const API_URL = `${process.env.REACT_APP_API_BASE_URL}/api/materials`;
 
 // نفس الثيم الداكن المستخدم في صفحاتك
 const darkTheme = createTheme({
