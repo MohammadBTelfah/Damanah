@@ -622,17 +622,45 @@ exports.estimateProject = async (req, res) => {
       return res.status(403).json({ message: "Not owner of this project" });
     }
 
-    const estimation = await generateBoqForProject(project, { selections });
+    // ✅ التعديل الجوهري: تحديث بيانات المشروع بالقيم المعمارية الجديدة القادمة من الفرونت اند
+    // لضمان أن دالة generateBoqForProject تستخدم أحدث الأرقام (المحيط، الارتفاع، إلخ)
+    if (req.body.planAnalysis) {
+      // ندمج البيانات الجديدة مع التحليل الموجود مسبقاً
+      project.planAnalysis = {
+        ...project.planAnalysis,
+        ...req.body.planAnalysis,
+        // نضمن تحديث الحقول الحساسة للحسابات
+        wallPerimeterLinear: req.body.planAnalysis.wallPerimeter || project.planAnalysis.wallPerimeterLinear,
+        ceilingHeight: req.body.planAnalysis.ceilingHeight || project.planAnalysis.ceilingHeight
+      };
+      
+      // تحديث الحقول الأساسية إذا تم تعديلها في Step 2
+      if (req.body.area) project.area = req.body.area;
+      if (req.body.floors) project.floors = req.body.floors;
+      
+      // وسم المشروع بأنه تم تعديله يدوياً لضمان الدقة
+      project.markModified('planAnalysis');
+    }
+
+    // استدعاء محرك الحسابات المطور
+    const estimation = await generateBoqForProject(project, { 
+      selections,
+      buildingType: project.buildingType 
+    });
+
+    // حفظ التقدير والبيانات المحدثة
     project.estimation = estimation;
     await project.save();
 
     return res.json({
-      message: "Estimate generated",
+      message: "Estimate generated successfully",
       items: estimation.items,
       totalCost: estimation.totalCost,
       currency: estimation.currency,
-      finishingLevel: estimation.finishingLevel,
+      finishingLevel: project.finishingLevel,
       buildingType: estimation.buildingType,
+      // نرسل المساحات المحسوبة للتأكيد في الواجهة
+      metadata: estimation.metadata 
     });
   } catch (err) {
     console.error("estimateProject error:", err);
@@ -641,7 +669,6 @@ exports.estimateProject = async (req, res) => {
       .json({ message: "Estimate failed", error: err.message });
   }
 };
-
 // =======================
 // Save Project
 // =======================

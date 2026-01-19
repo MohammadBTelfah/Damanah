@@ -188,27 +188,39 @@ class ProjectService {
   }
 
   /// POST /api/projects/plan/analyze
-  Future<Map<String, dynamic>> analyzePlan({required String filePath}) async {
-    final token = await _mustToken();
-    final uri = Uri.parse(ApiConfig.join("/api/projects/plan/analyze"));
+Future<Map<String, dynamic>> analyzePlan({required String filePath}) async {
+  final token = await _mustToken();
+  final uri = Uri.parse(ApiConfig.join("/api/projects/plan/analyze"));
 
-    final req = http.MultipartRequest("POST", uri);
-    req.headers.addAll(_authHeaders(token));
-    req.files.add(await http.MultipartFile.fromPath("planFile", filePath));
+  final req = http.MultipartRequest("POST", uri);
+  req.headers.addAll(_authHeaders(token));
+  req.files.add(await http.MultipartFile.fromPath("planFile", filePath));
 
-    final streamed = await req.send().timeout(const Duration(seconds: 60));
-    final res = await http.Response.fromStream(streamed);
+  final streamed = await req.send().timeout(const Duration(seconds: 60));
+  final res = await http.Response.fromStream(streamed);
 
-    final map = _safeJsonMap(res.body);
-    if (res.statusCode == 200) return map;
+  final map = _safeJsonMap(res.body);
 
-    final code = map["code"]?.toString();
-    if (code == "AI_UNAVAILABLE") throw Exception("AI_UNAVAILABLE");
+  if (res.statusCode >= 200 && res.statusCode < 300) return map;
 
-    throw Exception(
-      "(${res.statusCode}) ${map["message"] ?? "Analyze plan failed"}",
-    );
+  final code = map["code"]?.toString();
+
+  // ✅ اجبار التحويل للـ manual في كل حالات عدم توفر الـ AI
+  final isAiUnavailable =
+      code == "AI_UNAVAILABLE" ||
+      res.statusCode == 503 ||
+      res.statusCode == 429 ||
+      (map["error"]?.toString().contains("rate_limit_exceeded") ?? false) ||
+      (map["message"]?.toString().toLowerCase().contains("rate limit") ?? false);
+
+  if (isAiUnavailable) {
+    throw Exception("AI_UNAVAILABLE (${res.statusCode})");
   }
+
+  throw Exception(
+    "(${res.statusCode}) ${map["message"] ?? "Analyze plan failed"}",
+  );
+}
 
   /// GET /api/materials
   Future<List<dynamic>> getMaterials() async {

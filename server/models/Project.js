@@ -40,11 +40,36 @@ const projectSchema = new mongoose.Schema(
 
     planFile: { type: String, default: null },
 
+    // ✅ تحديث حقول تحليل المخطط لدعم الحصر الهندسي الدقيق
     planAnalysis: {
       totalArea: Number,
       floors: Number,
       rooms: Number,
       bathrooms: Number,
+      
+      // الإضافات المعمارية الجديدة:
+      wallPerimeterLinear: { type: Number, default: 0 }, // إجمالي طول الجدران
+      ceilingHeight: { type: Number, default: 3.0 },      // ارتفاع السقف الصافي
+      
+      openings: {
+        windows: {
+          count: { type: Number, default: 0 },
+          estimatedTotalArea: { type: Number, default: 0 }
+        },
+        internalDoors: {
+          count: { type: Number, default: 0 }
+        },
+        entranceDoors: {
+          count: { type: Number, default: 0 }
+        },
+        voids: { // الفتحات المفقودة (المناور/المنور)
+          count: { type: Number, default: 0 },
+          totalVoidArea: { type: Number, default: 0 },
+          voidPerimeter: { type: Number, default: 0 }
+        }
+      },
+      confidence: Number,
+      notes: [String]
     },
 
     // =============================
@@ -60,11 +85,14 @@ const projectSchema = new mongoose.Schema(
           total: Number,
           materialId: String,
           variantKey: String,
+          variantLabel: String, // أضفته لضمان عرض اسم النوع (Basic/Premium)
         },
       ],
       totalCost: { type: Number, default: 0 },
       currency: { type: String, default: "JOD" },
       finishingLevel: { type: String, default: "basic" },
+      // إضافة metadata لتخزين تفاصيل الحسابات النهائية للرجوع إليها
+      metadata: mongoose.Schema.Types.Mixed 
     },
 
     // =============================
