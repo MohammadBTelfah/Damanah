@@ -115,18 +115,13 @@ exports.register = async (req, res) => {
     const emailNorm = normalizeEmail(email);
     const phoneNorm = normalizePhone(phone);
 
-    // ✅ uploaded files from multer
+    // ✅ uploaded files from multer (Cloudinary)
     const profileFile = req.files?.profileImage?.[0] || null;
     const identityFile = req.files?.identityDocument?.[0] || null;
 
-    // ✅ store paths
-    const profileImagePath = profileFile
-      ? `/uploads/profiles/${profileFile.filename}`
-      : null;
-
-    const identityDocumentPath = identityFile
-      ? `/uploads/identity/${identityFile.filename}`
-      : null;
+    // ✅ FIX: Get Cloudinary URL directly
+    const profileImagePath = profileFile ? profileFile.path : null;
+    const identityDocumentPath = identityFile ? identityFile.path : null;
 
     if (!name || !emailNorm || !phoneNorm || !password) {
       return res.status(400).json({ message: "Missing required fields" });
@@ -161,11 +156,18 @@ exports.register = async (req, res) => {
     let identityExtractedAt = null;
 
     if (identityDocumentPath) {
-      const ocrRes = await extractNationalIdFromIdentity(identityDocumentPath);
-      nationalIdCandidate = ocrRes?.nationalId ?? null;
-      nationalIdConfidence = ocrRes?.confidence ?? null;
-      identityRawText = ocrRes?.rawText ?? null; // اختياري
-      identityExtractedAt = new Date();
+      // ⚠️ انتبه: identityDocumentPath الآن هو رابط (URL) وليس مسار محلي
+      // تأكد أن دالة OCR تدعم الروابط
+      try {
+        const ocrRes = await extractNationalIdFromIdentity(identityDocumentPath);
+        nationalIdCandidate = ocrRes?.nationalId ?? null;
+        nationalIdConfidence = ocrRes?.confidence ?? null;
+        identityRawText = ocrRes?.rawText ?? null;
+        identityExtractedAt = new Date();
+      } catch (ocrError) {
+        console.error("OCR Error:", ocrError.message);
+        // نكمل التسجيل حتى لو فشل الـ OCR
+      }
     }
 
     // ✅ statuses
@@ -179,8 +181,8 @@ exports.register = async (req, res) => {
 
       role: "client",
 
-      profileImage: profileImagePath,
-      identityDocument: identityDocumentPath,
+      profileImage: profileImagePath,      // Cloudinary URL
+      identityDocument: identityDocumentPath, // Cloudinary URL
 
       // ✅ IMPORTANT: لا تعتمد على OCR لتعبئة الرقم النهائي
       nationalId: manualNationalId || null,

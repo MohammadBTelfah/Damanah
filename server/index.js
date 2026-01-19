@@ -2,8 +2,6 @@ const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
 const dotenv = require("dotenv");
-const path = require("path");
-const fs = require("fs");
 
 dotenv.config();
 
@@ -14,19 +12,15 @@ const app = express();
 // ============================================================
 
 // نستخدم __dirname لأن مجلد uploads موجود بجانب ملف index.js مباشرة
-const UPLOADS_DIR = path.join(__dirname, "uploads");
-
-// طباعة المسار للتأكد عند التشغيل
-console.log("📂 مسار الصور المعتمد (Serving Images From):", UPLOADS_DIR);
-
-// السماح بالوصول للصور قبل أي حماية أو cors
-app.use("/uploads", express.static(UPLOADS_DIR));
 
 // ============================================================
 // 🟢 (2) باقي الـ Middlewares تأتي بعد الصور
 // ============================================================
 
-app.use(cors());
+app.use(cors({
+  origin: ['https://damanah-admin.vercel.app', 'http://localhost:3000'], // ضع رابط Vercel هنا
+  credentials: true
+}));
 app.use(express.json());
 
 // Routes imports

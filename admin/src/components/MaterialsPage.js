@@ -6,7 +6,7 @@ import {
   TableContainer, TableHead, TableRow, IconButton, Typography,
   Collapse, Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, Grid, Chip, ThemeProvider, createTheme, CssBaseline,
-  Alert
+  Alert, CircularProgress // أضفنا مؤشر التحميل لضمان تجربة مستخدم أفضل
 } from '@mui/material';
 import {
   Delete as DeleteIcon,
@@ -19,8 +19,9 @@ import {
   FileDownload as FileDownloadIcon
 } from '@mui/icons-material';
 
-const API_URL = "http://localhost:5000/api/materials"; 
-
+// ✅ التعديل: استخدام رابط السيرفر من متغيرات البيئة بدلاً من localhost
+// أضف /api يدوياً قبل /materials لضمان المسار الصحيح
+const API_URL = `${process.env.REACT_APP_API_BASE_URL}/api/materials`;
 const darkTheme = createTheme({
   palette: {
     mode: 'dark',
@@ -97,6 +98,7 @@ export default function MaterialsPage() {
   const [materials, setMaterials] = useState([]);
   const [openDialog, setOpenDialog] = useState(false);
   const [openBulk, setOpenBulk] = useState(false);
+  const [loading, setLoading] = useState(false); // حالة التحميل للعمليات الطويلة
   
   // States needed
   const [currentMaterial, setCurrentMaterial] = useState({ name: '', unit: '', variants: [] });
@@ -109,7 +111,7 @@ export default function MaterialsPage() {
     try {
       const res = await axios.get(API_URL);
       setMaterials(res.data);
-    } catch (err) { console.error(err); }
+    } catch (err) { console.error("Fetch materials error:", err); }
   };
 
   // --- Excel Processing Logic ---
@@ -140,8 +142,6 @@ export default function MaterialsPage() {
     const materialsMap = {};
 
     data.forEach(row => {
-      // أسماء الأعمدة المتوقعة في ملف الإكسل
-      // Name | Unit | VariantKey | VariantLabel | Price | QtyPerM2
       const name = row['Name'] || row['name'];
       const unit = row['Unit'] || row['unit'];
       
@@ -192,28 +192,37 @@ export default function MaterialsPage() {
   };
 
   const handleSave = async () => {
+    setLoading(true);
     try {
       if (currentMaterial._id) await axios.put(`${API_URL}/${currentMaterial._id}`, currentMaterial);
       else await axios.post(API_URL, currentMaterial);
-      fetchMaterials(); setOpenDialog(false);
+      fetchMaterials(); 
+      setOpenDialog(false);
     } catch (err) { alert("Error saving"); }
+    finally { setLoading(false); }
   };
 
   const handleDelete = async (id) => {
-    if (window.confirm("Delete?")) {
-      await axios.delete(`${API_URL}/${id}`);
-      fetchMaterials();
+    if (window.confirm("Are you sure you want to delete this material?")) {
+      try {
+        await axios.delete(`${API_URL}/${id}`);
+        fetchMaterials();
+      } catch (err) { alert("Delete failed"); }
     }
   };
 
   const handleBulkSubmit = async () => {
+    setLoading(true);
     try {
       const data = JSON.parse(bulkJson);
       if (!Array.isArray(data)) return alert("Must be an array");
       await axios.post(`${API_URL}/bulk`, data);
       alert(`Imported ${data.length} materials!`);
-      setOpenBulk(false); setBulkJson(''); fetchMaterials();
-    } catch (err) { alert("Invalid JSON"); }
+      setOpenBulk(false); 
+      setBulkJson(''); 
+      fetchMaterials();
+    } catch (err) { alert("Invalid JSON or server error"); }
+    finally { setLoading(false); }
   };
 
   // --- Template Downloader ---
@@ -264,7 +273,7 @@ export default function MaterialsPage() {
         </TableContainer>
 
         {/* --- Add/Edit Dialog --- */}
-        <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="md" fullWidth>
+        <Dialog open={openDialog} onClose={() => !loading && setOpenDialog(false)} maxWidth="md" fullWidth>
           <DialogTitle>{currentMaterial._id ? "Edit" : "Add"} Material</DialogTitle>
           <DialogContent dividers>
             <Grid container spacing={2} mb={3}>
@@ -288,13 +297,15 @@ export default function MaterialsPage() {
             </Box>
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setOpenDialog(false)}>Cancel</Button>
-            <Button onClick={handleSave} variant="contained">Save</Button>
+            <Button onClick={() => setOpenDialog(false)} disabled={loading}>Cancel</Button>
+            <Button onClick={handleSave} variant="contained" disabled={loading}>
+              {loading ? <CircularProgress size={24} color="inherit" /> : "Save"}
+            </Button>
           </DialogActions>
         </Dialog>
 
         {/* --- Bulk Import Dialog --- */}
-        <Dialog open={openBulk} onClose={() => setOpenBulk(false)} maxWidth="md" fullWidth>
+        <Dialog open={openBulk} onClose={() => !loading && setOpenBulk(false)} maxWidth="md" fullWidth>
           <DialogTitle>Bulk Import (JSON or Excel)</DialogTitle>
           <DialogContent dividers>
             <Box mb={2} display="flex" justifyContent="space-between" alignItems="center">
@@ -311,6 +322,7 @@ export default function MaterialsPage() {
               variant="contained"
               component="label"
               fullWidth
+              disabled={loading}
               sx={{ mb: 2, bgcolor: '#333' }}
             >
               Upload Excel File
@@ -334,9 +346,9 @@ export default function MaterialsPage() {
             />
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setOpenBulk(false)}>Cancel</Button>
-            <Button onClick={handleBulkSubmit} variant="contained" color="secondary">
-              Import Data
+            <Button onClick={() => setOpenBulk(false)} disabled={loading}>Cancel</Button>
+            <Button onClick={handleBulkSubmit} variant="contained" color="secondary" disabled={loading}>
+              {loading ? <CircularProgress size={24} color="inherit" /> : "Import Data"}
             </Button>
           </DialogActions>
         </Dialog>

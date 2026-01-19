@@ -28,13 +28,19 @@ class _ContractorWorkDetailsPageState extends State<ContractorWorkDetailsPage> {
   }
 
   // ✅ كود استخراج الصورة
-  String? get _profileUrl {
+String? get _profileUrl {
     final owner = widget.project['owner'];
     if (owner == null || owner is! Map) return null;
 
     String rawPath = (owner["profileImage"] ?? "").toString().trim();
     if (rawPath.isEmpty) return null;
 
+    // ✅ إذا كان الرابط كاملاً من Cloudinary نرجعه كما هو فوراً
+    if (rawPath.startsWith('http')) {
+      return rawPath;
+    }
+
+    // ✅ للصور القديمة (التوافق مع السيرفر المحلي)
     String cleanPath = rawPath.replaceAll('\\', '/');
     if (cleanPath.startsWith('/')) {
       cleanPath = cleanPath.substring(1);
@@ -46,7 +52,7 @@ class _ContractorWorkDetailsPageState extends State<ContractorWorkDetailsPage> {
 
     return ApiConfig.join(finalPath);
   }
-
+  
   Color _getStatusColor(String status) {
     switch (status.toLowerCase()) {
       case 'in_progress':
