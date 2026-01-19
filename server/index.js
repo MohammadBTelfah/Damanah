@@ -3,10 +3,31 @@ const mongoose = require("mongoose");
 const cors = require("cors");
 const dotenv = require("dotenv");
 const path = require("path");
-dotenv.config();
 const fs = require("fs");
 
+dotenv.config();
+
 const app = express();
+
+// ============================================================
+// 🔴 (1) التعديل الحاسم: إعداد مجلد الصور في البداية
+// ============================================================
+
+// نستخدم __dirname لأن مجلد uploads موجود بجانب ملف index.js مباشرة
+const UPLOADS_DIR = path.join(__dirname, "uploads");
+
+// طباعة المسار للتأكد عند التشغيل
+console.log("📂 مسار الصور المعتمد (Serving Images From):", UPLOADS_DIR);
+
+// السماح بالوصول للصور قبل أي حماية أو cors
+app.use("/uploads", express.static(UPLOADS_DIR));
+
+// ============================================================
+// 🟢 (2) باقي الـ Middlewares تأتي بعد الصور
+// ============================================================
+
+app.use(cors());
+app.use(express.json());
 
 // Routes imports
 const ClientAuthRoutes = require("./routes/Auth/clientAuthRoutes");
@@ -24,31 +45,18 @@ const publicRoutes = require("./routes/publicRoutes");
 const tipRoutes = require("./routes/tipRoutes");
 const contractRoutes = require("./routes/contractRoutes");
 
-
-// Middlewares
-app.use(cors());
-app.use(express.json());
-
-// 🔥 مهم جداً: عرض ملفّات الرفع
-
-const UPLOADS_DIR = path.join(__dirname, "uploads");
-
-app.use("/uploads", express.static(UPLOADS_DIR));
-
-// Test route
 app.get("/", (req, res) => {
   res.json({ message: "Damanah API is running 🚀" });
 });
 
 // API routes
-
 app.use("/api/health", healthRoutes);
 
 app.use("/api/auth/client", ClientAuthRoutes);
 app.use("/api/auth/contractor", ContractorAuthRoutes);
 app.use("/api/auth/admin", AdminAuthRoutes);
 
-// ✅ خلي الراوت الأكثر تحديدًا قبل العام (حل 404)
+// الترتيب: المحدد قبل العام
 app.use("/api/admin/account", adminAccountRoutes);
 app.use("/api/admin", adminRoutes);
 
@@ -70,7 +78,7 @@ mongoose
   .connect(MONGO_URI)
   .then(() => {
     console.log("✅ MongoDB Connected");
-    const HOST = "0.0.0.0";
+    const HOST = "0.0.0.0"; // لضمان العمل على المحاكي والشبكة
 
     app.listen(PORT, HOST, () => {
       console.log(`🚀 Server running on http://${HOST}:${PORT}`);

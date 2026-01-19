@@ -243,7 +243,8 @@ exports.getMyProjectsForContractor = async (req, res) => {
     const projects = await Project.find({
       contractor: contractorId,
     })
-      .populate("owner", "name email")
+      // ✅ التعديل هنا: أضفنا profileImage و phone
+      .populate("owner", "name email profileImage phone")
       .sort({ createdAt: -1 });
 
     return res.json({ projects });
@@ -293,6 +294,9 @@ exports.getOpenProjects = async (req, res) => {
 // =======================
 // Get project by ID
 // =======================
+// =======================
+// Get project by ID
+// =======================
 exports.getProjectById = async (req, res) => {
   try {
     const { projectId } = req.params;
@@ -300,7 +304,8 @@ exports.getProjectById = async (req, res) => {
       return res.status(404).json({ message: "Project not found" });
     }
     const project = await Project.findById(projectId)
-      .populate("owner", "name email")
+      // ✅ التعديل: أضفنا profileImage و phone
+      .populate("owner", "name email profileImage phone") 
       .populate(
         "contractor",
         "_id name email phone profileImage contractorStatus isActive"
