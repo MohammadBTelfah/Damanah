@@ -25,19 +25,16 @@ const projectSchema = new mongoose.Schema(
 
     buildingType: {
       type: String,
-      // تأكدنا أن الـ controller يحول house لـ villa، فهذا الـ enum صحيح
       enum: ["House", "villa", "commercial"],
       default: "House",
     },
 
-    // ============================================
-    // 🔥 التعديل تم هنا (Added 'draft')
-    // ============================================
+    // =============================
+    // Status
+    // =============================
     status: {
       type: String,
-      // 1. أضفنا "draft" للقائمة
       enum: ["draft", "open", "in_progress", "completed", "cancelled"],
-      // 2. جعلنا الحالة الافتراضية "draft"
       default: "draft",
     },
 
@@ -50,6 +47,9 @@ const projectSchema = new mongoose.Schema(
       bathrooms: Number,
     },
 
+    // =============================
+    // Program Estimation (مرجع فقط)
+    // =============================
     estimation: {
       items: [
         {
@@ -67,6 +67,28 @@ const projectSchema = new mongoose.Schema(
       finishingLevel: { type: String, default: "basic" },
     },
 
+    // =============================
+    // ✅ السعر المتفق عليه
+    // =============================
+    agreedPrice: {
+      type: Number,
+      default: null,
+    },
+
+    // =============================
+    // ✅ العرض المقبول (snapshot)
+    // =============================
+    acceptedOffer: {
+      contractor: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Contractor",
+      },
+      price: Number,
+      message: String,
+      offerId: mongoose.Schema.Types.ObjectId,
+      acceptedAt: Date,
+    },
+
     isSaved: { type: Boolean, default: false },
 
     sharedWith: [
@@ -81,6 +103,9 @@ const projectSchema = new mongoose.Schema(
       default: "Contractor",
     },
 
+    // =============================
+    // Offers
+    // =============================
     offers: [
       {
         contractor: {
