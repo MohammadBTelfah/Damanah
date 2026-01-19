@@ -1,40 +1,46 @@
 const path = require("path");
 const fs = require("fs");
+const os = require("os");
 const mongoose = require("mongoose");
+const cloudinary = require("cloudinary").v2;
 
 const Contract = require("../models/Contract");
-
 const generateContractPdf = require("../utils/pdf/generateContractPdf");
-const cloudinary = require("cloudinary").v2; // ✅ نستخدم مكتبة Cloudinary مباشرة للرفع اليدوي
 
 // ========================
 // Helpers
 // ========================
-function ensureDir(dir) {
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-}
-
 function safeId(id) {
   return mongoose.Types.ObjectId.isValid(id);
 }
 
 // ========================
 // GET /api/contracts
+// ✅ Get My Contracts (Client OR Contractor)
 // ========================
 exports.getMyContracts = async (req, res) => {
   try {
-    // حسب نظامك: إذا المستخدم "Contractor" أو "Client" غيّر الفلترة
+    if (!req.user || !req.user._id) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const userId = req.user._id;
+
+    // ✅ يطلع العقد لو المستخدم هو العميل أو المقاول
     const contracts = await Contract.find({
-      $or: [{ contractor: req.user._id }, { client: req.user._id }],
+      $or: [{ client: userId }, { contractor: userId }],
     })
-      .sort({ createdAt: -1 })
       .populate("project")
       .populate("client")
-      .populate("contractor");
+      .populate("contractor")
+      .sort({ createdAt: -1 });
 
-    return res.json({ success: true, data: contracts });
+    return res.status(200).json({ contracts });
   } catch (err) {
-    return res.status(500).json({ success: false, message: err.message });
+    console.error("getMyContracts error:", err);
+    return res
+      .status(500)
+      .json({ message: "Server error", error: err.message });
   }
 };
 
@@ -44,21 +50,34 @@ exports.getMyContracts = async (req, res) => {
 exports.getContractById = async (req, res) => {
   try {
     const { id } = req.params;
-    if (!safeId(id)) return res.status(400).json({ success: false, message: "Invalid id" });
+    if (!safeId(id)) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid id" });
+    }
 
     const contract = await Contract.findById(id)
       .populate("project")
       .populate("client")
       .populate("contractor");
 
-    if (!contract) return res.status(404).json({ success: false, message: "Contract not found" });
+    if (!contract) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Contract not found" });
+    }
 
-    // (اختياري) تحقق صلاحيات الوصول
+    // ✅ صلاحيات الوصول: عميل أو مقاول
     const userId = String(req.user._id);
     const isAllowed =
-      String(contract.client?._id) === userId || String(contract.contractor?._id) === userId;
+      String(contract.client?._id) === userId ||
+      String(contract.contractor?._id) === userId;
 
-    if (!isAllowed) return res.status(403).json({ success: false, message: "Forbidden" });
+    if (!isAllowed) {
+      return res
+        .status(403)
+        .json({ success: false, message: "Forbidden" });
+    }
 
     return res.json({ success: true, data: contract });
   } catch (err) {
@@ -68,7 +87,7 @@ exports.getContractById = async (req, res) => {
 
 // ========================
 // POST /api/contracts
-// Create + Generate PDF
+// Create + Generate PDF + Upload Cloudinary
 // ========================
 exports.createContract = async (req, res) => {
   try {
@@ -90,6 +109,17 @@ exports.createContract = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "project, client, contractor, agreedPrice are required",
+      });
+    }
+
+    // ✅ (اختياري لكن مهم) منع عقدين لنفس المشروع
+    const existing = await Contract.findOne({ project });
+    if (existing) {
+      return res.status(200).json({
+        success: true,
+        message: "Contract already exists for this project",
+        data: existing,
+        pdfUrl: existing.contractFile || null,
       });
     }
 
@@ -117,81 +147,87 @@ exports.createContract = async (req, res) => {
       .populate("client")
       .populate("contractor");
 
-    // 3) Generate PDF Locally (Temporary)
-    // ✅ نستخدم مجلد os.tmpdir() لأنه المجلد الوحيد المسموح بالكتابة فيه في Render
+    // 3) Generate PDF Locally (Temporary) in os.tmpdir()
     const tempDir = os.tmpdir();
     const fileName = `contract-${contract._id}.pdf`;
     const tempFilePath = path.join(tempDir, fileName);
 
-    // هذه الدالة ستنشئ الملف وتحفظه في tempFilePath
     await generateContractPdf(contract, tempFilePath);
 
     // 4) Upload to Cloudinary manually
-    // ✅ نرفع الملف الذي أنشأناه للتو
     const uploadResult = await cloudinary.uploader.upload(tempFilePath, {
-      folder: "damanah_contracts", // اسم المجلد في Cloudinary
-      resource_type: "auto", // ليقبل PDF
-      public_id: `contract_${contract._id}`, // اسم الملف في الكلاود
-      access_mode: "public", // ليكون قابلاً للتحميل
+      folder: "damanah_contracts",
+      resource_type: "auto",
+      public_id: `contract_${contract._id}`,
+      access_mode: "public",
     });
 
     // 5) Save Cloudinary URL in DB
     contract.contractFile = uploadResult.secure_url;
     await contract.save();
 
-    // 6) Clean up: Delete local temp file (مهم جداً لتوفير المساحة)
-    if (fs.existsSync(tempFilePath)) {
-      fs.unlinkSync(tempFilePath);
+    // 6) Clean up temp file
+    try {
+      if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath);
+    } catch (e) {
+      console.warn("temp pdf cleanup failed:", e.message);
     }
 
     return res.status(201).json({
       success: true,
       data: contract,
-      pdfUrl: contract.contractFile, // الرابط الجديد (Cloudinary)
+      pdfUrl: contract.contractFile,
     });
   } catch (err) {
     console.error("Create Contract Error:", err);
     return res.status(500).json({ success: false, message: err.message });
   }
 };
+
 // ========================
 // GET /api/contracts/:id/pdf
-// Download/Preview PDF
+// ✅ Redirect to Cloudinary PDF
 // ========================
 exports.getContractPdf = async (req, res) => {
   try {
     const { id } = req.params;
-    if (!safeId(id)) return res.status(400).json({ success: false, message: "Invalid id" });
+    if (!safeId(id)) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid id" });
+    }
 
     const contract = await Contract.findById(id)
       .populate("project")
       .populate("client")
       .populate("contractor");
 
-    if (!contract) return res.status(404).json({ success: false, message: "Contract not found" });
+    if (!contract) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Contract not found" });
+    }
 
-    // صلاحيات الوصول
+    // ✅ صلاحيات الوصول
     const userId = String(req.user._id);
     const isAllowed =
-      String(contract.client?._id) === userId || String(contract.contractor?._id) === userId;
+      String(contract.client?._id) === userId ||
+      String(contract.contractor?._id) === userId;
 
-    if (!isAllowed) return res.status(403).json({ success: false, message: "Forbidden" });
+    if (!isAllowed) {
+      return res
+        .status(403)
+        .json({ success: false, message: "Forbidden" });
+    }
 
     if (!contract.contractFile) {
-      return res.status(404).json({ success: false, message: "PDF not generated yet" });
+      return res
+        .status(404)
+        .json({ success: false, message: "PDF not generated yet" });
     }
 
-    const absPath = path.join(__dirname, "..", contract.contractFile); // /uploads/...
-    if (!fs.existsSync(absPath)) {
-      return res.status(404).json({ success: false, message: "PDF file missing on server" });
-    }
-
-    // عرض/تحميل
-    res.setHeader("Content-Type", "application/pdf");
-    // inline للعرض في المتصفح، attachment للتنزيل
-    res.setHeader("Content-Disposition", `inline; filename="contract-${id}.pdf"`);
-
-    return fs.createReadStream(absPath).pipe(res);
+    // ✅ لأنه URL على Cloudinary
+    return res.redirect(contract.contractFile);
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
   }

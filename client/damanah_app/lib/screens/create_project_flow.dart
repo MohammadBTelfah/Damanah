@@ -880,7 +880,7 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
     );
   }
 
-  Widget _buildStepMaterials() {
+Widget _buildStepMaterials() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -902,9 +902,9 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
 
             final variants = (mat["variants"] is List) ? List.from(mat["variants"]) : <dynamic>[];
             final fallbackVariants = [
-              {"key": "basic", "label": "Basic"},
-              {"key": "medium", "label": "Medium"},
-              {"key": "premium", "label": "Premium"},
+              {"key": "basic", "label": "Basic", "pricePerUnit": 0},
+              {"key": "medium", "label": "Medium", "pricePerUnit": 0},
+              {"key": "premium", "label": "Premium", "pricePerUnit": 0},
             ];
             final list = variants.isNotEmpty ? variants : fallbackVariants;
 
@@ -962,7 +962,7 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
                             value: current,
                             isExpanded: true,
                             hint: Text(
-                              isChecked ? "Select Type" : "Not Selected",
+                              isChecked ? "Select Type & Price" : "Not Selected",
                               style: TextStyle(
                                   color: Colors.white.withOpacity(0.4),
                                   fontSize: 13),
@@ -985,13 +985,41 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
                                     final vm = (v is Map)
                                         ? Map<String, dynamic>.from(v)
                                         : <String, dynamic>{};
+                                    
+                                    // استخراج السعر والوحدة مباشرة من بيانات قاعدة البيانات
+                                    final price = vm["pricePerUnit"]?.toString() ?? "0";
+                                    final label = vm["label"]?.toString() ?? vm["key"]?.toString() ?? "";
+                                    final unit = mat["unit"]?.toString() ?? "Unit";
+
                                     return DropdownMenuItem<String>(
                                       value: vm["key"]?.toString(),
-                                      child: Text(
-                                        vm["label"]?.toString() ??
-                                            vm["key"]?.toString() ??
-                                            "",
-                                        overflow: TextOverflow.ellipsis,
+                                      child: Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              label,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: const TextStyle(fontSize: 13),
+                                            ),
+                                          ),
+                                          // عرض السعر بشكل احترافي جهة اليمين
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: const Color(0xFF9EE7B7).withOpacity(0.15),
+                                              borderRadius: BorderRadius.circular(4),
+                                            ),
+                                            child: Text(
+                                              "$price JOD/$unit",
+                                              style: const TextStyle(
+                                                color: Color(0xFF9EE7B7),
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     );
                                   }).toList(),
