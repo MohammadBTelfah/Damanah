@@ -4,7 +4,8 @@ import 'package:url_launcher/url_launcher.dart';
 
 class ContractorDetailsPage extends StatelessWidget {
   final Map<String, dynamic> contractor;
-  const ContractorDetailsPage({super.key, required this.contractor});
+  final String? baseUrl;
+  const ContractorDetailsPage({super.key, required this.contractor, this.baseUrl});
 
   // ✅ تحويل رقم الهاتف لصيغة واتساب (الأردن 962)
   // مثال: 0778526859 -> 962778526859
@@ -31,10 +32,15 @@ class ContractorDetailsPage extends StatelessWidget {
 
     final city = (contractor["city"] ?? "").toString().trim();
 
-    // ✅ Image URL
-    final img = (contractor["profileImageUrl"] ?? contractor["profileImage"] ?? "")
-        .toString()
-        .trim();
+// ✅ Image URL
+final String rawPath = (contractor["profileImageUrl"] ?? contractor["profileImage"] ?? "")
+    .toString()
+    .trim();
+
+// ✅ التعديل الصحيح
+final String img = rawPath.startsWith('http') 
+    ? rawPath  
+    : (rawPath.isNotEmpty && baseUrl != null ? _joinUrl(baseUrl!, rawPath) : "");
 
     return Scaffold(
       backgroundColor: bg,
@@ -293,5 +299,9 @@ class ContractorDetailsPage extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  String _joinUrl(String baseUrl, String path) {
+    return '$baseUrl$path';
   }
 }

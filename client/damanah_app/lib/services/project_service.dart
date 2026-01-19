@@ -92,15 +92,13 @@ class ProjectService {
 
     if (res.statusCode == 200) {
       if (decoded is Map<String, dynamic>) {
-        // 👇👇 أضفت لك هذا الفحص عشان تتطمن إن التعديل بالسيرفر اشتغل
+        // 👇 ملاحظة: الصورة هنا ستأتي كرابط Cloudinary كامل يبدأ بـ https
         if (decoded['owner'] != null && decoded['owner'] is Map) {
           final img = decoded['owner']['profileImage'];
           debugPrint("✅ Service Received Image: $img");
         } else {
           debugPrint("⚠️ Service Warning: Owner data is missing or incomplete");
         }
-        // 👆👆 نهاية الفحص
-
         return decoded;
       }
 
@@ -347,10 +345,9 @@ class ProjectService {
   }
 
   // =========================
-  // 🔥 ADDED: Contractor Specific Methods
+  // 🔥 Contractor Specific Methods
   // =========================
 
-  /// GET /api/projects/contractor/available
   /// GET /api/projects/contractor/available
   Future<List<dynamic>> getAvailableProjectsForContractor() async {
     final token = await _mustToken();
@@ -363,7 +360,6 @@ class ProjectService {
     final decoded = _safeDecode(res.body);
 
     if (res.statusCode == 200) {
-      // ✅ التعديل هنا لضمان التعامل مع البيانات بشكل آمن
       if (decoded is Map && decoded["projects"] is List) {
         return List.from(decoded["projects"]);
       }
@@ -464,8 +460,8 @@ class ProjectService {
 
   /// PATCH /api/projects/:id/status (Client/Contractor/Admin)
   Future<void> updateProjectStatus({
-    required String projectId, // معطى مسمى
-    required String newStatus, // معطى مسمى
+    required String projectId, 
+    required String newStatus, 
   }) async {
     final token = await _mustToken();
     final uri = Uri.parse(ApiConfig.join("/api/projects/$projectId/status"));
@@ -485,11 +481,10 @@ class ProjectService {
 
   // =========================
 
-  /// GET /api/projects/client/my-offers  (Client only)
+  /// GET /api/projects/contractor/my-offers
   Future<List<dynamic>> getMyOffers() async {
     final token = await _mustToken();
 
-    // ✅ للمقاول (My Submitted Offers)
     final uri = Uri.parse(ApiConfig.join("/api/projects/contractor/my-offers"));
 
     final res = await http
@@ -533,8 +528,7 @@ class ProjectService {
   /// GET /api/projects/contractor/my
   Future<List<dynamic>> getMyProjectsForContractor() async {
     final token = await _mustToken();
-    // تأكد أن الرابط يطابق الراوت في السيرفر
-    final uri = Uri.parse(ApiConfig.join("/api/projects/contractor/my")); // أو my-projects حسب السيرفر
+    final uri = Uri.parse(ApiConfig.join("/api/projects/contractor/my"));
 
     final res = await http
         .get(uri, headers: _authHeaders(token))
@@ -546,7 +540,6 @@ class ProjectService {
       if (decoded is Map && decoded["projects"] is List) {
         final list = List.from(decoded["projects"]);
 
-        // 👇👇 كود الفحص: طباعة بيانات أول مشروع للتأكد من وجود الصورة
         if (list.isNotEmpty) {
           final firstProject = list.first;
           final owner = firstProject['owner'];
@@ -556,7 +549,6 @@ class ProjectService {
              debugPrint("⚠️ [MyProjects] Owner data is missing or not populated!");
           }
         }
-        // 👆👆 نهاية الفحص
 
         return list;
       }
@@ -567,11 +559,10 @@ class ProjectService {
 
     throw Exception("(${res.statusCode}) ${_errMsg(res)}");
   }
+
   // =========================
   // 🔥 NEW: Get client-related contractors only
   // GET /api/clients/my-contractors
-  // Returns a list of contractors that are related to the logged-in client
-  // (via Projects or Contracts). Safe parsing + profileImageUrl handling.
   Future<List<dynamic>> getMyContractors() async {
     final token = await _mustToken();
     final uri = Uri.parse(ApiConfig.join("/api/clients/my-contractors"));
@@ -583,12 +574,10 @@ class ProjectService {
     final decoded = _safeDecode(res.body);
 
     if (res.statusCode == 200) {
-      // If the API returns array directly
       if (decoded is List) {
         return decoded.map((e) {
           if (e is Map) {
             final m = Map<String, dynamic>.from(e);
-            // ensure consistent profileImageUrl field if backend returns profileImage
             if ((m['profileImageUrl'] == null || m['profileImageUrl'] == '') &&
                 (m['profileImage'] != null && m['profileImage'] is String)) {
               m['profileImageUrl'] = m['profileImage'];
@@ -599,7 +588,6 @@ class ProjectService {
         }).toList();
       }
 
-      // If API returns object with list inside
       if (decoded is Map &&
           (decoded['data'] is List || decoded['contractors'] is List)) {
         final list = decoded['data'] ?? decoded['contractors'];
@@ -616,7 +604,6 @@ class ProjectService {
         }).toList();
       }
 
-      // defensive: if returned object is a single contractor
       if (decoded is Map && decoded['_id'] != null) {
         final m = Map<String, dynamic>.from(decoded);
         if ((m['profileImageUrl'] == null || m['profileImageUrl'] == '') &&
@@ -626,11 +613,9 @@ class ProjectService {
         return [m];
       }
 
-      // otherwise return empty list
       return [];
     }
 
-    // unauthorized / other error
     if (res.statusCode == 401) {
       throw Exception("Unauthorized (${res.statusCode})");
     }

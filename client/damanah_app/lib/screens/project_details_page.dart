@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/project_service.dart';
+import '../config/api_config.dart'; // ✅ استيراد ملف الإعدادات
 
 class ProjectDetailsPage extends StatefulWidget {
   final String projectId;
@@ -13,7 +14,7 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
   final _service = ProjectService();
 
   bool _loading = true;
-  bool _downloading = false; // حالة تحميل الملف
+  bool _downloading = false; 
   String? _error;
   Map<String, dynamic>? _data;
 
@@ -41,7 +42,6 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
 
       setState(() => _data = project);
 
-      // تحميل العروض فقط إذا كان المشروع مفتوحاً
       if ((project["status"] ?? "open") == "open") {
         _offersFuture = _service.getProjectOffers(projectId: widget.projectId);
       }
@@ -58,13 +58,10 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
     });
   }
 
-  // تحميل ملف التقدير
-  // تحميل ملف التقدير
   Future<void> _downloadEstimateFile() async {
     if (_downloading) return;
     setState(() => _downloading = true);
     try {
-      // نقوم بتحميل الملف ولكن لا داعي لعرض المسار الطويل للمستخدم
       await _service.downloadEstimateToFile(projectId: widget.projectId);
 
       if (!mounted) return;
@@ -96,14 +93,19 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
       if (mounted) setState(() => _downloading = false);
     }
   }
-  // ====================== UI Helpers ======================
 
-  String _toAbsoluteUrl(String maybeUrl) {
-    // (نفس اللوجيك السابق للصور)
-    if (maybeUrl.isEmpty) return "";
-    if (maybeUrl.startsWith("http")) return maybeUrl;
-    // افترضنا وجود رابط أساسي، يمكن تعديله حسب الحاجة
-    return maybeUrl;
+  // ====================== Smart URL Helper (Cloudinary Support) ======================
+
+  /// ✅ دالة ذكية لمعالجة الروابط (دعم Cloudinary و Render)
+  String _toAbsoluteUrl(String? maybeUrl) {
+    if (maybeUrl == null || maybeUrl.trim().isEmpty) return "";
+    final v = maybeUrl.trim();
+    
+    // إذا كان الرابط يبدأ بـ http، فهو رابط كامل من Cloudinary نرجعه كما هو
+    if (v.startsWith("http")) return v;
+    
+    // إذا كان مساراً نسبياً قديماً، ندمجه مع الرابط الأساسي من ApiConfig
+    return ApiConfig.join(v);
   }
 
   @override
@@ -161,13 +163,11 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
     final title = (p["title"] ?? "Untitled").toString();
     final status = (p["status"] ?? "open").toString().toLowerCase();
 
-    // هل نعرض العروض؟ فقط إذا كان المشروع Open
     final showOffers = status == "open";
 
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
-        // 1. العنوان والحالة
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -188,29 +188,22 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
 
         const SizedBox(height: 20),
 
-        // 2. كرت التكلفة التفصيلي
         if (p["estimation"] != null || p["estimate"] != null)
           _buildDetailedEstimateCard(p)
         else
           _buildEmptyEstimateCard(),
 
         const SizedBox(height: 20),
-
-        // 3. معلومات المشروع
         _buildInfoCard(p),
-
         const SizedBox(height: 20),
 
-        // 4. المقاول المعين (يظهر دائماً، لكن يكون فارغاً إذا لم يعين أحد)
         if (p["contractor"] != null) ...[
           _buildContractorCard(p),
           const SizedBox(height: 20),
         ],
 
-        // 5. قسم العروض (يختفي إذا تم قبول عرض)
         if (showOffers) ...[_buildOffersSection(), const SizedBox(height: 20)],
 
-        // 6. تحليل المخطط
         if (p["planAnalysis"] != null)
           _buildPlanAnalysisCard(p["planAnalysis"]),
 
@@ -219,9 +212,6 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
     );
   }
 
-  // ====================== Cards ======================
-
-  // ✅ كرت التكلفة الجديد (مفصل + زر تحميل)
   Widget _buildDetailedEstimateCard(Map<String, dynamic> p) {
     final est = (p["estimation"] is Map)
         ? Map<String, dynamic>.from(p["estimation"])
@@ -252,7 +242,6 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
       ),
       child: Column(
         children: [
-          // Header: Total
           Padding(
             padding: const EdgeInsets.all(20),
             child: Row(
@@ -292,7 +281,6 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
           ),
           Divider(color: Colors.white.withOpacity(0.1), height: 1),
 
-          // Items List (Expanded to show details)
           if (items.isNotEmpty)
             ListView.separated(
               physics: const NeverScrollableScrollPhysics(),
@@ -359,7 +347,6 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
               },
             ),
 
-          // Download Button
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
             child: SizedBox(
@@ -451,13 +438,15 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
 
   Widget _buildContractorCard(Map<String, dynamic> p) {
     final c = p["contractor"];
-    if (c == null) return const SizedBox.shrink(); // لا تعرض شيئاً إذا لم يعين
+    if (c == null) return const SizedBox.shrink();
 
     final map = (c is Map) ? c : {};
     final name = map["name"] ?? "Unknown Contractor";
     final phone = map["phone"] ?? "";
     final email = map["email"] ?? "";
-    final img = _toAbsoluteUrl(map["profileImageUrl"] ?? "");
+    
+    // ✅ جلب صورة المقاول باستخدام الدالة الذكية لتعمل مع Cloudinary
+    final img = _toAbsoluteUrl(map["profileImageUrl"] ?? map["profileImage"] ?? "");
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -561,7 +550,6 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
     );
   }
 
-  // ====================== Offers Section ======================
   Widget _buildOffersSection() {
     return Column(
       children: [
@@ -635,7 +623,6 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
       ],
     );
   }
-  
 
   Widget _buildOfferCard(dynamic o) {
     final m = (o as Map);
@@ -726,8 +713,6 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
     );
   }
 
-  
-
   Future<void> _acceptOffer(String offerId) async {
     setState(() => _accepting = true);
     try {
@@ -738,7 +723,7 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
           content: Text("Offer accepted! Project moved to In Progress."),
         ),
       );
-      _load(); // Reload to update UI and hide offers
+      _load(); 
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -748,9 +733,6 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
       if (mounted) setState(() => _accepting = false);
     }
   }
-  
-
-  // ====================== Styling Helpers ======================
 
   BoxDecoration _cardDeco() {
     return BoxDecoration(

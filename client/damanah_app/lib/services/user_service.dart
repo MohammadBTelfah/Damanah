@@ -31,6 +31,7 @@ class UserService {
   }
 
   // ✅ PUT {role}/account/me (multipart)
+  // تم التأكد من أن المسار يستخدم ApiConfig.join للربط مع سيرفر Render
   Future<Map<String, dynamic>> updateMe({
     required String name,
     required String phone,
@@ -39,7 +40,7 @@ class UserService {
     final token = await SessionService.getToken();
     final basePath = await _accountBasePath();
 
-    // ✅ بدل baseUrl الثابت
+    // ✅ استخدام الإعدادات المركزية للروابط لضمان الاتصال بـ Render
     final uri = Uri.parse(ApiConfig.join("$basePath/me"));
 
     final request = http.MultipartRequest("PUT", uri);
@@ -73,7 +74,10 @@ class UserService {
     final decoded = jsonDecode(body);
     final data = decoded is Map<String, dynamic> ? decoded : <String, dynamic>{};
 
-    if (response.statusCode == 200) return data;
+    if (response.statusCode == 200) {
+      // ✅ ملاحظة: الباك إند سيرجع الآن رابط Cloudinary كامل في الحقل profileImage
+      return data;
+    }
 
     throw Exception(data["message"] ?? "Update profile failed");
   }
@@ -86,7 +90,7 @@ class UserService {
     final token = await SessionService.getToken();
     final basePath = await _accountBasePath();
 
-    // ✅ بدل baseUrl الثابت
+    // ✅ التوجيه إلى سيرفر Render عبر ApiConfig
     final uri = Uri.parse(ApiConfig.join("$basePath/change-password"));
 
     final res = await http.put(

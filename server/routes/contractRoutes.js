@@ -3,7 +3,7 @@ const router = express.Router();
 
 // انتبه: عندك هنا authMiddleware (مش authMiddleWare)
 // خليها زي مشروعك الحالي
-const { protect } = require("../middleware/authMiddleware");
+const { protect } = require("../middleware/authMiddleWare");
 const contractController = require("../controllers/contractController");
 
 // GET /api/contracts
