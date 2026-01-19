@@ -33,7 +33,7 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
   final _locationCtrl = TextEditingController();
   String _finishing = "basic";
 
-  String _buildingType = "house";
+  String _buildingType = "House";
 
   List<dynamic> _materials = [];
   
@@ -710,12 +710,11 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
           iconEnabledColor: Colors.white,
           style: const TextStyle(color: Colors.white),
           items: const [
-            DropdownMenuItem(value: "house", child: Text("House")),
+            DropdownMenuItem(value: "House", child: Text("House")),
             DropdownMenuItem(value: "villa", child: Text("Villa")),
-            DropdownMenuItem(value: "apartment", child: Text("Apartment")),
             DropdownMenuItem(value: "commercial", child: Text("Commercial")),
           ],
-          onChanged: (v) => setState(() => _buildingType = v ?? "house"),
+          onChanged: (v) => setState(() => _buildingType = v ?? "House"),
         ),
         const SizedBox(height: 12),
         DropdownButtonFormField<String>(

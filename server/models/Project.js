@@ -26,8 +26,8 @@ const projectSchema = new mongoose.Schema(
     buildingType: {
       type: String,
       // تأكدنا أن الـ controller يحول house لـ villa، فهذا الـ enum صحيح
-      enum: ["apartment", "villa", "commercial"],
-      default: "apartment",
+      enum: ["House", "villa", "commercial"],
+      default: "House",
     },
 
     // ============================================
