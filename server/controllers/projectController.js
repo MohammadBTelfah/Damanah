@@ -129,14 +129,23 @@ exports.createProject = async (req, res) => {
       return res.status(400).json({ message: "Invalid floors" });
     }
 
+    // معالجة مستوى التشطيب
     const level = String(finishingLevel || "basic").toLowerCase().trim();
     const allowedLevels = ["basic", "medium", "premium"];
     const safeLevel = allowedLevels.includes(level) ? level : "basic";
 
+    // ✅ معالجة نوع البناء (بدون تحويل House إلى Villa)
     const bt = String(buildingType || "House").toLowerCase().trim();
-    const allowedTypes = ["House", "villa", "commercial", "house"];
-    let safeBuildingType = allowedTypes.includes(bt) ? bt : "House";
-    if (safeBuildingType === "house") safeBuildingType = "villa";
+    let safeBuildingType = "House"; // القيمة الافتراضية (House)
+
+    if (bt === "villa") {
+      safeBuildingType = "villa";
+    } else if (bt === "commercial") {
+      safeBuildingType = "commercial";
+    } else {
+      // أي شيء آخر (بما فيه house) سيصبح House
+      safeBuildingType = "House";
+    }
 
     const safePlanAnalysis =
       typeof sanitizePlanAnalysis === "function"
@@ -151,7 +160,7 @@ exports.createProject = async (req, res) => {
       area: areaNum,
       floors: floorsNum,
       finishingLevel: safeLevel,
-      buildingType: safeBuildingType,
+      buildingType: safeBuildingType, // ✅ سيحفظ القيمة الصحيحة الآن
       planAnalysis: safePlanAnalysis,
       status: "draft",
     });
@@ -167,7 +176,6 @@ exports.createProject = async (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 };
-
 // =======================
 // Publish project
 // PATCH /api/projects/:projectId/publish
