@@ -28,6 +28,12 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
   final _roomsCtrl = TextEditingController();
   final _bathsCtrl = TextEditingController();
 
+  // ✅ الحقول المعمارية الجديدة (Quantity Takeoff) المضافة لضمان دقة الحساب
+  final _windowsCountCtrl = TextEditingController();
+  final _internalDoorsCtrl = TextEditingController();
+  final _perimeterCtrl = TextEditingController(); // إجمالي طول الجدران
+  final _heightCtrl = TextEditingController();    // ارتفاع السقف
+
   final _titleCtrl = TextEditingController();
   final _descCtrl = TextEditingController();
   final _locationCtrl = TextEditingController();
@@ -37,7 +43,7 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
 
   List<dynamic> _materials = [];
 
-  // ✅ المتغيرات الجديدة للتحكم بالـ Checkbox والاختيارات
+  // ✅ منطق الاختيارات الأصلي كما هو
   final Set<String> _checkedMaterials = {};
   final Map<String, String> _selectedVariant = {};
 
@@ -50,6 +56,10 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
     _floorsCtrl.dispose();
     _roomsCtrl.dispose();
     _bathsCtrl.dispose();
+    _windowsCountCtrl.dispose();
+    _internalDoorsCtrl.dispose();
+    _perimeterCtrl.dispose();
+    _heightCtrl.dispose();
     _titleCtrl.dispose();
     _descCtrl.dispose();
     _locationCtrl.dispose();
@@ -67,8 +77,8 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
 
   InputDecoration _dec(String hint, {Widget? suffix, EdgeInsets? padding}) {
     return InputDecoration(
-      hintText: hint,
-      hintStyle: TextStyle(color: Colors.white.withOpacity(0.6)),
+      hintText: hint, // Placeholder
+      hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
       filled: true,
       fillColor: const Color(0xFF2F463D),
       suffixIcon: suffix,
@@ -81,7 +91,6 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
     );
   }
 
-  // ✅✅✅ الجديد: Label فوق الحقول (يبقى ظاهر حتى بعد تعبئة القيمة)
   Widget _fieldLabel(String text) {
     return Padding(
       padding: const EdgeInsets.only(left: 6, bottom: 6),
@@ -124,6 +133,13 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
       final n = _toInt(a["floors"]);
       if (n != null) a["floors"] = n;
     }
+    
+    // ربط الحقول المعمارية الجديدة
+    a["windowsCount"] = _toInt(_windowsCountCtrl.text);
+    a["internalDoorsCount"] = _toInt(_internalDoorsCtrl.text);
+    a["wallPerimeter"] = _toDouble(_perimeterCtrl.text);
+    a["ceilingHeight"] = _toDouble(_heightCtrl.text);
+
     final roomsVal = a["rooms"];
     if (roomsVal is List) {
       a["roomsDetails"] = roomsVal;
@@ -164,18 +180,21 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
   }
 
   void _goManualReview({String? msg}) {
-    _analysis = {};
-    if (_floorsCtrl.text.trim().isEmpty) _floorsCtrl.text = "1";
-    setState(() => _step = 1);
     if (msg != null) _snack(msg, color: Colors.orange);
+    setState(() {
+      _analysis = {};
+      if (_floorsCtrl.text.trim().isEmpty) _floorsCtrl.text = "1";
+      if (_heightCtrl.text.trim().isEmpty) _heightCtrl.text = "3.0";
+      _step = 1;
+      _loading = false;
+    });
   }
 
   Future<void> _analyzePlan() async {
     if (_loading) return;
 
     if (_planFile == null) {
-      _goManualReview(
-          msg: "Auto analysis unavailable. Please fill details manually.");
+      _goManualReview(msg: "No file selected. Please fill details manually.");
       return;
     }
 
@@ -188,8 +207,8 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
           : <String, dynamic>{};
 
       final area = (analysis["totalArea"] ?? analysis["area"] ?? "").toString();
-      final floors = (analysis["floors"] ?? "").toString();
-      final roomsVal = analysis["rooms"];
+      final floors = (analysis["floors"] ?? "1").toString();
+      final roomsVal = analysis["bedrooms"] ?? analysis["rooms"];
       final bathsVal = analysis["bathrooms"];
 
       String roomsText = "";
@@ -209,25 +228,23 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
       final loc = (analysis["locationGuess"] ?? "").toString();
 
       _areaCtrl.text = area;
-      _floorsCtrl.text = floors.isEmpty ? "1" : floors;
+      _floorsCtrl.text = floors;
       _roomsCtrl.text = roomsText;
       _bathsCtrl.text = bathsText;
       if (loc.trim().isNotEmpty) _locationCtrl.text = loc;
+
+      // ✅ تعبئة البيانات المعمارية المتقدمة من الـ AI
+      _windowsCountCtrl.text = (analysis["openings"]?["windows"]?["count"] ?? "0").toString();
+      _internalDoorsCtrl.text = (analysis["openings"]?["internalDoors"]?["count"] ?? "0").toString();
+      _perimeterCtrl.text = (analysis["wallPerimeterLinear"] ?? "").toString();
+      _heightCtrl.text = (analysis["ceilingHeightDefault"] ?? "3.0").toString();
 
       setState(() {
         _analysis = analysis;
         _step = 1;
       });
     } catch (e) {
-      final msg = e.toString();
-      final shouldManual =
-          msg.contains("AI_UNAVAILABLE") || msg.contains("(503)") || msg.contains("(429)");
-
-      if (shouldManual) {
-        _goManualReview(msg: "Auto analysis failed. Please fill details manually.");
-      } else {
-        _snack(msg);
-      }
+      _goManualReview(msg: "Auto analysis failed. Please fill details manually.");
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -250,6 +267,10 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
     _analysis ??= {};
     _analysis!["totalArea"] = area;
     _analysis!["floors"] = floors;
+    _analysis!["wallPerimeter"] = double.tryParse(_perimeterCtrl.text.trim());
+    _analysis!["ceilingHeight"] = double.tryParse(_heightCtrl.text.trim());
+    _analysis!["windowsCount"] = int.tryParse(_windowsCountCtrl.text.trim());
+    _analysis!["internalDoorsCount"] = int.tryParse(_internalDoorsCtrl.text.trim());
 
     final rooms = int.tryParse(_roomsCtrl.text.trim());
     final baths = int.tryParse(_bathsCtrl.text.trim());
@@ -303,7 +324,6 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
     }
   }
 
-  // ✅ Step 4 Logic: التحقق من الاختيارات
   Future<void> _runEstimate() async {
     if (_loading) return;
     if (_projectId == null || _projectId!.isEmpty) {
@@ -311,7 +331,6 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
       return;
     }
 
-    // 1. هل اختار المستخدم مادة واحدة على الأقل؟
     if (_checkedMaterials.isEmpty) {
       _snack("Please choose at least one material", color: Colors.orange);
       return;
@@ -319,7 +338,6 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
 
     final List<Map<String, String>> selections = [];
 
-    // 2. هل اختار النوع لكل مادة تم تحديدها بالـ Checkbox؟
     for (String id in _checkedMaterials) {
       final variantKey = _selectedVariant[id];
       if (variantKey == null) {
@@ -381,10 +399,6 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
       if (mounted) setState(() => _loading = false);
     }
   }
-
-  // =============================
-  // ✅ منطق Assign To Specific Contractor
-  // =============================
 
   void _showContractorPicker() async {
     if (_loading) return;
@@ -588,8 +602,6 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
     );
   }
 
-  // --- Widgets ---
-
   Widget _buildPrimaryButton(String text, VoidCallback onPressed) {
     return SizedBox(
       height: 54,
@@ -606,7 +618,7 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
             ? const SizedBox(
                 width: 22,
                 height: 22,
-                child: CircularProgressIndicator(strokeWidth: 2),
+                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
               )
             : Text(text,
                 style:
@@ -674,6 +686,13 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
                   Expanded(child: _buildPrimaryButton("Analyze", _analyzePlan)),
                 ],
               ),
+              const SizedBox(height: 10),
+              Center(
+                child: TextButton(
+                  onPressed: _loading ? null : () => _goManualReview(msg: "Manual entry mode."),
+                  child: const Text("Skip to manual entry", style: TextStyle(color: Color(0xFF9EE7B7), fontSize: 13)),
+                ),
+              )
             ],
           ),
         ),
@@ -681,12 +700,11 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
     );
   }
 
-  // ✅✅✅ تم تعديل هذا الستيب فقط لإضافة Labels فوق الحقول
   Widget _buildStepReview() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Text("Step 2: Review & edit data",
+        const Text("Step 2: Architecture Takeoff",
             style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
         const SizedBox(height: 12),
 
@@ -695,7 +713,7 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
           controller: _areaCtrl,
           style: const TextStyle(color: Colors.white),
           keyboardType: TextInputType.number,
-          decoration: _dec(""),
+          decoration: _dec("e.g. 314.80"), // Placeholder
         ),
         const SizedBox(height: 12),
 
@@ -704,7 +722,60 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
           controller: _floorsCtrl,
           style: const TextStyle(color: Colors.white),
           keyboardType: TextInputType.number,
-          decoration: _dec(""),
+          decoration: _dec("e.g. 1"), // Placeholder
+        ),
+        const SizedBox(height: 12),
+
+        Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _fieldLabel("Windows Count"),
+                  TextFormField(
+                    controller: _windowsCountCtrl,
+                    style: const TextStyle(color: Colors.white),
+                    keyboardType: TextInputType.number,
+                    decoration: _dec("e.g. 12"), // Placeholder
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _fieldLabel("Internal Doors"),
+                  TextFormField(
+                    controller: _internalDoorsCtrl,
+                    style: const TextStyle(color: Colors.white),
+                    keyboardType: TextInputType.number,
+                    decoration: _dec("e.g. 8"), // Placeholder
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+
+        _fieldLabel("Wall Perimeter (m)"),
+        TextFormField(
+          controller: _perimeterCtrl,
+          style: const TextStyle(color: Colors.white),
+          keyboardType: TextInputType.number,
+          decoration: _dec("Linear meters (e.g. 150)"), // Placeholder
+        ),
+        const SizedBox(height: 12),
+
+        _fieldLabel("Ceiling Height (m)"),
+        TextFormField(
+          controller: _heightCtrl,
+          style: const TextStyle(color: Colors.white),
+          keyboardType: TextInputType.number,
+          decoration: _dec("Typical 3.0"), // Placeholder
         ),
         const SizedBox(height: 12),
 
@@ -713,7 +784,7 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
           controller: _roomsCtrl,
           style: const TextStyle(color: Colors.white),
           keyboardType: TextInputType.number,
-          decoration: _dec(""),
+          decoration: _dec("e.g. 4"), // Placeholder
         ),
         const SizedBox(height: 12),
 
@@ -722,7 +793,7 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
           controller: _bathsCtrl,
           style: const TextStyle(color: Colors.white),
           keyboardType: TextInputType.number,
-          decoration: _dec(""),
+          decoration: _dec("e.g. 3"), // Placeholder
         ),
         const SizedBox(height: 16),
 
@@ -754,14 +825,14 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
         const Text("Step 3: Project details",
             style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
         const SizedBox(height: 12),
-        TextFormField(controller: _titleCtrl, style: const TextStyle(color: Colors.white), decoration: _dec("Project Title *")),
+        TextFormField(controller: _titleCtrl, style: const TextStyle(color: Colors.white), decoration: _dec("Project Title (e.g. My Villa)")),
         const SizedBox(height: 12),
-        TextFormField(controller: _descCtrl, style: const TextStyle(color: Colors.white), maxLines: 2, decoration: _dec("Description (optional)", padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10))),
+        TextFormField(controller: _descCtrl, style: const TextStyle(color: Colors.white), maxLines: 2, decoration: _dec("Description (e.g. Ground floor only)", padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10))),
         const SizedBox(height: 12),
-        TextFormField(controller: _locationCtrl, style: const TextStyle(color: Colors.white), decoration: _dec("Location")),
+        TextFormField(controller: _locationCtrl, style: const TextStyle(color: Colors.white), decoration: _dec("Location (e.g. Amman, Jordan)")),
         const SizedBox(height: 12),
         DropdownButtonFormField<String>(
-          initialValue: _buildingType,
+          value: _buildingType,
           decoration: _dec("Building Type"),
           dropdownColor: const Color(0xFF2F463D),
           iconEnabledColor: Colors.white,
@@ -775,7 +846,7 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
         ),
         const SizedBox(height: 12),
         DropdownButtonFormField<String>(
-          initialValue: _finishing,
+          value: _finishing,
           decoration: _dec("Finishing Level"),
           dropdownColor: const Color(0xFF2F463D),
           iconEnabledColor: Colors.white,
@@ -809,9 +880,6 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
     );
   }
 
-  // =============================
-  // ✅ Step 4: اختيار المواد مع Checkbox
-  // =============================
   Widget _buildStepMaterials() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -966,9 +1034,6 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
     );
   }
 
-  // =============================
-  // ✅ Step 5: النتيجة + أزرار الـ Action
-  // =============================
   Widget _buildStepEstimate() {
     final items = (_estimate?["items"] is List)
         ? List.from(_estimate?["items"])
@@ -1140,7 +1205,7 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
                       ),
                     ),
                     icon: _loading
-                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
                         : const Icon(Icons.public, size: 22),
                     label: const Text("Publish to All",
                         style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
