@@ -1,7 +1,8 @@
 const express = require("express");
 const router = express.Router();
-const path = require("path");
-const multer = require("multer");
+// لم نعد بحاجة لـ path و multer هنا
+// const path = require("path");
+// const multer = require("multer");
 
 const projectController = require("../controllers/projectController");
 const {
@@ -10,23 +11,8 @@ const {
   contractorOnly,
 } = require("../middleware/authMiddleWare");
 
-// ========= multer for plans =========
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, "uploads/plans/"),
-  filename: (req, file, cb) =>
-    cb(
-      null,
-      Date.now() +
-        "-" +
-        Math.round(Math.random() * 1e9) +
-        path.extname(file.originalname)
-    ),
-});
-
-const planUpload = multer({
-  storage,
-  limits: { fileSize: 10 * 1024 * 1024 },
-});
+// ✅ NEW: استيراد إعدادات Cloudinary
+const upload = require("../config/cloudinaryConfig");
 
 // ================================
 // ✅ Contractor routes (لازم قبل :projectId)
@@ -74,7 +60,7 @@ router.patch(
 
 // Estimate / Save / Download / Share / Assign
 router.post("/:id/estimate", protect, clientOnly, projectController.estimateProject);
-router.patch("/:id/save", protect, clientOnly, projectController.saveProject); // يمكن استخدامه للحفظ كمسودة
+router.patch("/:id/save", protect, clientOnly, projectController.saveProject);
 router.get("/:id/estimate/download", protect, clientOnly, projectController.downloadEstimate);
 router.post("/:id/share", protect, clientOnly, projectController.shareProject);
 router.patch("/:id/assign", protect, clientOnly, projectController.assignContractor);
@@ -101,7 +87,6 @@ router.get(
   projectController.getContractorMyOffers
 );
 
-
 router.get(
   "/:projectId/offers",
   protect,
@@ -123,9 +108,10 @@ router.post(
   "/plan/analyze",
   protect,
   clientOnly,
-  planUpload.single("planFile"),
+  upload.single("planFile"), // ✅ التعديل هنا: استخدام Cloudinary Upload
   projectController.analyzePlanOnly
 );
+
 router.get(
   "/clients/my-contractors",
   protect,
@@ -137,4 +123,5 @@ router.get(
 router.get("/client/recent-offers", protect, projectController.getClientRecentOffers);
 
 router.patch('/:id/status', protect, contractorOnly, projectController.updateProjectStatus);
+
 module.exports = router;
