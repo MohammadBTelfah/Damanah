@@ -2,6 +2,7 @@ const Project = require("../models/Project");
 const Contract = require("../models/Contract");
 const Contractor = require("../models/Contractor");
 const Notification = require("../models/Notification");
+const os = require("os");
 const generateContractPdf = require("../utils/pdf/generateContractPdf");
 const { generateBoqForProject } = require("../utils/boq");
 const { analyzeFloorPlanImage } = require("../utils/plan_vision");
