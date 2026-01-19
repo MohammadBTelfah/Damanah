@@ -46,19 +46,27 @@ class _AppDrawerState extends State<AppDrawer> {
     });
   }
 
-  String _joinUrl(String base, String path) {
-    final b = base.endsWith('/') ? base.substring(0, base.length - 1) : base;
-    final p = path.startsWith('/') ? path.substring(1) : path;
-    return '$b/$p';
-  }
-
+  // ✅ التعديل الأهم: التعامل مع روابط Cloudinary
   String? _profileUrl(Map<String, dynamic> u) {
     final p = u["profileImage"];
     if (p == null) return null;
     final s = p.toString().trim();
     if (s.isEmpty) return null;
+
+    // إذا كان الرابط يبدأ بـ http، فهو رابط Cloudinary كامل، نستخدمه كما هو.
+    // خلاف ذلك، نستخدم دالة الـ join القديمة (للتوافق مع أي صور قديمة على السيرفر المحلي).
+    if (s.startsWith('http')) {
+      return "$s?t=$_bust";
+    }
+
     final clean = _joinUrl(widget.baseUrl, s);
     return "$clean?t=$_bust";
+  }
+
+  String _joinUrl(String base, String path) {
+    final b = base.endsWith('/') ? base.substring(0, base.length - 1) : base;
+    final p = path.startsWith('/') ? path.substring(1) : path;
+    return '$b/$p';
   }
 
   Future<void> _logout(BuildContext context) async {

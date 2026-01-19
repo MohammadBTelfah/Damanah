@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // ✅ مهم للـ Clipboard
 import '../services/project_service.dart';
+import '../config/api_config.dart'; // ✅ استيراد ملف الإعدادات
 import 'contractor_details_page.dart';
 
 class ContractorsPage extends StatefulWidget {
@@ -30,7 +31,6 @@ class _ContractorsPageState extends State<ContractorsPage> {
     });
 
     try {
-      // 1) حاول جلب المقاولين المرتبطين بالعميل أولاً
       final list = await _tryGetMyContractorsWithFallback();
       setState(() => _contractors = list);
     } catch (e) {
@@ -40,19 +40,15 @@ class _ContractorsPageState extends State<ContractorsPage> {
     }
   }
 
-  /// يجرب getMyContractors() ثم يرجع للقائمة العامة اذا رجع 404 أو endpoint غير موجود
   Future<List<dynamic>> _tryGetMyContractorsWithFallback() async {
     try {
       final list = await _service.getMyContractors();
       return list;
     } catch (e) {
       final msg = e.toString();
-      // لو الخطأ يحتوي 404 نعمل fallback تلقائي
       if (msg.contains('404')) {
-        // محاولة بديلة: جلب القائمة العامة (available)
         try {
           final fallback = await _service.getContractors();
-          // نعرض رسالة صغيرة للمستخدم بأننا استعملنا fallback
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
@@ -63,48 +59,25 @@ class _ContractorsPageState extends State<ContractorsPage> {
           }
           return fallback;
         } catch (e2) {
-          // لو الفالباك فشل نطلق الخطأ الأصلي مع تفاصيل الفالباك
           throw Exception("Primary endpoint returned 404, fallback failed: ${e2.toString()}");
         }
       }
-      // لو الخطأ غير 404 نعيده كما هو
       rethrow;
     }
   }
 
-  // ====================== URL helpers (for images) ======================
+  // ====================== Smart URL helpers (Cloudinary support) ======================
 
-  String _baseUrlFromService() {
-    // يعتمد إن ProjectService عندك فيه baseUrl
-    try {
-      final dynamic s = _service;
-      final v = s.baseUrl;
-      if (v is String) return v;
-    } catch (_) {}
-    return "";
-  }
-
-  String _joinUrl(String base, String path) {
-    final b = base.endsWith('/') ? base.substring(0, base.length - 1) : base;
-    final p = path.startsWith('/') ? path.substring(1) : path;
-    return "$b/$p";
-  }
-
+  /// ✅ دالة ذكية لمعالجة روابط الصور (Cloudinary أو Render)
   String _toAbsoluteUrl(String maybeUrlOrPath) {
     final v = maybeUrlOrPath.trim();
     if (v.isEmpty) return "";
 
-    // already absolute
+    // إذا كان الرابط كاملاً من Cloudinary (يبدأ بـ http) نرجعه فوراً
     if (v.startsWith("http://") || v.startsWith("https://")) return v;
 
-    // server path like /uploads/...
-    if (v.startsWith("/")) {
-      final base = _baseUrlFromService();
-      if (base.isEmpty) return v; // ما قدرنا نطلع baseUrl
-      return _joinUrl(base, v);
-    }
-
-    return v;
+    // إذا كان مساراً قديماً على السيرفر، نقوم بدمجه مع الرابط الأساسي من ApiConfig
+    return ApiConfig.join(v);
   }
 
   // ====================== UI ======================
@@ -155,9 +128,9 @@ class _ContractorsPageState extends State<ContractorsPage> {
     final city = c["city"]?.toString() ?? c["location"]?.toString() ?? "";
     final specialty =
         c["specialty"]?.toString() ?? c["type"]?.toString() ?? "General";
-    final available = c["available"] == true ||
-        (c["isActive"] == true); // قبول خاصية isActive كبديل
+    final available = c["available"] == true || (c["isActive"] == true);
 
+    // ✅ معالجة الرابط عبر الدالة الذكية لضمان عرض صور Cloudinary
     final imgRaw = (c["profileImageUrl"] ?? c["profileImage"] ?? "").toString();
     final img = _toAbsoluteUrl(imgRaw);
 
@@ -179,7 +152,6 @@ class _ContractorsPageState extends State<ContractorsPage> {
         ),
         child: Row(
           children: [
-            // ===== Avatar (Image) =====
             Container(
               width: 42,
               height: 42,
@@ -197,9 +169,7 @@ class _ContractorsPageState extends State<ContractorsPage> {
                     )
                   : const Icon(Icons.person, color: Colors.white70),
             ),
-
             const SizedBox(width: 12),
-
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -227,8 +197,6 @@ class _ContractorsPageState extends State<ContractorsPage> {
                         available ? Colors.greenAccent : Colors.orangeAccent,
                       ),
                       const SizedBox(width: 10),
-
-                      // رقم الهاتف + نسخ
                       Flexible(
                         child: Row(
                           children: [

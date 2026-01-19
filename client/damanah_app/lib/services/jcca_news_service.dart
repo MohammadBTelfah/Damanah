@@ -13,6 +13,7 @@ class JccaNewsService {
   }
 
   Future<List<Map<String, dynamic>>> fetchNews({int limit = 5}) async {
+    // سيعمل تلقائياً مع رابط Render الجديد
     final uri = Uri.parse(ApiConfig.join("/api/public/jcca-news?limit=$limit"));
 
     final res = await http
@@ -20,10 +21,7 @@ class JccaNewsService {
         .timeout(const Duration(seconds: 20));
 
     // ✅ DEBUG (مهم جدًا لحل No news)
-    // اطبعهم وشوف شو راجع من السيرفر
-    // ignore: avoid_print
     print("NEWS status: ${res.statusCode}");
-    // ignore: avoid_print
     print("NEWS body: ${res.body}");
 
     if (res.statusCode != 200) {

@@ -70,11 +70,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return '$b/$p';
   }
 
-  String? get _profileUrl {
+ String? get _profileUrl {
     final u = _user;
     if (u == null) return null;
+    
     final raw = (u["profileImage"] ?? "").toString().trim();
     if (raw.isEmpty) return null;
+
+    // ✅ إذا كان الرابط يبدأ بـ http، فهو رابط Cloudinary كامل نستخدمه فوراً
+    if (raw.startsWith('http')) {
+      return "$raw?t=$_imageBust";
+    }
+
+    // ✅ للصور القديمة التي لا تبدأ بـ http، نستخدم دالة الدمج الذكية
     final clean = _joinUrlSmart(widget.baseUrl, raw);
     return "$clean?t=$_imageBust";
   }

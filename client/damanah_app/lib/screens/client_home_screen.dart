@@ -17,6 +17,14 @@ String _joinUrl(String base, String path) {
   return '$b/$p';
 }
 
+// ✅ دالة مساعدة ذكية للتعامل مع روابط الصور (Cloudinary أو Local)
+String? _getSmartUrl(String? path, String baseUrl) {
+  if (path == null || path.trim().isEmpty) return null;
+  final s = path.trim();
+  if (s.startsWith('http')) return s; // رابط Cloudinary كامل
+  return _joinUrl(baseUrl, s); // رابط محلي قديم
+}
+
 class ClientHomeScreen extends StatefulWidget {
   final Map<String, dynamic>? user;
   final String baseUrl;
@@ -89,11 +97,9 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
     const bgBottom = Color(0xFF0A1511);
     final user = _userLocal;
     final name = (user?["name"] ?? "User").toString();
-    final profileImage = user?["profileImage"];
-    final String? profileUrl =
-        (profileImage != null && profileImage.toString().trim().isNotEmpty)
-            ? _joinUrl(widget.baseUrl, profileImage.toString().trim())
-            : null;
+    
+    // ✅ استخدام الدالة الذكية لبروفايل المستخدم
+    final String? profileUrl = _getSmartUrl(user?["profileImage"], widget.baseUrl);
 
     return Scaffold(
       key: _scaffoldKey,
@@ -232,8 +238,9 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                       options: CarouselOptions(height: 110, autoPlay: true, autoPlayInterval: const Duration(seconds: 6), viewportFraction: 1.0, enableInfiniteScroll: offers.length > 1),
                       itemBuilder: (context, index, _) {
                         final offer = offers[index];
-                        String? img = offer["contractorImage"];
-                        if (img != null && !img.startsWith("http")) img = _joinUrl(widget.baseUrl, img);
+                        // ✅ معالجة ذكية لصورة المقاول
+                        String? img = _getSmartUrl(offer["contractorImage"], widget.baseUrl);
+                        
                         return _ProjectOfferCard(
                           from: offer["contractorName"] ?? "Unknown",
                           title: "Offer on: ${offer["projectTitle"] ?? "Project"}",
@@ -266,10 +273,11 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                         options: CarouselOptions(height: 240, autoPlay: true, autoPlayInterval: const Duration(seconds: 5), enlargeCenterPage: true, viewportFraction: 0.6, aspectRatio: 2.0),
                         itemBuilder: (context, i, _) {
                           final item = tips[i];
-                          String img = (item["imageUrl"] ?? "").toString();
-                          if (img.isNotEmpty && !img.startsWith("http")) img = _joinUrl(widget.baseUrl, img);
+                          // ✅ معالجة ذكية لصورة النصيحة
+                          String? img = _getSmartUrl(item["imageUrl"], widget.baseUrl);
+
                           return _CommunityCard(
-                            imageUrl: img,
+                            imageUrl: img ?? "",
                             title: item["title"] ?? "No Title",
                             subtitle: item["subtitle"] ?? "",
                             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => TipDetailsPage(tip: item, baseUrl: widget.baseUrl))),
@@ -282,11 +290,10 @@ class _ClientHomeScreenState extends State<ClientHomeScreen> {
                 const SizedBox(height: 20),
               ],
             ),
+          ),
         ),
       ),
-      )
     );
-
   }
 }
 
@@ -318,25 +325,21 @@ class _CommunityCard extends StatelessWidget {
   const _CommunityCard({required this.imageUrl, required this.title, required this.subtitle, this.onTap});
   @override
   Widget build(BuildContext context) {
-    return Material(color: Colors.transparent, child: InkWell(borderRadius: BorderRadius.circular(18), onTap: onTap, child: Container(width: 200, decoration: BoxDecoration(color: const Color(0xFF15221D), borderRadius: BorderRadius.circular(18), border: Border.all(color: Colors.white.withOpacity(0.06))), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [ClipRRect(borderRadius: const BorderRadius.vertical(top: Radius.circular(18)), child: Hero(tag: title, child: Image.network(imageUrl, height: 110, width: double.infinity, fit: BoxFit.cover, errorBuilder: (_, __, ___) => Container(height: 110, color: Colors.white10, child: const Icon(Icons.image_not_supported, color: Colors.white24))))), Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)), const SizedBox(height: 4), Text(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white54, fontSize: 12, height: 1.3))]))]))));
+    return Material(color: Colors.transparent, child: InkWell(borderRadius: BorderRadius.circular(18), onTap: onTap, child: Container(width: 200, decoration: BoxDecoration(color: const Color(0xFF15221D), borderRadius: BorderRadius.circular(18), border: Border.all(color: Colors.white.withOpacity(0.06))), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [ClipRRect(borderRadius: const BorderRadius.vertical(top: Radius.circular(18)), child: Hero(tag: title, child: (imageUrl.isNotEmpty) ? Image.network(imageUrl, height: 110, width: double.infinity, fit: BoxFit.cover, errorBuilder: (_, __, ___) => Container(height: 110, color: Colors.white10, child: const Icon(Icons.image_not_supported, color: Colors.white24))) : Container(height: 110, color: Colors.white10, child: const Icon(Icons.image, color: Colors.white24)))), Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)), const SizedBox(height: 4), Text(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white54, fontSize: 12, height: 1.3))]))]))));
   }
 }
 
 class TipDetailsPage extends StatelessWidget {
   final Map<String, dynamic> tip; final String baseUrl;
   const TipDetailsPage({super.key, required this.tip, required this.baseUrl});
-  String _getFullUrl(String? path) {
-    if (path == null || path.isEmpty) return "";
-    if (path.startsWith("http")) return path;
-    final b = baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl;
-    final p = path.startsWith('/') ? path.substring(1) : path;
-    return '$b/$p';
-  }
+  
   @override
   Widget build(BuildContext context) {
-    final img = _getFullUrl(tip["imageUrl"]);
+    // ✅ استخدام المعالجة الذكية في صفحة التفاصيل
+    final img = _getSmartUrl(tip["imageUrl"], baseUrl) ?? "";
     final title = tip["title"] ?? "Details";
     final content = tip["content"] ?? "No content available.";
+    
     return Scaffold(backgroundColor: const Color(0xFF0E1814), extendBodyBehindAppBar: true, appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0, leading: Container(margin: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.black.withOpacity(0.4), shape: BoxShape.circle), child: IconButton(icon: const Icon(Icons.arrow_back, color: Colors.white, size: 20), onPressed: () => Navigator.pop(context)))), body: SingleChildScrollView(padding: EdgeInsets.zero, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [if (img.isNotEmpty) Hero(tag: title, child: ClipRRect(borderRadius: const BorderRadius.vertical(bottom: Radius.circular(30)), child: Image.network(img, width: double.infinity, height: 350, fit: BoxFit.cover, errorBuilder: (_, __, ___) => Container(height: 350, color: Colors.white10, child: const Icon(Icons.broken_image, size: 50, color: Colors.white54))))), Padding(padding: const EdgeInsets.all(24), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w900, height: 1.2)), const SizedBox(height: 16), Container(width: 60, height: 4, decoration: BoxDecoration(color: const Color(0xFF9EE7B7), borderRadius: BorderRadius.circular(2))), const SizedBox(height: 24), Text(content, style: TextStyle(color: Colors.white.withOpacity(0.85), fontSize: 16, height: 1.8, fontWeight: FontWeight.w400)), const SizedBox(height: 40)]))])));
   }
 }

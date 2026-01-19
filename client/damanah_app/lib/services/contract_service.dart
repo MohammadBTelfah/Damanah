@@ -28,7 +28,6 @@ class ContractService {
     if (res.statusCode == 200) {
       final decoded = jsonDecode(res.body);
 
-      // يتعامل مع الحالتين: list مباشر أو {success,data}
       if (decoded is List) return decoded;
       if (decoded is Map && decoded["data"] is List) return decoded["data"] as List;
 
@@ -39,7 +38,7 @@ class ContractService {
   }
 
   /// POST /api/contracts
-  /// يرجّع: { data: contract, pdfUrl: "/uploads/contracts/..." }
+  /// ✅ التعديل: السيرفر الآن يرجع رابط Cloudinary كامل في pdfUrl
   Future<Map<String, dynamic>> createContract({
     required String projectId,
     required String clientId,
@@ -50,8 +49,8 @@ class ContractService {
     String? projectDescription,
     List<String>? materialsAndServices,
     String? terms,
-    String? startDate, // "YYYY-MM-DD"
-    String? endDate,   // "YYYY-MM-DD"
+    String? startDate, 
+    String? endDate,   
   }) async {
     final token = await _mustToken();
     final uri = Uri.parse(ApiConfig.join("/api/contracts"));
@@ -85,8 +84,24 @@ class ContractService {
     throw Exception("Failed to create contract: ${res.body}");
   }
 
-  /// خيار 1: إذا pdfUrl عام (static /uploads) تقدر تجيب bytes بدون توكن
-  /// خيار 2: إذا بدك endpoint محمي: GET /api/contracts/:id/pdf (مع توكن)
+  /// ✅ التعديل الأهم: جلب الـ PDF من Cloudinary
+  /// بما أن الرابط أصبح يبدأ بـ https://res.cloudinary.com فلا نحتاج لدمجه مع ApiConfig
+  Future<Uint8List> fetchPdfBytesFromUrl(String pdfUrl) async {
+    // نتحقق إذا كان الرابط يبدأ بـ http (رابط Cloudinary كامل) أو مسار محلي قديم
+    final finalUrl = pdfUrl.startsWith('http') 
+        ? pdfUrl 
+        : ApiConfig.join(pdfUrl);
+        
+    final uri = Uri.parse(finalUrl);
+    
+    // Cloudinary لا يتطلب Authorization header لجلب الملفات العامة
+    final res = await http.get(uri);
+
+    if (res.statusCode == 200) return res.bodyBytes;
+    throw Exception("Failed to fetch pdf from url: ${res.statusCode}");
+  }
+
+  /// دالة جلب الـ PDF بواسطة الـ ID (إذا كنت تستخدم Endpoint خاص في الباك إند)
   Future<Uint8List> fetchContractPdfBytesById(String contractId) async {
     final token = await _mustToken();
     final uri = Uri.parse(ApiConfig.join("/api/contracts/$contractId/pdf"));
@@ -100,15 +115,5 @@ class ContractService {
       return res.bodyBytes;
     }
     throw Exception("Failed to fetch pdf: ${res.statusCode} ${res.body}");
-  }
-
-  /// إذا عندك pdfUrl مثل: "/uploads/contracts/contract-xxx.pdf"
-  /// وبدك تجيب bytes مباشرة
-  Future<Uint8List> fetchPdfBytesFromUrl(String pdfUrl) async {
-    final uri = Uri.parse(ApiConfig.join(pdfUrl));
-    final res = await http.get(uri);
-
-    if (res.statusCode == 200) return res.bodyBytes;
-    throw Exception("Failed to fetch pdf from url: ${res.statusCode}");
   }
 }
