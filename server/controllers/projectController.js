@@ -452,6 +452,9 @@ exports.getProjectOffers = async (req, res) => {
 // =======================
 // Accept offer
 // =======================
+// =======================
+// Accept offer
+// =======================
 exports.acceptOffer = async (req, res) => {
   try {
     const { projectId, offerId } = req.params;
@@ -468,8 +471,23 @@ exports.acceptOffer = async (req, res) => {
     project.contractor = offer.contractor;
     project.status = "in_progress";
 
+    // ✅ Persist the agreed price on the project itself so the apps can show
+    // "Project Price" after the client accepts an offer.
+    project.agreedPrice = offer.price;
+
+    // Optional: keep a lightweight snapshot of the accepted offer
+    // (helps the frontend if you ever change field names).
+    project.acceptedOffer = {
+      contractor: offer.contractor,
+      price: offer.price,
+      message: offer.message || "",
+      offerId: offer._id,
+      acceptedAt: new Date(),
+    };
+
     project.offers.forEach((o) => {
-      o.status = o._id.toString() === offerId.toString() ? "accepted" : "rejected";
+      o.status =
+        o._id.toString() === offerId.toString() ? "accepted" : "rejected";
     });
 
     await project.save();
