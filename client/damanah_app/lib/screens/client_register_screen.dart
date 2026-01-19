@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import 'login_screen.dart';
 import 'scan_id_screen.dart'; // ✅ جديد
+import 'verify_email_screen.dart'; // ✅ جديد
 
 class ClientRegisterScreen extends StatefulWidget {
   const ClientRegisterScreen({super.key});
@@ -106,20 +107,20 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
   Future<void> _handleRegister() async {
     if (!_formKey.currentState!.validate()) return;
 
-    // ✅ لازم يكون في صورة هوية من الـ Scan
+    // ✅ التحقق من وجود صورة الهوية
     if (_identityImageFile == null) {
       _showTopSnackBar("Please scan your national ID", Colors.red);
       return;
     }
 
-    // ✅ لازم يكون في رقم وطني
+    // ✅ التحقق من وجود الرقم الوطني
     final nationalId = _nationalIdController.text.trim();
     if (nationalId.isEmpty) {
       _showTopSnackBar("National ID is required", Colors.red);
       return;
     }
 
-    // ✅ (احتياط) تأكيد التطابق
+    // ✅ التحقق من تطابق كلمة المرور
     if (_passwordController.text.trim() != _confirmPasswordController.text.trim()) {
       _showTopSnackBar("Passwords do not match", Colors.red);
       return;
@@ -133,15 +134,15 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
         phone: _phoneController.text.trim(),
-
-        // ✅ identityDocument لازم يكون صورة (من scan)
+        
+        // ✅ صورة الهوية من الـ Scan
         identityFilePath: _identityImageFile!.path,
-
+        
         // ✅ الرقم الوطني
         nationalId: nationalId,
         nationalIdConfidence: _nationalIdConfidence,
-
-        // ✅ اختياري
+        
+        // ✅ الصورة الشخصية (اختياري)
         profileImagePath: _profileImagePath,
       );
 
@@ -149,24 +150,29 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
 
       if (!mounted) return;
 
+      // ✅ رسالة نجاح توضح الخطوة التالية
       _showTopSnackBar(
-        "Account created. Check your email to verify.",
+        "Account created successfully. Please verify your email.",
         Colors.green,
       );
 
-      // بعد التسجيل، ودّيه لصفحة الـ Login
+      // ✅ الانتقال لصفحة التحقق بدلاً من Login
       Future.delayed(const Duration(milliseconds: 1400), () {
         if (!mounted) return;
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (_) => const LoginScreen(role: 'client'),
+            builder: (_) => VerifyEmailScreen(
+              email: _emailController.text.trim(),
+              role: 'client',
+            ),
           ),
         );
       });
+
     } catch (e) {
       if (!mounted) return;
-      _showTopSnackBar("Registration failed", Colors.red);
+      _showTopSnackBar("Registration failed: ${e.toString()}", Colors.red);
       debugPrint("Register error: $e");
     } finally {
       if (mounted) {
