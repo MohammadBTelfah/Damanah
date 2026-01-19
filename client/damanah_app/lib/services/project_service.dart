@@ -23,6 +23,7 @@ class ProjectService {
   Map<String, dynamic> _safeJsonMap(String body) {
     final decoded = _safeDecode(body);
     if (decoded is Map<String, dynamic>) return decoded;
+    if (decoded is Map) return Map<String, dynamic>.from(decoded);
     return {"message": "Invalid server response"};
   }
 
@@ -77,7 +78,7 @@ class ProjectService {
     throw Exception("(${res.statusCode}) ${_errMsg(res)}");
   }
 
-  // 🔥 ADDED: Get Project By ID
+  // ✅ FIXED: Get Project By ID (supports different response shapes)
   /// GET /api/projects/:id
   Future<Map<String, dynamic>> getProjectById(String projectId) async {
     final token = await _mustToken();
@@ -87,12 +88,19 @@ class ProjectService {
         .get(uri, headers: _authHeaders(token))
         .timeout(const Duration(seconds: 30));
 
-    final data = _safeJsonMap(res.body);
+    final decoded = _safeDecode(res.body);
 
-    if (res.statusCode == 200) return data;
+    if (res.statusCode == 200) {
+      if (decoded is Map<String, dynamic>) return decoded;
+      if (decoded is Map) return Map<String, dynamic>.from(decoded);
+      throw Exception("Invalid project response shape: ${res.body}");
+    }
 
-    throw Exception(
-        "(${res.statusCode}) ${data["message"] ?? "Failed to load project"}");
+    if (decoded is Map && decoded["message"] != null) {
+      throw Exception("(${res.statusCode}) ${decoded["message"]}");
+    }
+
+    throw Exception("(${res.statusCode}) Failed to load project");
   }
 
   /// POST /api/projects
@@ -325,6 +333,7 @@ class ProjectService {
   // =========================
 
   /// GET /api/projects/contractor/available
+  /// GET /api/projects/contractor/available
   Future<List<dynamic>> getAvailableProjectsForContractor() async {
     final token = await _mustToken();
     final uri = Uri.parse(ApiConfig.join("/api/projects/contractor/available"));
@@ -336,14 +345,170 @@ class ProjectService {
     final decoded = _safeDecode(res.body);
 
     if (res.statusCode == 200) {
+      // ✅ التعديل هنا لضمان التعامل مع البيانات بشكل آمن
       if (decoded is Map && decoded["projects"] is List) {
         return List.from(decoded["projects"]);
       }
+      if (decoded is List) {
+        return decoded;
+      }
+      return [];
+    }
+
+    throw Exception("(${res.statusCode}) ${_errMsg(res)}");
+  }
+
+  /// POST /api/projects/:projectId/offers
+  Future<void> createOffer({
+    required String projectId,
+    required double price,
+    String? message,
+  }) async {
+    final token = await _mustToken();
+    final uri = Uri.parse(ApiConfig.join("/api/projects/$projectId/offers"));
+
+    final res = await http
+        .post(
+          uri,
+          headers: _authHeaders(token, json: true),
+          body: jsonEncode({
+            "price": price,
+            "message": (message ?? "").trim(),
+          }),
+        )
+        .timeout(const Duration(seconds: 30));
+
+    if (res.statusCode == 200 || res.statusCode == 201) return;
+
+    throw Exception("(${res.statusCode}) ${_errMsg(res)}");
+  }
+
+  /// GET /api/projects/:projectId/offers  (Client only)
+  Future<List<dynamic>> getProjectOffers({required String projectId}) async {
+    final token = await _mustToken();
+    final uri = Uri.parse(ApiConfig.join("/api/projects/$projectId/offers"));
+
+    final res = await http
+        .get(uri, headers: _authHeaders(token))
+        .timeout(const Duration(seconds: 30));
+
+    final decoded = _safeDecode(res.body);
+
+    if (res.statusCode == 200) {
       if (decoded is List) return decoded;
       return [];
     }
 
     throw Exception("(${res.statusCode}) ${_errMsg(res)}");
+  }
+
+  /// PATCH /api/projects/:projectId/offers/:offerId/accept  (Client only)
+  Future<void> acceptOffer({
+    required String projectId,
+    required String offerId,
+  }) async {
+    final token = await _mustToken();
+    final uri = Uri.parse(
+      ApiConfig.join("/api/projects/$projectId/offers/$offerId/accept"),
+    );
+
+    final res = await http
+        .patch(uri, headers: _authHeaders(token))
+        .timeout(const Duration(seconds: 30));
+
+    if (res.statusCode == 200) return;
+
+    throw Exception("(${res.statusCode}) ${_errMsg(res)}");
+  }
+
+  // =========================
+  // Tips & Community
+  // =========================
+
+  /// GET /api/tips
+  Future<List<dynamic>> getTips() async {
+    try {
+      final token = await _mustToken();
+      final uri = Uri.parse(ApiConfig.join("/api/tips"));
+
+      final res = await http
+          .get(uri, headers: _authHeaders(token))
+          .timeout(const Duration(seconds: 20));
+
+      final decoded = _safeDecode(res.body);
+
+      if (res.statusCode == 200) {
+        if (decoded is List) return decoded;
+        return [];
+      }
+    } catch (e) {
+      return [];
+    }
+    return [];
+  }
+
+  /// PATCH /api/projects/:id/status (Client/Contractor/Admin)
+  Future<void> updateProjectStatus({
+    required String projectId, // معطى مسمى
+    required String newStatus, // معطى مسمى
+  }) async {
+    final token = await _mustToken();
+    final uri = Uri.parse(ApiConfig.join("/api/projects/$projectId/status"));
+
+    final res = await http
+        .patch(
+          uri,
+          headers: _authHeaders(token, json: true),
+          body: jsonEncode({"status": newStatus}),
+        )
+        .timeout(const Duration(seconds: 30));
+
+    if (res.statusCode == 200) return;
+
+    throw Exception("(${res.statusCode}) ${_errMsg(res)}");
+  }
+
+  // =========================
+
+  /// GET /api/projects/client/my-offers  (Client only)
+  Future<List<dynamic>> getMyOffers() async {
+    final token = await _mustToken();
+    final uri = Uri.parse(ApiConfig.join("/api/projects/client/my-offers"));
+
+    final res = await http
+        .get(uri, headers: _authHeaders(token))
+        .timeout(const Duration(seconds: 30));
+
+    final decoded = _safeDecode(res.body);
+
+    if (res.statusCode == 200) {
+      if (decoded is List) return decoded;
+      return [];
+    }
+
+    throw Exception("(${res.statusCode}) ${_errMsg(res)}");
+  }
+
+  /// GET /api/projects/client/recent-offers
+  Future<List<dynamic>> getRecentOffers() async {
+    try {
+      final token = await _mustToken();
+      final uri = Uri.parse(ApiConfig.join("/api/projects/client/recent-offers"));
+
+      final res = await http
+          .get(uri, headers: _authHeaders(token))
+          .timeout(const Duration(seconds: 20));
+
+      final decoded = _safeDecode(res.body);
+
+      if (res.statusCode == 200) {
+        if (decoded is List) return decoded;
+        return [];
+      }
+    } catch (e) {
+      return [];
+    }
+    return [];
   }
 
   /// GET /api/projects/contractor/my
@@ -363,6 +528,76 @@ class ProjectService {
       }
       if (decoded is List) return decoded;
       return [];
+    }
+
+    throw Exception("(${res.statusCode}) ${_errMsg(res)}");
+  }
+
+  // =========================
+  // 🔥 NEW: Get client-related contractors only
+  // GET /api/clients/my-contractors
+  // Returns a list of contractors that are related to the logged-in client
+  // (via Projects or Contracts). Safe parsing + profileImageUrl handling.
+  Future<List<dynamic>> getMyContractors() async {
+    final token = await _mustToken();
+    final uri = Uri.parse(ApiConfig.join("/api/clients/my-contractors"));
+
+    final res = await http
+        .get(uri, headers: _authHeaders(token))
+        .timeout(const Duration(seconds: 30));
+
+    final decoded = _safeDecode(res.body);
+
+    if (res.statusCode == 200) {
+      // If the API returns array directly
+      if (decoded is List) {
+        return decoded.map((e) {
+          if (e is Map) {
+            final m = Map<String, dynamic>.from(e);
+            // ensure consistent profileImageUrl field if backend returns profileImage
+            if ((m['profileImageUrl'] == null || m['profileImageUrl'] == '') &&
+                (m['profileImage'] != null && m['profileImage'] is String)) {
+              m['profileImageUrl'] = m['profileImage'];
+            }
+            return m;
+          }
+          return e;
+        }).toList();
+      }
+
+      // If API returns object with list inside
+      if (decoded is Map && (decoded['data'] is List || decoded['contractors'] is List)) {
+        final list = decoded['data'] ?? decoded['contractors'];
+        return (list as List).map((e) {
+          if (e is Map) {
+            final m = Map<String, dynamic>.from(e);
+            if ((m['profileImageUrl'] == null || m['profileImageUrl'] == '') &&
+                (m['profileImage'] != null && m['profileImage'] is String)) {
+              m['profileImageUrl'] = m['profileImage'];
+            }
+            return m;
+          }
+          return e;
+        }).toList();
+      }
+
+      // defensive: if returned object is a single contractor
+      if (decoded is Map && decoded['_id'] != null) {
+        final m = Map<String, dynamic>.from(decoded);
+        if ((m['profileImageUrl'] == null || m['profileImageUrl'] == '') &&
+            (m['profileImage'] != null && m['profileImage'] is String)) {
+          m['profileImageUrl'] = m['profileImage'];
+        }
+        return [m];
+      }
+
+      // otherwise return empty list
+      return [];
+    }
+
+    // unauthorized / other error
+    if (res.statusCode == 401) {
+      throw Exception("Unauthorized (${res.statusCode})");
     }
 
     throw Exception("(${res.statusCode}) ${_errMsg(res)}");

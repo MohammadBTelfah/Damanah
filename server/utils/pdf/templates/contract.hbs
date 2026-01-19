@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+
+  <!-- خط عربي (ممتاز للطباعة) -->
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Naskh+Arabic:wght@400;700&display=swap" rel="stylesheet">
+
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: "Noto Naskh Arabic", serif;
+      font-size: 14px;
+      color: #000;
+      line-height: 1.8;
+    }
+    .center { text-align: center; }
+    .title { font-size: 22px; font-weight: 700; margin: 0; }
+    .subtitle { font-size: 16px; font-weight: 700; margin-top: 6px; }
+
+    .section {
+      margin-top: 12px;
+    }
+    .section-title {
+      font-weight: 700;
+      margin: 10px 0 6px;
+    }
+
+    .row { margin: 6px 0; }
+    .dots {
+      display: inline-block;
+      min-width: 260px;
+      border-bottom: 1px dotted #000;
+      transform: translateY(-2px);
+      padding: 0 4px;
+    }
+    .small-dots { min-width: 160px; }
+
+    .box {
+      border: 1px solid #000;
+      padding: 10px 12px;
+      margin-top: 8px;
+    }
+
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { border: 1px solid #000; padding: 10px; vertical-align: top; }
+    th { font-weight: 700; text-align: center; }
+
+    .muted { color: #111; }
+    ul { margin: 6px 0; padding-right: 18px; }
+
+    .signs {
+      margin-top: 14px;
+      display: flex;
+      gap: 14px;
+    }
+    .sign-col { flex: 1; border: 1px solid #000; padding: 10px; min-height: 110px; }
+    .sign-title { font-weight: 700; text-align: center; margin-bottom: 6px; }
+
+    .footer {
+      margin-top: 14px;
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+    }
+    .witness { flex: 1; text-align: center; }
+  </style>
+</head>
+<body>
+
+  <div class="center">
+    <p class="title">عقد مقاولة</p>
+    <p class="subtitle">أولاً: اتفاقية العقد</p>
+  </div>
+
+  <div class="section">
+    <div class="row">رقم العقد: <span class="dots small-dots">{{contractId}}</span> التاريخ: <span class="dots small-dots">{{contractDate}}</span></div>
+    <div class="row">صاحب العمل: <span class="dots">{{clientName}}</span></div>
+    <div class="row">المقاول: <span class="dots">{{contractorName}}</span></div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">ثانياً: وصف المشروع وموضوع هذا العقد</div>
+    <div class="box">
+      <div class="row"><b>اسم المشروع:</b> {{projectName}}</div>
+      <div class="row"><b>موقع المشروع:</b> {{projectLocation}}</div>
+      <div class="row"><b>مساحة المشروع (إن وجدت):</b> {{projectArea}}</div>
+      <div class="row"><b>وصف المشروع:</b> {{projectDescription}}</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">ثالثاً: مدة العمل</div>
+    <div class="row">مدة الإنجاز: <span class="dots small-dots">{{durationMonths}}</span> شهر</div>
+    <div class="row">تاريخ البدء: <span class="dots small-dots">{{startDate}}</span> تاريخ الانتهاء: <span class="dots small-dots">{{endDate}}</span></div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">رابعاً: قيمة العقد والدفعات</div>
+    <div class="box">
+      <div class="row"><b>قيمة العقد المعتمد:</b> {{agreedPrice}} دينار</div>
+      <div class="row"><b>شروط الدفعات:</b> {{paymentTerms}}</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">خامساً: المواد والخدمات</div>
+    <div class="box">
+      {{#if materialsAndServices.length}}
+        <ul>
+          {{#each materialsAndServices}}
+            <li>{{this}}</li>
+          {{/each}}
+        </ul>
+      {{else}}
+        <div class="muted">-</div>
+      {{/if}}
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">سادساً: الشروط والأحكام</div>
+    <div class="box">{{terms}}</div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">بيانات وتوقيع الأطراف</div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>صاحب العمل</th>
+          <th>المقاول</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>
+            الاسم: {{clientName}}<br/>
+            الهاتف: {{clientPhone}}<br/>
+            البريد: {{clientEmail}}<br/>
+            العنوان: {{clientAddress}}<br/>
+          </td>
+          <td>
+            الاسم: {{contractorName}}<br/>
+            الهاتف: {{contractorPhone}}<br/>
+            البريد: {{contractorEmail}}<br/>
+            العنوان: {{contractorAddress}}<br/>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="signs">
+      <div class="sign-col">
+        <div class="sign-title">توقيع صاحب العمل</div>
+        <div>الاسم: <span class="dots small-dots"></span></div>
+        <div>التوقيع: <span class="dots small-dots"></span></div>
+      </div>
+      <div class="sign-col">
+        <div class="sign-title">توقيع المقاول</div>
+        <div>الاسم: <span class="dots small-dots"></span></div>
+        <div>التوقيع: <span class="dots small-dots"></span></div>
+      </div>
+    </div>
+
+    <div class="footer">
+      <div class="witness">
+        <div><b>وقد شهد على ذلك</b></div>
+        <div>الاسم: <span class="dots small-dots"></span></div>
+        <div>التوقيع/الرقم الوطني: <span class="dots small-dots"></span></div>
+      </div>
+      <div class="witness">
+        <div><b>وقد شهد على ذلك</b></div>
+        <div>الاسم: <span class="dots small-dots"></span></div>
+        <div>التوقيع/الرقم الوطني: <span class="dots small-dots"></span></div>
+      </div>
+    </div>
+
+  </div>
+
+</body>
+</html>
