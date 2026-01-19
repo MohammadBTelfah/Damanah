@@ -23,7 +23,7 @@ import AdminPendingContractorsPage from "./AdminPendingContractorsPage"; // تأ
 import AdminDashboardHome from "../components/AdminDashboardHome";
 import MaterialsPage from "../components/MaterialsPage";
 import CostEstimator from "../components/CostEstimator";
-
+import AdminInactiveUsersPage from "../components/AdminInactiveUsersPage";
 const NAVIGATION = [
   {
     segment: "dashboard",
@@ -60,6 +60,11 @@ const NAVIGATION = [
     title: "Cost Estimator",
     icon: <CalculateIcon />,
   },
+  {
+    segment: "inactive-users",
+    title: "Inactive Users",
+    icon: <PersonIcon />,
+  }
 ];
 
 const demoTheme = createTheme({
@@ -109,6 +114,10 @@ function PageSwitch({ pathname, navigate }) {
   if (pathname === "/cost-estimator") {
     return <CostEstimator />;
   }
+  if (pathname === "/inactive-users") {
+    return <AdminInactiveUsersPage />;
+  }
+
   return <DemoPageContent pathname={pathname} />;
 }
 
