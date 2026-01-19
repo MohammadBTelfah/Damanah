@@ -4,17 +4,17 @@ const contractSchema = new mongoose.Schema(
   {
     project: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Project",
+      ref: "Project", // ✅ تأكد أن موديل المشروع مسجل باسم "Project"
       required: true,
     },
     client: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
+      ref: "Client", // ✅ تم التعديل من "client" إلى "Client" (أو "User" إذا كان العميل يستخدم موديل User)
       required: true,
     },
     contractor: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
+      ref: "Contractor", // ✅ تم التعديل من "contractor" إلى "Contractor" ليطابق الموديل المسجل
       required: true,
     },
 

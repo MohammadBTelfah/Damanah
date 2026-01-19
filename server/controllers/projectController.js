@@ -63,7 +63,7 @@ function getBaseUrl(req) {
 }
 
 // =======================
-// ✅ قائمة المقاولين المتاحين (للـ client)
+// ✅ Available contractors (client)
 // =======================
 exports.getAvailableContractors = async (req, res) => {
   try {
@@ -73,19 +73,20 @@ exports.getAvailableContractors = async (req, res) => {
       isActive: true,
     }).select("_id name email phone profileImage");
 
-    const baseUrl = getBaseUrl(req);
+    const baseUrl = getBaseUrl(req);  // تأكد من أن baseUrl يحتوي على البروتوكول (http:// أو https://)
     const list = contractors.map((c) => {
       const obj = c.toObject();
       return {
         ...obj,
         profileImageUrl: obj.profileImage
-          ? (String(obj.profileImage).startsWith("http")
-              ? obj.profileImage
-              : `${baseUrl}${obj.profileImage}`)
-          : null,
+          ? obj.profileImage.startsWith("http")  // إذا كان الرابط يحتوي على بروتوكول (مثل http:// أو https://)
+            ? obj.profileImage  // إذا كان الرابط يحتوي على بروتوكول، نتركه كما هو
+            : `${baseUrl}${obj.profileImage}`  // إذا كان الرابط محليًا، ندمج baseUrl مع المسار
+          : null,  // إذا كانت الصورة غير موجودة، نضع القيمة null
       };
     });
-    return res.json(list);
+
+    return res.json(list);  // إرجاع القائمة للمستعرض
   } catch (err) {
     console.error("getAvailableContractors error:", err);
     return res
@@ -95,7 +96,7 @@ exports.getAvailableContractors = async (req, res) => {
 };
 
 // =======================
-// إنشاء مشروع جديد
+// Create project
 // =======================
 exports.createProject = async (req, res) => {
   try {
@@ -114,8 +115,12 @@ exports.createProject = async (req, res) => {
       return res.status(400).json({ message: "Title is required" });
     }
 
-    const areaNum = area === null || area === undefined || area === "" ? null : Number(area);
-    const floorsNum = floors === null || floors === undefined || floors === "" ? null : Number(floors);
+    const areaNum =
+      area === null || area === undefined || area === "" ? null : Number(area);
+    const floorsNum =
+      floors === null || floors === undefined || floors === ""
+        ? null
+        : Number(floors);
 
     if (areaNum !== null && (!Number.isFinite(areaNum) || areaNum <= 0)) {
       return res.status(400).json({ message: "Invalid area" });
@@ -133,7 +138,8 @@ exports.createProject = async (req, res) => {
     let safeBuildingType = allowedTypes.includes(bt) ? bt : "apartment";
     if (safeBuildingType === "house") safeBuildingType = "villa";
 
-    const safePlanAnalysis = typeof sanitizePlanAnalysis === "function"
+    const safePlanAnalysis =
+      typeof sanitizePlanAnalysis === "function"
         ? sanitizePlanAnalysis(planAnalysis)
         : planAnalysis;
 
@@ -147,7 +153,7 @@ exports.createProject = async (req, res) => {
       finishingLevel: safeLevel,
       buildingType: safeBuildingType,
       planAnalysis: safePlanAnalysis,
-      status: "draft", // Start as draft until published
+      status: "draft",
     });
 
     await project.save();
@@ -163,7 +169,7 @@ exports.createProject = async (req, res) => {
 };
 
 // =======================
-// 🔥 NEW: Publish Project to All Contractors
+// Publish project
 // PATCH /api/projects/:projectId/publish
 // =======================
 exports.publishProject = async (req, res) => {
@@ -177,52 +183,59 @@ exports.publishProject = async (req, res) => {
       return res.status(403).json({ message: "Not owner of this project" });
     }
 
-    // لجعله متاحاً للجميع: الحالة open والمصفوفة sharedWith فارغة
     project.status = "open";
-    project.sharedWith = []; 
-    project.sharedWithModel = undefined; // reset
-    project.isSaved = true; // Ensure it's marked as saved
+    project.sharedWith = [];
+    project.sharedWithModel = undefined;
+    project.isSaved = true;
 
     await project.save();
-
-    // اختياري: إرسال إشعار للمقاولين (يتطلب منطق إضافي لجلب جميع المقاولين وإرسال إشعارات لهم)
-    // حالياً نكتفي بجعل المشروع متاحاً في القائمة
 
     return res.json({ message: "Project published to all contractors", project });
   } catch (err) {
     console.error("publishProject error:", err);
-    return res.status(500).json({ message: "Publish failed", error: err.message });
+    return res
+      .status(500)
+      .json({ message: "Publish failed", error: err.message });
   }
 };
 
 // =======================
-// Contractor - Available Projects
+// Contractor - Available projects
 // =======================
+// projectController.js
+
 exports.getAvailableProjectsForContractor = async (req, res) => {
   try {
     const contractorId = req.user._id;
+    const baseUrl = getBaseUrl(req); // نستخدم الهيلبر الموجود عندك
 
     const projects = await Project.find({
-      status: "open",
-      contractor: null,
       $or: [
-        { sharedWith: contractorId },
-        { sharedWith: { $exists: false } },
-        { sharedWith: { $size: 0 } }, // This picks up published projects
-      ],
+        { status: "open", contractor: null }, 
+        { contractor: contractorId, status: { $in: ["open", "in_progress"] } }
+      ]
     })
-      .populate("owner", "name email")
-      .sort({ createdAt: -1 });
+    .sort({ createdAt: -1 })
+    .populate("owner", "name profileImage city"); 
 
-    return res.json({ projects });
+    // ✅ تعديل الروابط لتصبح كاملة قبل الإرسال
+    const processedProjects = projects.map(project => {
+      const p = project.toObject();
+      if (p.owner && p.owner.profileImage) {
+        p.owner.profileImage = p.owner.profileImage.startsWith('http') 
+          ? p.owner.profileImage 
+          : `${baseUrl}${p.owner.profileImage.replaceAll('\\', '/')}`;
+      }
+      return p;
+    });
+
+    return res.json(processedProjects);
   } catch (err) {
-    console.error("getAvailableProjectsForContractor error:", err);
+    console.error("Error in getAvailableProjectsForContractor:", err);
     return res.status(500).json({ message: "Server error" });
   }
-};
-
-// =======================
-// Contractor - My Projects
+};// =======================
+// Contractor - My projects
 // =======================
 exports.getMyProjectsForContractor = async (req, res) => {
   try {
@@ -241,7 +254,7 @@ exports.getMyProjectsForContractor = async (req, res) => {
 };
 
 // =======================
-// مشاريعي (client)
+// My projects (client)
 // =======================
 exports.getMyProjects = async (req, res) => {
   try {
@@ -258,7 +271,7 @@ exports.getMyProjects = async (req, res) => {
 };
 
 // =======================
-// المشاريع المفتوحة
+// Open projects
 // =======================
 exports.getOpenProjects = async (req, res) => {
   try {
@@ -278,7 +291,7 @@ exports.getOpenProjects = async (req, res) => {
 };
 
 // =======================
-// مشروع معيّن
+// Get project by ID
 // =======================
 exports.getProjectById = async (req, res) => {
   try {
@@ -288,7 +301,10 @@ exports.getProjectById = async (req, res) => {
     }
     const project = await Project.findById(projectId)
       .populate("owner", "name email")
-      .populate("contractor", "_id name email phone profileImage contractorStatus isActive")
+      .populate(
+        "contractor",
+        "_id name email phone profileImage contractorStatus isActive"
+      )
       .populate("offers.contractor", "_id name email phone profileImage");
 
     if (!project) return res.status(404).json({ message: "Project not found" });
@@ -300,32 +316,62 @@ exports.getProjectById = async (req, res) => {
 };
 
 // =======================
-// إنشاء عرض (Contractor)
+// ✅ Create/Update Offer (Contractor)  (UPSERT)
 // =======================
 exports.createOffer = async (req, res) => {
   try {
-    const { price, message } = req.body;
     const { projectId } = req.params;
 
-    if (!price) return res.status(400).json({ message: "Price is required" });
+    const priceNum = Number(req.body.price);
+    const message = (req.body.message || "").toString().trim();
+
+    if (!Number.isFinite(priceNum) || priceNum <= 0) {
+      return res.status(400).json({ message: "Price is required" });
+    }
 
     const project = await Project.findById(projectId);
     if (!project) return res.status(404).json({ message: "Project not found" });
 
     if (project.status !== "open") {
-      return res.status(400).json({ message: "Offers are only allowed on open projects" });
+      return res
+        .status(400)
+        .json({ message: "Offers are only allowed on open projects" });
     }
 
-    const exists = project.offers.find(
-      (o) => o.contractor.toString() === req.user._id.toString()
+    const contractorId = req.user._id.toString();
+
+    // If offer exists -> update it
+    const existing = project.offers.find(
+      (o) => o.contractor.toString() === contractorId
     );
-    if (exists) {
-      return res.status(400).json({ message: "You already submitted an offer for this project" });
+
+    if (existing) {
+      existing.price = priceNum;
+      existing.message = message;
+
+      await project.save();
+
+      try {
+        await Notification.create({
+          user: project.owner,
+          userModel: "Client",
+          title: "Offer updated",
+          body: `A contractor updated an offer on "${project.title}".`,
+          type: "offer_updated",
+          projectId: project._id,
+          read: false,
+        });
+      } catch (e) {
+        console.error("notification offer_updated failed:", e.message);
+      }
+
+      return res.json({ message: "Offer updated", project });
     }
 
+    // Otherwise -> create new offer
     project.offers.push({
       contractor: req.user._id,
-      price,
+      price: priceNum,
       message,
     });
 
@@ -353,7 +399,37 @@ exports.createOffer = async (req, res) => {
 };
 
 // =======================
-// جلب العروض
+// Update Project Status
+// =======================
+// projectController.js
+exports.updateProjectStatus = async (req, res) => {
+  try {
+    const { id } = req.params; // تأكد أن الاسم يطابق الراوتر (:id)
+    const { status } = req.body;
+
+    const project = await Project.findById(id);
+    if (!project) {
+      return res.status(404).json({ message: "المشروع غير موجود" });
+    }
+
+    // السماح للمقاول المسجل في المشروع فقط بالتحديث
+    // تأكد أن حقل المقاول في موديل المشروع اسمه contractor
+    if (String(project.contractor) !== String(req.user._id)) {
+      return res.status(403).json({ message: "فقط المقاول المسؤول عن المشروع يمكنه تغيير الحالة" });
+    }
+
+    project.status = status;
+    await project.save();
+
+    return res.status(200).json({
+      message: "تم تحديث الحالة بنجاح",
+      project,
+    });
+  } catch (err) {
+    return res.status(500).json({ message: "خطأ في السيرفر", error: err.message });
+  }
+};
+// Get offers
 // =======================
 exports.getProjectOffers = async (req, res) => {
   try {
@@ -374,7 +450,7 @@ exports.getProjectOffers = async (req, res) => {
 };
 
 // =======================
-// قبول العرض
+// Accept offer
 // =======================
 exports.acceptOffer = async (req, res) => {
   try {
@@ -452,15 +528,19 @@ exports.acceptOffer = async (req, res) => {
 // =======================
 exports.analyzePlanOnly = async (req, res) => {
   try {
-    if (!req.file) return res.status(400).json({ message: "Plan file is required" });
+    if (!req.file)
+      return res.status(400).json({ message: "Plan file is required" });
 
     const mime = req.file.mimetype || "";
     const name = (req.file.originalname || "").toLowerCase();
-    const isImage = mime.startsWith("image/") || [".png", ".jpg", ".jpeg", ".webp"].some((e) => name.endsWith(e));
+    const isImage =
+      mime.startsWith("image/") ||
+      [".png", ".jpg", ".jpeg", ".webp"].some((e) => name.endsWith(e));
 
     if (!isImage) {
       return res.status(400).json({
-        message: "Vision analysis requires an IMAGE (png/jpg/webp). Convert PDF to image first.",
+        message:
+          "Vision analysis requires an IMAGE (png/jpg/webp). Convert PDF to image first.",
         mimetype: mime,
       });
     }
@@ -470,7 +550,10 @@ exports.analyzePlanOnly = async (req, res) => {
       return res.json({ message: "Plan analyzed successfully", analysis });
     } catch (e) {
       console.error("Vision analyze error:", e);
-      const isRateLimit = e?.status === 429 || e?.code === "rate_limit_exceeded" || e?.error?.code === "rate_limit_exceeded";
+      const isRateLimit =
+        e?.status === 429 ||
+        e?.code === "rate_limit_exceeded" ||
+        e?.error?.code === "rate_limit_exceeded";
       if (isRateLimit) {
         return res.status(503).json({
           message: "AI is unavailable now. Fill details manually.",
@@ -496,7 +579,9 @@ exports.analyzePlanOnly = async (req, res) => {
 exports.estimateProject = async (req, res) => {
   try {
     const projectId = req.params.id || req.params.projectId;
-    const selections = Array.isArray(req.body.selections) ? req.body.selections : [];
+    const selections = Array.isArray(req.body.selections)
+      ? req.body.selections
+      : [];
 
     const project = await Project.findById(projectId);
     if (!project) return res.status(404).json({ message: "Project not found" });
@@ -520,7 +605,9 @@ exports.estimateProject = async (req, res) => {
     });
   } catch (err) {
     console.error("estimateProject error:", err);
-    return res.status(500).json({ message: "Estimate failed", error: err.message });
+    return res
+      .status(500)
+      .json({ message: "Estimate failed", error: err.message });
   }
 };
 
@@ -539,7 +626,9 @@ exports.saveProject = async (req, res) => {
     return res.json({ message: "Project saved", project });
   } catch (err) {
     console.error("saveProject error:", err);
-    return res.status(500).json({ message: "Save failed", error: err.message });
+    return res
+      .status(500)
+      .json({ message: "Save failed", error: err.message });
   }
 };
 
@@ -554,12 +643,21 @@ exports.downloadEstimate = async (req, res) => {
       return res.status(403).json({ message: "Not owner of this project" });
     }
 
-    const estimation = project.estimation || { items: [], totalCost: 0, currency: "JOD" };
-    res.setHeader("Content-Disposition", `attachment; filename="estimate-${project._id}.json"`);
+    const estimation = project.estimation || {
+      items: [],
+      totalCost: 0,
+      currency: "JOD",
+    };
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="estimate-${project._id}.json"`
+    );
     return res.json(estimation);
   } catch (err) {
     console.error("downloadEstimate error:", err);
-    return res.status(500).json({ message: "Download failed", error: err.message });
+    return res
+      .status(500)
+      .json({ message: "Download failed", error: err.message });
   }
 };
 
@@ -569,7 +667,8 @@ exports.downloadEstimate = async (req, res) => {
 exports.shareProject = async (req, res) => {
   try {
     const { contractorId } = req.body;
-    if (!contractorId) return res.status(400).json({ message: "contractorId is required" });
+    if (!contractorId)
+      return res.status(400).json({ message: "contractorId is required" });
 
     const project = await Project.findById(req.params.id);
     if (!project) return res.status(404).json({ message: "Project not found" });
@@ -577,13 +676,19 @@ exports.shareProject = async (req, res) => {
       return res.status(403).json({ message: "Not owner of this project" });
     }
 
-    const contractor = await Contractor.findById(contractorId).select("name isActive role").lean();
-    if (!contractor || contractor.role !== "contractor") return res.status(404).json({ message: "Contractor not found" });
-    if (!contractor.isActive) return res.status(400).json({ message: "Contractor is not active" });
+    const contractor = await Contractor.findById(contractorId)
+      .select("name isActive role")
+      .lean();
+    if (!contractor || contractor.role !== "contractor")
+      return res.status(404).json({ message: "Contractor not found" });
+    if (!contractor.isActive)
+      return res.status(400).json({ message: "Contractor is not active" });
 
     project.sharedWithModel = "Contractor";
     project.sharedWith = project.sharedWith || [];
-    const exists = project.sharedWith.some((id) => String(id) === String(contractorId));
+    const exists = project.sharedWith.some(
+      (id) => String(id) === String(contractorId)
+    );
     if (!exists) project.sharedWith.push(contractorId);
 
     await project.save();
@@ -605,7 +710,9 @@ exports.shareProject = async (req, res) => {
     return res.json({ message: "Project shared", project });
   } catch (err) {
     console.error("shareProject error:", err);
-    return res.status(500).json({ message: "Share failed", error: err.message });
+    return res
+      .status(500)
+      .json({ message: "Share failed", error: err.message });
   }
 };
 
@@ -615,7 +722,8 @@ exports.shareProject = async (req, res) => {
 exports.assignContractor = async (req, res) => {
   try {
     const { contractorId } = req.body;
-    if (!contractorId) return res.status(400).json({ message: "contractorId is required" });
+    if (!contractorId)
+      return res.status(400).json({ message: "contractorId is required" });
 
     const project = await Project.findById(req.params.id);
     if (!project) return res.status(404).json({ message: "Project not found" });
@@ -623,9 +731,13 @@ exports.assignContractor = async (req, res) => {
       return res.status(403).json({ message: "Not owner of this project" });
     }
 
-    const contractor = await Contractor.findById(contractorId).select("name isActive role").lean();
-    if (!contractor || contractor.role !== "contractor") return res.status(404).json({ message: "Contractor not found" });
-    if (!contractor.isActive) return res.status(400).json({ message: "Contractor is not active" });
+    const contractor = await Contractor.findById(contractorId)
+      .select("name isActive role")
+      .lean();
+    if (!contractor || contractor.role !== "contractor")
+      return res.status(404).json({ message: "Contractor not found" });
+    if (!contractor.isActive)
+      return res.status(400).json({ message: "Contractor is not active" });
 
     project.contractor = contractorId;
     project.status = "in_progress";
@@ -648,6 +760,50 @@ exports.assignContractor = async (req, res) => {
     return res.json({ message: "Contractor assigned", project });
   } catch (err) {
     console.error("assignContractor error:", err);
-    return res.status(500).json({ message: "Assign failed", error: err.message });
+    return res
+      .status(500)
+      .json({ message: "Assign failed", error: err.message });
+  }
+};
+// =======================
+// Get Recent Offers across all projects (Client Dashboard)
+// =======================
+exports.getClientRecentOffers = async (req, res) => {
+  try {
+    // 1. جلب مشاريع المستخدم مع العروض وتفاصيل المقاول
+    const projects = await Project.find({ owner: req.user._id })
+      .select("title offers")
+      .populate({
+        path: "offers.contractor",
+        select: "name profileImage",
+      });
+
+    // 2. تجميع العروض في قائمة واحدة مسطحة
+    let allOffers = [];
+    projects.forEach((project) => {
+      if (project.offers && project.offers.length > 0) {
+        project.offers.forEach((offer) => {
+          allOffers.push({
+            offerId: offer._id,
+            price: offer.price,
+            message: offer.message,
+            createdAt: offer.createdAt, // تاريخ العرض
+            contractorName: offer.contractor ? offer.contractor.name : "Unknown",
+            contractorImage: offer.contractor ? offer.contractor.profileImage : null,
+            projectTitle: project.title, // اسم المشروع
+            projectId: project._id,
+          });
+        });
+      }
+    });
+
+    // 3. ترتيبها من الأحدث للأقدم
+    allOffers.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    // 4. إرجاع أول 5 عروض فقط
+    return res.json(allOffers.slice(0, 5));
+  } catch (err) {
+    console.error("getClientRecentOffers error:", err);
+    return res.status(500).json({ error: err.message });
   }
 };

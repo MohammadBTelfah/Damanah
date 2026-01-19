@@ -97,6 +97,20 @@ async function sendContractorApprovedEmail(user) {
   });
 }
 
+async function sendAccountActivatedEmail(user) {
+  await sendEmail({
+    to: user.email,
+    subject: "Your account has been activated 🎉",
+    html: `
+      <h2>Hello ${user.name},</h2>
+      <p>Your account has been manually <b>activated</b> by the administration 🎉</p>
+      <p>You can now log in and use the platform.</p>
+      <br />
+      <p>— Damana Team</p>
+    `,
+  });
+}
+
 async function sendContractorRejectedEmail(user) {
   await sendEmail({
     to: user.email,
@@ -462,5 +476,79 @@ exports.updateContractorStatus = async (req, res) => {
     res.json({ message: "Contractor status updated", contractor: out });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+};
+/* ===================== Inactive Accounts ===================== */
+
+// GET /api/admin/users/inactive?role=client|contractor|admin (اختياري)
+exports.getInactiveUsers = async (req, res) => {
+  try {
+    const role = req.query.role;
+    const baseUrl = getBaseUrl(req);
+
+    if (role) {
+      const Model = getModelByRole(role);
+      if (!Model) return res.status(400).json({ message: "Invalid role" });
+
+      const users = await Model.find({ isActive: false }).select("-password");
+
+      const mapped = users.map((u) => {
+        const out = toPublicUrls(u, baseUrl);
+        out.role = role;
+        return out;
+      });
+
+      return res.json(mapped);
+    }
+
+    const [clients, contractors, admins] = await Promise.all([
+      Client.find({ isActive: false }).select("-password"),
+      Contractor.find({ isActive: false }).select("-password"),
+      Admin.find({ isActive: false }).select("-password"),
+    ]);
+
+    const result = [
+      ...clients.map((u) => ({ ...toPublicUrls(u, baseUrl), role: "client" })),
+      ...contractors.map((u) => ({ ...toPublicUrls(u, baseUrl), role: "contractor" })),
+      ...admins.map((u) => ({ ...toPublicUrls(u, baseUrl), role: "admin" })),
+    ];
+
+    return res.json(result);
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+};
+
+// PATCH /api/admin/users/:role/:id/activate
+exports.activateUserManually = async (req, res) => {
+  try {
+    const { role, id } = req.params;
+
+    const Model = getModelByRole(role);
+    if (!Model) return res.status(400).json({ message: "Invalid role" });
+
+    const user = await Model.findById(id).select("-password");
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    // ✅ Activate + Email Verify by admin
+    user.isActive = true;
+    user.emailVerified = true;
+
+    // ✅ clear verification token fields (important)
+    user.emailVerificationToken = undefined;
+    user.emailVerificationExpires = undefined;
+
+    await user.save();
+
+    // (اختياري) تبعث ايميل إنه الحساب تفعل
+    // await sendAccountActivatedEmail(user);
+
+    const baseUrl = getBaseUrl(req);
+    const out = toPublicUrls(user, baseUrl);
+    out.role = role;
+
+    return res.json({ message: "Account activated & email verified", user: out });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
   }
 };

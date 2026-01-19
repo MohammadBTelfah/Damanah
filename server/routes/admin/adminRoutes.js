@@ -17,6 +17,8 @@ const {
   getPendingContractors,
   updateContractorStatus,
   getUserIdentityDetails,
+  getInactiveUsers,
+  activateUserManually,
 } = require("../../controllers/adminController");
 
 const { protect, adminOnly, verifiedAndActive } = require("../../middleware/authMiddleWare");
@@ -27,6 +29,9 @@ router.use(verifiedAndActive);
 
 /* Users */
 router.get("/users", getAllUsers);
+router.get("/users/inactive", getInactiveUsers);          // ✅ NEW
+router.patch("/users/:role/:id/activate", activateUserManually); // ✅ NEW
+
 router.get("/users/:role/:id", getUserById);
 router.patch("/users/:role/:id", updateUserByAdmin);
 router.delete("/users/:role/:id", deleteUserByAdmin);

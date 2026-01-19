@@ -10,17 +10,20 @@ import { DashboardLayout } from "@toolpad/core/DashboardLayout";
 import { DemoProvider, useDemoRouter } from "@toolpad/core/internal";
 import GroupIcon from "@mui/icons-material/Group";
 import BadgeIcon from "@mui/icons-material/Badge";
+import FoundationIcon from '@mui/icons-material/Foundation';
 import AssignmentLateIcon from "@mui/icons-material/AssignmentLate";
-
+import CalculateIcon from '@mui/icons-material/Calculate';
+import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 
 import AdminLogin from "../components/AdminLogin";
 import AdminProfile from "../components/AdminProfile";
 import AdminUsersPage from "../components/AdminUsersPage";
-import AdminIdentityPendingPage from "./AdminIdentityPendingPage";
-import AdminPendingContractorsPage from "./AdminPendingContractorsPage";
+import AdminIdentityPendingPage from "./AdminIdentityPendingPage"; // تأكد من المسارات
+import AdminPendingContractorsPage from "./AdminPendingContractorsPage"; // تأكد من المسارات
 import AdminDashboardHome from "../components/AdminDashboardHome";
-
-
+import MaterialsPage from "../components/MaterialsPage";
+import CostEstimator from "../components/CostEstimator";
+import AdminInactiveUsersPage from "../components/AdminInactiveUsersPage";
 const NAVIGATION = [
   {
     segment: "dashboard",
@@ -47,8 +50,22 @@ const NAVIGATION = [
     title: "Pending Contractors",
     icon: <AssignmentLateIcon />,
   },
+  {
+    segment: "materials",
+    title: "Materials",
+    icon: <FoundationIcon />,
+  },
+  {
+    segment: "cost-estimator",
+    title: "Cost Estimator",
+    icon: <CalculateIcon />,
+  },
+  {
+    segment: "inactive-users",
+    title: "Inactive Users",
+    icon: <PersonIcon />,
+  }
 ];
-
 
 const demoTheme = createTheme({
   cssVariables: { colorSchemeSelector: "data-toolpad-color-scheme" },
@@ -73,15 +90,15 @@ function DemoPageContent({ pathname }) {
 }
 DemoPageContent.propTypes = { pathname: PropTypes.string.isRequired };
 
-// ✅ بدل DemoPageContent مباشرة، نعمل سويتش حسب المسار
-function PageSwitch({ pathname }) {
+// ✅ التعديل الأول هنا: استقبال navigate وتمريرها
+function PageSwitch({ pathname, navigate }) {
   if (pathname === "/dashboard") {
-    return <AdminDashboardHome />;
+    // 👇 نمرر navigate هنا للصفحة الرئيسية
+    return <AdminDashboardHome navigate={navigate} />;
   }
   if (pathname === "/profile") {
     return <AdminProfile />;
   }
-
   if (pathname === "/users") {
     return <AdminUsersPage />;
   }
@@ -91,10 +108,24 @@ function PageSwitch({ pathname }) {
   if (pathname === "/contractors-pending") {
     return <AdminPendingContractorsPage />;
   }
-  return <DemoPageContent pathname={pathname} />;
+  if (pathname === "/materials") {
+    return <MaterialsPage />;
+  }
+  if (pathname === "/cost-estimator") {
+    return <CostEstimator />;
+  }
+  if (pathname === "/inactive-users") {
+    return <AdminInactiveUsersPage />;
+  }
 
+  return <DemoPageContent pathname={pathname} />;
 }
-PageSwitch.propTypes = { pathname: PropTypes.string.isRequired };
+
+// ✅ إضافة navigate للـ propTypes
+PageSwitch.propTypes = {
+  pathname: PropTypes.string.isRequired,
+  navigate: PropTypes.func.isRequired
+};
 
 const SESSION_KEY = "admin_session";
 
@@ -113,7 +144,7 @@ function saveSession(win, session) {
     const storage = win?.localStorage ?? localStorage;
     if (session) storage.setItem(SESSION_KEY, JSON.stringify(session));
     else storage.removeItem(SESSION_KEY);
-  } catch {}
+  } catch { }
 }
 
 export default function DashboardLayoutAccount(props) {
@@ -123,21 +154,18 @@ export default function DashboardLayoutAccount(props) {
 
   const [session, setSession] = React.useState(() => loadSession(demoWindow));
 
-  // ✅ دائماً نفذ hooks بنفس الترتيب
   React.useEffect(() => {
     saveSession(demoWindow, session);
   }, [session, demoWindow]);
 
   const isLoginRoute = router.pathname === "/admin/login";
 
-  // ✅ حماية الصفحات: إذا مش لوقن ومش على صفحة اللوقن -> روح للوقن
   React.useEffect(() => {
     if (!isLoginRoute && !session?.token) {
       router.navigate("/admin/login");
     }
   }, [isLoginRoute, session, router]);
 
-  // ✅ إذا صفحة اللوقن اعرض AdminLogin فقط
   if (isLoginRoute) {
     return (
       <AdminLogin
@@ -163,13 +191,20 @@ export default function DashboardLayoutAccount(props) {
             router.navigate("/admin/login");
           },
         }}
+        branding={{
+          logo: <AdminPanelSettingsIcon />, // أو يمكنك وضع صورة: <img src="logo.png" alt="logo" />
+          title: "Damanah Admin",       // الاسم الذي تريده أن يظهر بدلاً من Toolpad
+        }}
+
         localeText={{
           accountSignOutLabel: "Logout",
           accountSignInLabel: "Login",
         }}
+
       >
         <DashboardLayout>
-          <PageSwitch pathname={router.pathname} />
+          {/* ✅ التعديل الثاني هنا: تمرير router.navigate */}
+          <PageSwitch pathname={router.pathname} navigate={router.navigate} />
         </DashboardLayout>
       </AppProvider>
     </DemoProvider>

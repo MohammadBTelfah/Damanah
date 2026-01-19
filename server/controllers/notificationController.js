@@ -57,3 +57,37 @@ exports.unreadCount = async (req, res) => {
     res.status(500).json({ message: "Failed to get count" });
   }
 };
+exports.clearAllNotifications = async (req, res) => {
+  try {
+    // نحذف كل الإشعارات التي تخص المستخدم المسجل دخول
+    await Notification.deleteMany({ user: req.user._id });
+    
+    return res.json({ message: "All notifications cleared" });
+  } catch (err) {
+    console.error("clearAllNotifications error:", err);
+    return res.status(500).json({ message: "Failed to clear notifications" });
+  }
+};
+
+// ✅ 2. حذف إشعار واحد (للسحب Swipe)
+exports.deleteNotification = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const notification = await Notification.findById(id);
+    if (!notification) {
+      return res.status(404).json({ message: "Notification not found" });
+    }
+
+    // تأكد أن الإشعار يخص المستخدم الحالي
+    if (String(notification.user) !== String(req.user._id)) {
+      return res.status(403).json({ message: "Not authorized" });
+    }
+
+    await notification.deleteOne();
+    return res.json({ message: "Notification deleted" });
+  } catch (err) {
+    console.error("deleteNotification error:", err);
+    return res.status(500).json({ message: "Failed to delete notification" });
+  }
+};
