@@ -333,7 +333,7 @@ class ProjectService {
   // =========================
 
   /// GET /api/projects/contractor/available
-/// GET /api/projects/contractor/available
+  /// GET /api/projects/contractor/available
   Future<List<dynamic>> getAvailableProjectsForContractor() async {
     final token = await _mustToken();
     final uri = Uri.parse(ApiConfig.join("/api/projects/contractor/available"));
@@ -356,7 +356,9 @@ class ProjectService {
     }
 
     throw Exception("(${res.statusCode}) ${_errMsg(res)}");
-  }  /// POST /api/projects/:projectId/offers
+  }
+
+  /// POST /api/projects/:projectId/offers
   Future<void> createOffer({
     required String projectId,
     required double price,
@@ -447,24 +449,24 @@ class ProjectService {
 
   /// PATCH /api/projects/:id/status (Client/Contractor/Admin)
   Future<void> updateProjectStatus({
-  required String projectId,  // معطى مسمى
-  required String newStatus,  // معطى مسمى
-}) async {
-  final token = await _mustToken();
-  final uri = Uri.parse(ApiConfig.join("/api/projects/$projectId/status"));
+    required String projectId, // معطى مسمى
+    required String newStatus, // معطى مسمى
+  }) async {
+    final token = await _mustToken();
+    final uri = Uri.parse(ApiConfig.join("/api/projects/$projectId/status"));
 
-  final res = await http
-      .patch(
-        uri,
-        headers: _authHeaders(token, json: true),
-        body: jsonEncode({"status": newStatus}),
-      )
-      .timeout(const Duration(seconds: 30));
+    final res = await http
+        .patch(
+          uri,
+          headers: _authHeaders(token, json: true),
+          body: jsonEncode({"status": newStatus}),
+        )
+        .timeout(const Duration(seconds: 30));
 
-  if (res.statusCode == 200) return;
+    if (res.statusCode == 200) return;
 
-  throw Exception("(${res.statusCode}) ${_errMsg(res)}");
-}
+    throw Exception("(${res.statusCode}) ${_errMsg(res)}");
+  }
 
   // =========================
 
@@ -526,6 +528,76 @@ class ProjectService {
       }
       if (decoded is List) return decoded;
       return [];
+    }
+
+    throw Exception("(${res.statusCode}) ${_errMsg(res)}");
+  }
+
+  // =========================
+  // 🔥 NEW: Get client-related contractors only
+  // GET /api/clients/my-contractors
+  // Returns a list of contractors that are related to the logged-in client
+  // (via Projects or Contracts). Safe parsing + profileImageUrl handling.
+  Future<List<dynamic>> getMyContractors() async {
+    final token = await _mustToken();
+    final uri = Uri.parse(ApiConfig.join("/api/clients/my-contractors"));
+
+    final res = await http
+        .get(uri, headers: _authHeaders(token))
+        .timeout(const Duration(seconds: 30));
+
+    final decoded = _safeDecode(res.body);
+
+    if (res.statusCode == 200) {
+      // If the API returns array directly
+      if (decoded is List) {
+        return decoded.map((e) {
+          if (e is Map) {
+            final m = Map<String, dynamic>.from(e);
+            // ensure consistent profileImageUrl field if backend returns profileImage
+            if ((m['profileImageUrl'] == null || m['profileImageUrl'] == '') &&
+                (m['profileImage'] != null && m['profileImage'] is String)) {
+              m['profileImageUrl'] = m['profileImage'];
+            }
+            return m;
+          }
+          return e;
+        }).toList();
+      }
+
+      // If API returns object with list inside
+      if (decoded is Map && (decoded['data'] is List || decoded['contractors'] is List)) {
+        final list = decoded['data'] ?? decoded['contractors'];
+        return (list as List).map((e) {
+          if (e is Map) {
+            final m = Map<String, dynamic>.from(e);
+            if ((m['profileImageUrl'] == null || m['profileImageUrl'] == '') &&
+                (m['profileImage'] != null && m['profileImage'] is String)) {
+              m['profileImageUrl'] = m['profileImage'];
+            }
+            return m;
+          }
+          return e;
+        }).toList();
+      }
+
+      // defensive: if returned object is a single contractor
+      if (decoded is Map && decoded['_id'] != null) {
+        final m = Map<String, dynamic>.from(decoded);
+        if ((m['profileImageUrl'] == null || m['profileImageUrl'] == '') &&
+            (m['profileImage'] != null && m['profileImage'] is String)) {
+          m['profileImageUrl'] = m['profileImage'];
+        }
+        return [m];
+      }
+
+      // otherwise return empty list
+      return [];
+    }
+
+    // unauthorized / other error
+    if (res.statusCode == 401) {
+      throw Exception("Unauthorized (${res.statusCode})");
     }
 
     throw Exception("(${res.statusCode}) ${_errMsg(res)}");

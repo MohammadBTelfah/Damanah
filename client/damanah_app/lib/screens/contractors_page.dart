@@ -30,12 +30,45 @@ class _ContractorsPageState extends State<ContractorsPage> {
     });
 
     try {
-      final list = await _service.getContractors();
+      // 1) حاول جلب المقاولين المرتبطين بالعميل أولاً
+      final list = await _tryGetMyContractorsWithFallback();
       setState(() => _contractors = list);
     } catch (e) {
       setState(() => _error = e.toString());
     } finally {
       if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  /// يجرب getMyContractors() ثم يرجع للقائمة العامة اذا رجع 404 أو endpoint غير موجود
+  Future<List<dynamic>> _tryGetMyContractorsWithFallback() async {
+    try {
+      final list = await _service.getMyContractors();
+      return list;
+    } catch (e) {
+      final msg = e.toString();
+      // لو الخطأ يحتوي 404 نعمل fallback تلقائي
+      if (msg.contains('404')) {
+        // محاولة بديلة: جلب القائمة العامة (available)
+        try {
+          final fallback = await _service.getContractors();
+          // نعرض رسالة صغيرة للمستخدم بأننا استعملنا fallback
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text("Showing public contractors (fallback)."),
+                duration: Duration(seconds: 2),
+              ),
+            );
+          }
+          return fallback;
+        } catch (e2) {
+          // لو الفالباك فشل نطلق الخطأ الأصلي مع تفاصيل الفالباك
+          throw Exception("Primary endpoint returned 404, fallback failed: ${e2.toString()}");
+        }
+      }
+      // لو الخطأ غير 404 نعيده كما هو
+      rethrow;
     }
   }
 
@@ -94,22 +127,22 @@ class _ContractorsPageState extends State<ContractorsPage> {
         child: _loading
             ? const Center(child: CircularProgressIndicator())
             : _error != null
-            ? _errorView()
-            : _contractors.isEmpty
-            ? _emptyView()
-            : ListView.separated(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-                itemCount: _contractors.length,
-                separatorBuilder: (_, __) =>
-                    Divider(color: Colors.white.withOpacity(0.06)),
-                itemBuilder: (context, i) {
-                  final c = (_contractors[i] is Map)
-                      ? Map<String, dynamic>.from(_contractors[i])
-                      : <String, dynamic>{};
+                ? _errorView()
+                : _contractors.isEmpty
+                    ? _emptyView()
+                    : ListView.separated(
+                        padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+                        itemCount: _contractors.length,
+                        separatorBuilder: (_, __) =>
+                            Divider(color: Colors.white.withOpacity(0.06)),
+                        itemBuilder: (context, i) {
+                          final c = (_contractors[i] is Map)
+                              ? Map<String, dynamic>.from(_contractors[i])
+                              : <String, dynamic>{};
 
-                  return _contractorCard(c);
-                },
-              ),
+                          return _contractorCard(c);
+                        },
+                      ),
       ),
     );
   }
@@ -122,7 +155,8 @@ class _ContractorsPageState extends State<ContractorsPage> {
     final city = c["city"]?.toString() ?? c["location"]?.toString() ?? "";
     final specialty =
         c["specialty"]?.toString() ?? c["type"]?.toString() ?? "General";
-    final available = c["available"] == true;
+    final available = c["available"] == true ||
+        (c["isActive"] == true); // قبول خاصية isActive كبديل
 
     final imgRaw = (c["profileImageUrl"] ?? c["profileImage"] ?? "").toString();
     final img = _toAbsoluteUrl(imgRaw);
@@ -212,8 +246,7 @@ class _ContractorsPageState extends State<ContractorsPage> {
                             InkWell(
                               borderRadius: BorderRadius.circular(10),
                               onTap: () async {
-                                if (phone.trim().isEmpty || phone == "-")
-                                  return;
+                                if (phone.trim().isEmpty || phone == "-") return;
                                 await Clipboard.setData(
                                   ClipboardData(text: phone),
                                 );
@@ -286,11 +319,19 @@ class _ContractorsPageState extends State<ContractorsPage> {
         const SizedBox(height: 12),
         Center(
           child: Text(
-            _error!,
+            _error ?? "Unknown error",
             style: const TextStyle(color: Colors.white70),
             textAlign: TextAlign.center,
           ),
         ),
+        if (_error != null)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
+            child: ElevatedButton(
+              onPressed: _load,
+              child: const Text("Retry"),
+            ),
+          ),
       ],
     );
   }
