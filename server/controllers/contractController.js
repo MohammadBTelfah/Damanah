@@ -3,6 +3,7 @@ const fs = require("fs");
 const mongoose = require("mongoose");
 
 const Contract = require("../models/Contract");
+
 const generateContractPdf = require("../utils/pdf/generateContractPdf");
 
 // ========================
