@@ -118,6 +118,13 @@ router.post(
   planUpload.single("planFile"),
   projectController.analyzePlanOnly
 );
+router.get(
+  "/clients/my-contractors",
+  protect,
+  clientOnly,
+  projectController.getMyContractors
+);
+
 // ... (تأكد أنك تضعه قبل الراوتات التي تحتوي على :id لتجنب التضارب)
 router.get("/client/recent-offers", protect, projectController.getClientRecentOffers);
 

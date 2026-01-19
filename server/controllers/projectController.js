@@ -807,3 +807,39 @@ exports.getClientRecentOffers = async (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 };
+
+// =======================
+// Client - My Contractors (ONLY RELATED)
+// =======================
+exports.getMyContractors = async (req, res) => {
+  try {
+    const clientId = req.user._id;
+
+    // 1. جلب مشاريع العميل التي لها مقاول
+    const projects = await Project.find({
+      owner: clientId,
+      contractor: { $ne: null },
+    })
+      .select("contractor")
+      .populate("contractor", "name email phone profileImage contractorStatus isActive");
+
+    // 2. استخراج المقاولين بدون تكرار
+    const contractorsMap = new Map();
+
+    projects.forEach((p) => {
+      if (p.contractor) {
+        contractorsMap.set(
+          p.contractor._id.toString(),
+          p.contractor
+        );
+      }
+    });
+
+    const contractors = Array.from(contractorsMap.values());
+
+    return res.json(contractors);
+  } catch (err) {
+    console.error("getMyContractors error:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
