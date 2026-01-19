@@ -141,21 +141,15 @@ exports.register = async (req, res) => {
     const emailNorm = normalizeEmail(email);
     const phoneNorm = normalizePhone(phone);
 
+    // ✅ Files from Multer (Cloudinary)
     const profileFile = req.files?.profileImage?.[0] || null;
     const identityFile = req.files?.identityDocument?.[0] || null;
     const contractorDocFile = req.files?.contractorDocument?.[0] || null;
 
-    const profileImagePath = profileFile
-      ? `/uploads/profiles/${profileFile.filename}`
-      : null;
-
-    const identityDocumentPath = identityFile
-      ? `/uploads/identity/${identityFile.filename}`
-      : null;
-
-    const contractorDocumentPath = contractorDocFile
-      ? `/uploads/contractor_docs/${contractorDocFile.filename}`
-      : null;
+    // ✅ FIX: Use Cloudinary URL (path) directly
+    const profileImagePath = profileFile ? profileFile.path : null;
+    const identityDocumentPath = identityFile ? identityFile.path : null;
+    const contractorDocumentPath = contractorDocFile ? contractorDocFile.path : null;
 
     if (!name || !emailNorm || !phoneNorm || !password) {
       return res.status(400).json({ message: "Missing required fields" });
@@ -189,11 +183,17 @@ exports.register = async (req, res) => {
     let identityExtractedAt = null;
 
     if (identityDocumentPath) {
-      const ocrRes = await extractNationalIdFromIdentity(identityDocumentPath);
-      nationalIdCandidate = ocrRes?.nationalId ?? null;
-      nationalIdConfidence = ocrRes?.confidence ?? null;
-      identityRawText = ocrRes?.rawText ?? null;
-      identityExtractedAt = new Date();
+      try {
+        // OCR works with URL now (assuming utils supported)
+        const ocrRes = await extractNationalIdFromIdentity(identityDocumentPath);
+        nationalIdCandidate = ocrRes?.nationalId ?? null;
+        nationalIdConfidence = ocrRes?.confidence ?? null;
+        identityRawText = ocrRes?.rawText ?? null;
+        identityExtractedAt = new Date();
+      } catch (ocrError) {
+        console.error("OCR Error:", ocrError.message);
+        // Continue registration even if OCR fails
+      }
     }
 
     // ✅ statuses: pending only if document exists
@@ -207,9 +207,9 @@ exports.register = async (req, res) => {
       password: hashed,
 
       role: "contractor",
-      profileImage: profileImagePath,
+      profileImage: profileImagePath, // Cloudinary URL
 
-      identityDocument: identityDocumentPath,
+      identityDocument: identityDocumentPath, // Cloudinary URL
 
       // ✅ FINAL = يدوي فقط
       nationalId: manualNationalId || null,
@@ -221,7 +221,7 @@ exports.register = async (req, res) => {
       identityExtractedAt,
       identityStatus,
 
-      contractorDocument: contractorDocumentPath,
+      contractorDocument: contractorDocumentPath, // Cloudinary URL
       contractorStatus,
 
       emailVerified: false,

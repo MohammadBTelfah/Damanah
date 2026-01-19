@@ -1,53 +1,15 @@
 const router = require("express").Router();
 const contractorAuth = require("../../controllers/Auth/contractorAuthcontroller");
-const multer = require("multer");
-const path = require("path");
-const fs = require("fs");
 
-/* ================== UPLOAD SETUP ================== */
-function ensureDir(dir) {
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-}
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    let folder = "misc";
-    if (file.fieldname === "profileImage") folder = "profiles";
-    if (file.fieldname === "identityDocument") folder = "identity";
-    if (file.fieldname === "contractorDocument") folder = "contractor_docs";
-
-    const uploadPath = path.join(process.cwd(), "uploads", folder);
-    ensureDir(uploadPath);
-    cb(null, uploadPath);
-  },
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase();
-    cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`);
-  },
-});
-
-function fileFilter(req, file, cb) {
-  const forbidden = [
-    "application/x-msdownload", // exe
-    "application/x-sh",
-    "application/x-bat",
-  ];
-
-  if (forbidden.includes(file.mimetype)) {
-    return cb(new Error("File type not allowed"), false);
-  }
-
-  cb(null, true);
-}
-
-const upload = multer({ storage, fileFilter });
-
+// ✅ NEW: استيراد إعدادات Cloudinary
+const upload = require("../../config/cloudinaryConfig");
 
 /* ================== ROUTES (NO AUTH) ================== */
 
 // register
 router.post(
   "/register",
+  // Cloudinary Config يدعم upload.fields تماماً
   upload.fields([
     { name: "profileImage", maxCount: 1 },
     { name: "identityDocument", maxCount: 1 },

@@ -9,14 +9,24 @@ function getBaseUrl(req) {
   return `${req.protocol}://${req.get("host")}`;
 }
 
+// ✅ FIX: تعديل الدالة لتدعم Cloudinary والملفات المحلية معاً
 function toPublicUrls(doc, baseUrl) {
   const obj = doc.toObject();
 
+  // دالة مساعدة صغيرة لتحديد نوع الرابط
+  const formatUrl = (path) => {
+    if (!path) return null;
+    // إذا كان الرابط يبدأ بـ http (يعني Cloudinary)، رجعه كما هو
+    if (path.startsWith("http")) return path;
+    // إذا كان لا (ملف محلي قديم)، ادمجه مع رابط السيرفر
+    return `${baseUrl}${path}`;
+  };
+
   return {
     ...obj,
-    profileImageUrl: obj.profileImage ? `${baseUrl}${obj.profileImage}` : null,
-    identityDocumentUrl: obj.identityDocument ? `${baseUrl}${obj.identityDocument}` : null,
-    contractorDocumentUrl: obj.contractorDocument ? `${baseUrl}${obj.contractorDocument}` : null,
+    profileImageUrl: formatUrl(obj.profileImage),
+    identityDocumentUrl: formatUrl(obj.identityDocument),
+    contractorDocumentUrl: formatUrl(obj.contractorDocument),
   };
 }
 

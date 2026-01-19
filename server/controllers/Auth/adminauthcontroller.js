@@ -92,10 +92,9 @@ exports.register = async (req, res) => {
       return res.status(403).json({ message: "Forbidden" });
     }
 
-    // ✅ uploaded profile image
-    const profileImagePath = req.file
-      ? `/uploads/profiles/${req.file.filename}`
-      : null;
+    // ✅ FIX: Cloudinary gives full URL in req.file.path
+    // لم نعد بحاجة لبناء المسار يدوياً
+    const profileImagePath = req.file ? req.file.path : null;
 
     if (!name || !email || !phone || !password) {
       return res.status(400).json({ message: "Missing required fields" });
@@ -120,7 +119,7 @@ exports.register = async (req, res) => {
       email: emailNorm,        // ✅ store normalized
       phone: phoneNorm,        // ✅ store normalized
       password: hashed,
-      profileImage: profileImagePath,
+      profileImage: profileImagePath, // ✅ Cloudinary URL
 
       // ✅ force role
       role: "admin",

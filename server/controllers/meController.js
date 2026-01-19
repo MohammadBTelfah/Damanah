@@ -1,13 +1,13 @@
 const bcrypt = require("bcryptjs");
 const crypto = require("crypto");
-const fs = require("fs");
+// لم نعد بحاجة لـ fs لأن الصور على الكلاود
+// const fs = require("fs");
 
 const Client = require("../models/Client");
 const Contractor = require("../models/Contractor");
 const Admin = require("../models/Admin");
 
 const isStrongPassword = require("../utils/checkPassword");
-
 const sendEmail = require("../utils/sendEmail");
 
 function getModelByRole(role) {
@@ -92,20 +92,11 @@ exports.updateMe = async (req, res) => {
 
     if (name) user.name = name;
 
-    // ✅ profile image upload (multer)
-    if (req.file && req.file.filename) {
-      user.profileImage = `/uploads/profiles/${req.file.filename}`;
-
-      // ✅ SAFE logs (بس لما في ملف)
-      console.log("REQ.FILE.filename =>", req.file.filename);
-      console.log("REQ.FILE.path =>", req.file.path);
-
-      if (req.file.path) {
-        console.log("FILE EXISTS ON DISK =>", fs.existsSync(req.file.path));
-      }
-    } else {
-      // ✅ SAFE logs (لما ما في ملف)
-      console.log("REQ.FILE => (no file uploaded)");
+    // ✅ profile image upload (Cloudinary)
+    // Cloudinary storage puts the file URL in req.file.path
+    if (req.file) {
+      user.profileImage = req.file.path;
+      console.log("✅ Image uploaded to Cloudinary:", req.file.path);
     }
 
     await user.save();
@@ -198,6 +189,7 @@ exports.changePassword = async (req, res) => {
     return res.status(500).json({ message: "Server error" });
   }
 };
+
 // ================== Forget Passowrd ================== //
 exports.forgotPassword = async (req, res) => {
   try {
@@ -311,6 +303,4 @@ exports.resetPassword = async (req, res) => {
     return res.status(500).json({ message: "Server error" });
   }
 };
-
-
-// ================== End of File ================== //
+// ======================= end of file =======================
