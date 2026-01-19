@@ -14,6 +14,13 @@ const contractorSchema = new mongoose.Schema(
 
     phone: { type: String, required: true },
 
+    // حالة توفر المقاول لاستلام مشاريع جديدة
+    availabilityStatus: {
+      type: String,
+      enum: ["available", "busy", "unavailable"], // متاح، مشغول، غير متواجد حالياً
+      default: "available",
+    },
+
     // ملف هوية مدنية (صورة أو PDF)
     identityDocument: { type: String, default: null },
 
