@@ -1,44 +1,59 @@
 // utils/plan_vision.js
 const OpenAI = require("openai");
 
-// تأكد أن OPENAI_API_KEY موجود في Environment Variables على Render
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 /**
  * تحليل مخطط الأرضية باستخدام OpenAI Vision
- * @param {string} imageUrl - رابط الصورة القادم من Cloudinary أو Base64
+ * تم التحديث ليعمل بمنطق Quantity Surveyor (حاصر كميات) محترف
+ * يشمل الآن حساب الفتحات المفقودة (Voids) وارتفاعات السقف والمحيط الطولي
  */
 async function analyzeFloorPlanImage(imageUrl) {
   const prompt = `
-You are a professional architectural floor plan analyzer.
-Extract information from the floor plan image and return STRICT JSON only.
+You are a professional Senior Architect and Quantity Surveyor. 
+Analyze this floor plan image to provide data for a precise Bill of Quantities (BOQ).
 
-Return this JSON shape:
+STRICT INSTRUCTIONS:
+1. QUANTITY TAKEOFF: Count every visible window symbol (double lines) and door swing.
+2. GEOMETRY: Look for written dimensions (e.g., 4.20x6.00). If missing, use the drawing scale (e.g., 1:112.36) to estimate.
+3. PERIMETER: Calculate the total linear meters of ALL walls (external and internal).
+4. AREAS: Identify specific areas for: Tiles (floor), Paint (walls + ceiling), and Waterproofing (bathrooms/roof).
+5. VOIDS & OPENINGS (IMPORTANT): Identify areas labeled 'OPEN', 'VOID', or shafts. 
+   - Calculate their area to subtract from flooring/slabs.
+   - Calculate their perimeter to add to wall finishes/painting.
+
+Return ONLY a JSON object with this structure:
 {
   "totalArea": number|null,
-  "floorLabel": string|null,
-  "scaleText": string|null,
-  "bedrooms": number|null,
-  "bathrooms": number|null,
-  "kitchens": number|null,
-  "majlis": number|null,
+  "netFlooringArea": number|null, // Area after subtracting voids
+  "wallPerimeterLinear": number|null, // Total length of all walls including perimeter of voids
+  "ceilingHeightDefault": number|null, // Look for section notes or typical 3.0m
+  "openings": {
+    "windows": { "count": number, "estimatedTotalArea": number },
+    "internalDoors": { "count": number },
+    "entranceDoors": { "count": number },
+    "voids": { "count": number, "totalVoidArea": number, "voidPerimeter": number } // الفتحات المفقودة مثل المناور
+  },
   "rooms": [
-    {"name": string, "width": number|null, "length": number|null, "area": number|null}
+    {"name": string, "area": number|null, "type": "wet|dry"}
   ],
-  "notes": string[],
-  "confidence": number
+  "structuralElements": {
+    "columnsCount": number|null,
+    "hasStaircase": boolean
+  },
+  "confidence": number,
+  "notes": string[]
 }
 
 Rules:
-- If total area is written explicitly, trust it.
-- If dimensions exist, prefer them.
-- confidence 0..1 (estimate your certainty).
-- JSON only. No markdown. No extra text.
+- If a total area is explicitly written (e.g., 314.80 m²), prioritize it.
+- "type": "wet" refers to bathrooms/kitchens for plumbing calculations.
+- STRICT JSON only. No extra text.
 `;
 
   try {
     const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini", // يدعم تحليل الصور بكفاءة عالية وتكلفة منخفضة
+      model: "gpt-4o-mini", 
       messages: [
         {
           role: "user",
@@ -47,14 +62,15 @@ Rules:
             {
               type: "image_url",
               image_url: {
-                url: imageUrl, // نمرر الرابط القادم من Cloudinary مباشرة
+                url: imageUrl,
+                detail: "high" // ✅ إجبار الموديل على قراءة التفاصيل الدقيقة مثل رموز الشبابيك والمناور
               },
             },
           ],
         },
       ],
-      response_format: { type: "json_object" }, // نضمن أن النتيجة JSON دائماً
-      max_tokens: 1000,
+      response_format: { type: "json_object" }, 
+      max_tokens: 1500, // زيادة عدد التوكينات للسماح بتفصيل الغرف والفتحات
     });
 
     const outText = response.choices[0].message.content;
