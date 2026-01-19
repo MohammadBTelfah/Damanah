@@ -1,4 +1,3 @@
-// utils/boq.js
 const Material = require("../models/Material");
 
 // ======================
@@ -10,13 +9,15 @@ function approximatePerimeterFromArea(area) {
   return 4 * side;
 }
 
+/**
+ * Normalize buildingType
+ */
 function normalizeBuildingType(t) {
-  const v = String(t || "").toLowerCase().trim();
-  if (["apartment", "villa", "commercial"].includes(v)) return v;
-  if (v === "residential") return "apartment";
-  if (v === "house") return "villa";
-  if (v === "shop" || v === "office") return "commercial";
-  return "apartment";
+  const v = String(t || "").trim().toLowerCase();
+  if (v === "house") return "House";
+  if (v === "villa") return "Villa";
+  if (v === "commercial") return "Commercial";
+  return "House";
 }
 
 function pickVariantByKey(materialDoc, variantKey) {
@@ -25,7 +26,6 @@ function pickVariantByKey(materialDoc, variantKey) {
   return vars.find((x) => String(x.key) === String(variantKey)) || null;
 }
 
-// Updated: Accepts variantLabel to return it to frontend
 function buildItem(name, unit, quantity, pricePerUnit, meta = {}, variantLabel = "") {
   const q = Number(quantity || 0);
   const p = Number(pricePerUnit || 0);
@@ -35,50 +35,35 @@ function buildItem(name, unit, quantity, pricePerUnit, meta = {}, variantLabel =
     unit,
     pricePerUnit: p,
     total: Number((q * p).toFixed(2)),
-    variantLabel: variantLabel, // <--- Sent to Frontend
+    variantLabel,
     ...meta,
   };
 }
 
 // ======================
-// Presets (Unchanged)
+// Presets
 // ======================
 const PRESETS = {
-  apartment: {
-    label: "Apartment",
+  House: {
     height: 3.0,
-    coats: 2,
     waste: 1.05,
-    concrete_m3_per_m2: 0.11,
-    rebar_kg_per_m2: 45,
-    wall_exposure_factor: 0.85,
-    tiles_floor_coverage: 0.75,
-    plaster_wall_factor: 1.0,
-    paint_factor: 0.85,
+    wall_factor: 0.85, // نسبة الجدران للمحيط
+    window_ratio: 0.15, // نسبة الشبابيك من الجدران
+    door_ratio: 0.05,   // نسبة الأبواب
   },
-  villa: {
-    label: "Villa",
-    height: 3.0,
-    coats: 2,
+  Villa: {
+    height: 3.2,
     waste: 1.07,
-    concrete_m3_per_m2: 0.12,
-    rebar_kg_per_m2: 55,
-    wall_exposure_factor: 1.0,
-    tiles_floor_coverage: 0.85,
-    plaster_wall_factor: 1.05,
-    paint_factor: 0.9,
+    wall_factor: 1.0,
+    window_ratio: 0.20,
+    door_ratio: 0.06,
   },
-  commercial: {
-    label: "Commercial",
+  Commercial: {
     height: 3.5,
-    coats: 3,
     waste: 1.08,
-    concrete_m3_per_m2: 0.14,
-    rebar_kg_per_m2: 70,
-    wall_exposure_factor: 1.1,
-    tiles_floor_coverage: 0.6,
-    plaster_wall_factor: 0.95,
-    paint_factor: 0.8,
+    wall_factor: 1.1,
+    window_ratio: 0.25,
+    door_ratio: 0.04,
   },
 };
 
@@ -88,165 +73,199 @@ const PRESETS = {
 async function generateBoqForProject(project, options = {}) {
   const area = Number(project.area || 0);
   const floors = Math.max(1, Number(project.floors || 1));
-  
+  const rooms = Math.max(1, Number(project.planAnalysis?.rooms || 3)); 
+  const bathrooms = Math.max(1, Number(project.planAnalysis?.bathrooms || 1));
+
   const buildingType = normalizeBuildingType(
-    options.buildingType || project.buildingType || "apartment"
+    options.buildingType || project.buildingType || "House"
   );
 
-  const presetBase = PRESETS[buildingType] || PRESETS.apartment;
-  const overrides = options.overrides || {};
-  const preset = { ...presetBase, ...overrides };
+  const preset = PRESETS[buildingType] || PRESETS.House;
+  const height = preset.height;
+  const waste = preset.waste;
 
-  const height = Number(preset.height || 3);
-  const coats = Number(preset.coats || 2);
-  const waste = Number(preset.waste || 1.05);
+  // 1. حسابات هندسية أساسية
+  const totalFloorArea = area * floors; // المساحة الإجمالية للطوابق
+  const perimeter = approximatePerimeterFromArea(area);
+  const totalWallArea = perimeter * height * floors * preset.wall_factor; // مساحة الجدران التقريبية
+  const roofArea = area; // مساحة السطح (للعزل)
 
-  // 1. Get Selections
+  // ======================
+  // Selections Processing
+  // ======================
   const selections = Array.isArray(options.selections) ? options.selections : [];
-  
+
   if (selections.length === 0) {
-     return { 
-       items: [], 
-       totalCost: 0, 
-       currency: "JOD", 
-       error: "Please choose at least one material"
-     };
+    return { items: [], totalCost: 0, currency: "JOD", buildingType, error: "No materials selected" };
   }
 
-  // Map: MaterialID -> VariantKey
+  // جلب المواد المختارة فقط من قاعدة البيانات
   const selectedById = new Map(
     selections
-      .filter((s) => s && s.materialId && s.variantKey)
+      .filter((s) => s?.materialId && s?.variantKey)
       .map((s) => [String(s.materialId), String(s.variantKey)])
   );
 
-  // Fetch only selected materials
-  const selectedIds = Array.from(selectedById.keys());
-  const mats = await Material.find({ _id: { $in: selectedIds } }).lean();
-
-  // Helper to pick variant and get label
-  function getVariantInfo(mat) {
-    if (!mat) return null;
-    const chosenKey = selectedById.get(String(mat._id));
-    if (!chosenKey) return null;
-    
-    const v = pickVariantByKey(mat, chosenKey);
-    if (!v) return null;
-
-    return { 
-        ...v, 
-        // Ensure we have a label for display
-        displayLabel: v.label || v.key || "Standard" 
-    };
-  }
-
-  // Find inside *fetched* materials (which are only the selected ones)
-  const findMatByName = (partialName) => {
-    return mats.find(m => m.name.toLowerCase().includes(partialName.toLowerCase()));
-  };
+  const mats = await Material.find({
+    _id: { $in: [...selectedById.keys()] },
+  }).lean();
 
   const items = [];
-  const perimeter = approximatePerimeterFromArea(area);
-  const wallAreaBase = perimeter * height * floors;
-  const wallArea = wallAreaBase * Number(preset.wall_exposure_factor || 1);
 
-  // ====================================================
-  // Calculations
-  // ====================================================
-
-  // 1. Concrete
-  {
-    const mat = findMatByName("Concrete");
-    const variant = getVariantInfo(mat);
-    if (mat && variant) {
-      const q = area * floors * Number(preset.concrete_m3_per_m2 || 0.12) * waste;
-      items.push(buildItem(mat.name, mat.unit, q, variant.pricePerUnit, 
-        { materialId: String(mat._id), variantKey: variant.key }, variant.displayLabel));
-    }
-  }
-
-  // 2. Steel Rebar
-  {
-    const mat = findMatByName("Steel") || findMatByName("Rebar");
-    const variant = getVariantInfo(mat);
-    if (mat && variant) {
-      const kg = area * floors * Number(preset.rebar_kg_per_m2 || 55) * waste;
-      items.push(buildItem(mat.name, "ton", kg / 1000, variant.pricePerUnit, 
-        { materialId: String(mat._id), variantKey: variant.key }, variant.displayLabel));
-    }
-  }
-
-  // 3. Blocks
-  {
-    const mat = findMatByName("Block") || findMatByName("Hollow");
-    const variant = getVariantInfo(mat);
-    if (mat && variant) {
-      const qtyPerM2 = Number(variant.quantityPerM2 || 12.5);
-      const q = wallArea * qtyPerM2 * waste;
-      items.push(buildItem(mat.name, mat.unit || "Piece", q, variant.pricePerUnit, 
-        { materialId: String(mat._id), variantKey: variant.key }, variant.displayLabel));
-    }
-  }
-
-  // 4. Paint
-  {
-    const mat = findMatByName("Paint");
-    const variant = getVariantInfo(mat);
-    if (mat && variant) {
-      const ceilingArea = area * floors;
-      const paintArea = (wallArea + ceilingArea) * coats * Number(preset.paint_factor || 0.85);
-      const qty = variant.quantityPerM2 || 1.0; 
-      const q = paintArea * qty * waste;
-      items.push(buildItem(mat.name, mat.unit || "Gallon", q, variant.pricePerUnit, 
-        { materialId: String(mat._id), variantKey: variant.key }, variant.displayLabel));
-    }
-  }
-
-  // 5. Tiles
-  {
-    const mat = findMatByName("Tile") || findMatByName("Porcelain");
-    const variant = getVariantInfo(mat);
-    if (mat && variant) {
-      const cover = Number(preset.tiles_floor_coverage || 0.8);
-      const tilesArea = area * floors * cover * 1.05;
-      const q = tilesArea * (variant.quantityPerM2 || 1) * waste;
-      items.push(buildItem(mat.name, mat.unit || "m2", q, variant.pricePerUnit, 
-        { materialId: String(mat._id), variantKey: variant.key }, variant.displayLabel));
-    }
-  }
-
-  // 6. Generic Calculation (Rest of selected materials)
-  const calculatedIds = items.map(i => i.materialId);
-  
-  for (const m of mats) {
-    if (calculatedIds.includes(String(m._id))) continue; 
-
-    const variant = getVariantInfo(m);
-    if (!variant) continue;
-
-    const qtyPerM2 = Number(variant.quantityPerM2 || 0);
+  // ======================
+  // Loop through selected materials only
+  // ======================
+  for (const mat of mats) {
+    const variantKey = selectedById.get(String(mat._id));
+    const variant = pickVariantByKey(mat, variantKey);
     
-    // Logic 1: Per m2
-    if (qtyPerM2 > 0) {
-       const q = area * floors * qtyPerM2 * waste;
-       items.push(buildItem(m.name, m.unit, q, variant.pricePerUnit, 
-        { materialId: String(m._id), variantKey: variant.key }, variant.displayLabel));
+    if (!variant) continue; // تخطي إذا لم يتم العثور على النوع
+
+    const nameLower = mat.name.toLowerCase();
+    let calculatedQty = 0;
+    let unit = mat.unit || variant.unit || "Piece";
+
+    // ----------------------------------------------------
+    // 🧠 منطق الحساب الذكي لكل مادة
+    // ----------------------------------------------------
+
+    // 1. الهيكل الأسود (Bone / Structure)
+    if (nameLower.includes("cement") || nameLower.includes("أسمنت")) {
+      // الأسمنت: تقريباً 0.35 طن لكل متر مربع بناء
+      calculatedQty = totalFloorArea * 0.35 * waste;
+      unit = "Ton";
     } 
-    // Logic 2: Per Piece/Set
-    else if (["piece", "set", "unit", "door"].includes(m.unit.toLowerCase())) {
-        const defaultFactor = 1/50; 
-        const q = Math.ceil(area * floors * defaultFactor);
-        items.push(buildItem(m.name, m.unit, q, variant.pricePerUnit, 
-            { materialId: String(m._id), variantKey: variant.key }, variant.displayLabel));
+    else if (nameLower.includes("steel") || nameLower.includes("rebar") || nameLower.includes("حديد")) {
+      // الحديد: تقريباً 50 كغم لكل متر مربع
+      calculatedQty = (totalFloorArea * 50 / 1000) * waste; 
+      unit = "Ton";
     }
-    // Logic 3: Fallback (Just 1 unit just in case)
+    else if (nameLower.includes("sand") || nameLower.includes("رمل")) {
+      // الرمل: تقريباً 0.15 متر مكعب لكل متر مربع
+      calculatedQty = totalFloorArea * 0.15 * waste;
+      unit = "m3";
+    }
+    else if (nameLower.includes("aggregate") || nameLower.includes("حصمة")) {
+      // الحصمة: تقريباً 0.12 متر مكعب لكل متر مربع
+      calculatedQty = totalFloorArea * 0.12 * waste;
+      unit = "m3";
+    }
+    else if (nameLower.includes("hollow block") || nameLower.includes("طوب")) {
+      // الطوب: يعتمد على مساحة الجدران (12.5 طوبة للمتر)
+      calculatedQty = totalWallArea * 12.5 * waste;
+      unit = "Piece";
+    }
+
+    // 2. التشطيبات الداخلية (Internal Finishes)
+    else if (nameLower.includes("porcelain") || nameLower.includes("بورسلان") || 
+             nameLower.includes("marble") || nameLower.includes("رخام")) {
+      // بلاط الأرضيات: المساحة + الهدر
+      calculatedQty = totalFloorArea * waste;
+      unit = "m2";
+    }
+    else if (nameLower.includes("paint") || nameLower.includes("دهان")) {
+      // الدهان: مساحة الجدران + السقف (تقريباً 3 أضعاف مساحة الأرضية)
+      const paintArea = (totalWallArea + totalFloorArea);
+      // الفرضية: الجالون يغطي 30 متر وجهين
+      calculatedQty = (paintArea / 30) * waste;
+      unit = "Gallon";
+    }
+    else if (nameLower.includes("gypsum") || nameLower.includes("جبس")) {
+      // الجبس: مساحة الأسقف (نفس مساحة الأرضية)
+      calculatedQty = totalFloorArea * waste;
+      unit = "Board"; // أو m2 حسب الوحدة
+    }
+    else if (nameLower.includes("internal door") || nameLower.includes("أبواب داخلية")) {
+      // الأبواب الداخلية: عدد الغرف + الحمامات
+      calculatedQty = rooms + bathrooms;
+      unit = "Piece";
+    }
+    else if (nameLower.includes("sanitary") || nameLower.includes("أطقم حمامات")) {
+      // أطقم الحمامات: عدد الحمامات
+      calculatedQty = bathrooms;
+      unit = "Piece";
+    }
+    else if (nameLower.includes("electrical switch") || nameLower.includes("أفياش")) {
+      // الأفياش: تقريباً 4 لكل غرفة
+      calculatedQty = (rooms * 4 + bathrooms * 2 + (totalFloorArea / 20)) * waste; 
+      unit = "Piece";
+    }
+    else if (nameLower.includes("lighting") || nameLower.includes("إنارة")) {
+      // الإنارة: تقريباً نقطة لكل 10 متر مربع
+      calculatedQty = (totalFloorArea / 10) * waste;
+      unit = "Piece";
+    }
+    else if (nameLower.includes("kitchen") || nameLower.includes("مطبخ")) {
+      // المطبخ: تقديري 4-6 متر طولي لكل شقة/طابق
+      calculatedQty = 5 * floors; 
+      unit = "Linear Meter";
+    }
+    else if (nameLower.includes("heating") || nameLower.includes("تدفئة")) {
+      // التدفئة: كامل المساحة
+      calculatedQty = totalFloorArea;
+      unit = "m2";
+    }
+
+    // 3. التشطيبات الخارجية (External)
+    else if (nameLower.includes("stone") || nameLower.includes("حجر")) {
+      // حجر الواجهات: مساحة الجدران الخارجية
+      calculatedQty = totalWallArea * waste;
+      unit = "m2";
+    }
+    else if (nameLower.includes("aluminum") || nameLower.includes("شبابيك")) {
+      // الشبابيك: نسبة من مساحة الجدران
+      calculatedQty = totalWallArea * preset.window_ratio;
+      unit = "m2";
+    }
+    else if (nameLower.includes("shutter") || nameLower.includes("أباجورات")) {
+      // الأباجورات: نفس مساحة الشبابيك
+      calculatedQty = totalWallArea * preset.window_ratio;
+      unit = "m2";
+    }
+    else if (nameLower.includes("main door") || nameLower.includes("باب أمان")) {
+      // باب رئيسي لكل طابق (أو شقة)
+      calculatedQty = floors;
+      unit = "Piece";
+    }
+    else if (nameLower.includes("roof insulation") || nameLower.includes("عزل أسطح")) {
+      // عزل السطح: مساحة المسقط الأفقي فقط
+      calculatedQty = roofArea * waste;
+      unit = "m2";
+    }
+    else if (nameLower.includes("water tank") || nameLower.includes("خزانات")) {
+      // خزانات مياه: 1-2 لكل طابق
+      calculatedQty = 2 * floors;
+      unit = "Piece";
+    }
+    else if (nameLower.includes("interlock") || nameLower.includes("انترلوك")) {
+      // الساحات الخارجية: تقديرياً نصف مساحة الأرض (أو حسب المدخل)
+      // سنفترض 20% من المساحة كممرات
+      calculatedQty = area * 0.20 * waste; 
+      unit = "m2";
+    }
+    
+    // 4. Fallback (أي مادة أخرى)
     else {
-        items.push(buildItem(m.name, m.unit, 1, variant.pricePerUnit, 
-            { materialId: String(m._id), variantKey: variant.key }, variant.displayLabel));
+      // افتراض كمية 1 إذا لم نعرف المعادلة
+      calculatedQty = 1; 
+    }
+
+    // إضافة البند للقائمة
+    if (calculatedQty > 0) {
+      items.push(
+        buildItem(
+          mat.name,
+          unit,
+          calculatedQty,
+          variant.pricePerUnit,
+          { materialId: mat._id, variantKey: variant.key },
+          variant.label || variant.key
+        )
+      );
     }
   }
 
-  const totalCost = items.reduce((sum, it) => sum + (Number(it.total) || 0), 0);
+  const totalCost = items.reduce((s, i) => s + i.total, 0);
 
   return {
     items,

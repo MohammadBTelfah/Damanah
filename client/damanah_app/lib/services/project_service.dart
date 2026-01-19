@@ -3,7 +3,7 @@ import 'dart:io';
 
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
-
+import 'package:flutter/foundation.dart';
 import '../services/session_service.dart';
 import '../config/api_config.dart';
 
@@ -91,7 +91,19 @@ class ProjectService {
     final decoded = _safeDecode(res.body);
 
     if (res.statusCode == 200) {
-      if (decoded is Map<String, dynamic>) return decoded;
+      if (decoded is Map<String, dynamic>) {
+        // 👇👇 أضفت لك هذا الفحص عشان تتطمن إن التعديل بالسيرفر اشتغل
+        if (decoded['owner'] != null && decoded['owner'] is Map) {
+          final img = decoded['owner']['profileImage'];
+          debugPrint("✅ Service Received Image: $img");
+        } else {
+          debugPrint("⚠️ Service Warning: Owner data is missing or incomplete");
+        }
+        // 👆👆 نهاية الفحص
+
+        return decoded;
+      }
+
       if (decoded is Map) return Map<String, dynamic>.from(decoded);
       throw Exception("Invalid project response shape: ${res.body}");
     }
@@ -148,7 +160,8 @@ class ProjectService {
     }
 
     throw Exception(
-        "(${res.statusCode}) ${data["message"] ?? "Create project failed"}");
+      "(${res.statusCode}) ${data["message"] ?? "Create project failed"}",
+    );
   }
 
   /// POST /api/projects/:id/estimate
@@ -172,7 +185,8 @@ class ProjectService {
     if (res.statusCode == 200) return data;
 
     throw Exception(
-        "(${res.statusCode}) ${data["message"] ?? "Estimate failed"}");
+      "(${res.statusCode}) ${data["message"] ?? "Estimate failed"}",
+    );
   }
 
   /// POST /api/projects/plan/analyze
@@ -194,7 +208,8 @@ class ProjectService {
     if (code == "AI_UNAVAILABLE") throw Exception("AI_UNAVAILABLE");
 
     throw Exception(
-        "(${res.statusCode}) ${map["message"] ?? "Analyze plan failed"}");
+      "(${res.statusCode}) ${map["message"] ?? "Analyze plan failed"}",
+    );
   }
 
   /// GET /api/materials
@@ -235,8 +250,9 @@ class ProjectService {
   /// GET /api/projects/:id/estimate/download
   Future<String> downloadEstimateToFile({required String projectId}) async {
     final token = await _mustToken();
-    final uri =
-        Uri.parse(ApiConfig.join("/api/projects/$projectId/estimate/download"));
+    final uri = Uri.parse(
+      ApiConfig.join("/api/projects/$projectId/estimate/download"),
+    );
 
     final res = await http
         .get(uri, headers: _authHeaders(token))
@@ -258,10 +274,7 @@ class ProjectService {
     final uri = Uri.parse(ApiConfig.join("/api/projects/$projectId/publish"));
 
     final res = await http
-        .patch(
-          uri,
-          headers: _authHeaders(token, json: true),
-        )
+        .patch(uri, headers: _authHeaders(token, json: true))
         .timeout(const Duration(seconds: 30));
 
     if (res.statusCode == 200) return;
@@ -274,8 +287,9 @@ class ProjectService {
   // =========================
   Future<List<dynamic>> getContractors() async {
     final token = await _mustToken();
-    final uri =
-        Uri.parse(ApiConfig.join("/api/projects/contractors/available"));
+    final uri = Uri.parse(
+      ApiConfig.join("/api/projects/contractors/available"),
+    );
 
     final res = await http
         .get(uri, headers: _authHeaders(token))
@@ -292,8 +306,10 @@ class ProjectService {
     throw Exception("(${res.statusCode}) ${_errMsg(res)}");
   }
 
-  Future<void> assignContractor(
-      {required String projectId, required String contractorId}) async {
+  Future<void> assignContractor({
+    required String projectId,
+    required String contractorId,
+  }) async {
     final token = await _mustToken();
     final uri = Uri.parse(ApiConfig.join("/api/projects/$projectId/assign"));
 
@@ -310,8 +326,10 @@ class ProjectService {
     throw Exception("(${res.statusCode}) ${_errMsg(res)}");
   }
 
-  Future<void> shareProject(
-      {required String projectId, required String contractorId}) async {
+  Future<void> shareProject({
+    required String projectId,
+    required String contractorId,
+  }) async {
     final token = await _mustToken();
     final uri = Uri.parse(ApiConfig.join("/api/projects/$projectId/share"));
 
@@ -371,10 +389,7 @@ class ProjectService {
         .post(
           uri,
           headers: _authHeaders(token, json: true),
-          body: jsonEncode({
-            "price": price,
-            "message": (message ?? "").trim(),
-          }),
+          body: jsonEncode({"price": price, "message": (message ?? "").trim()}),
         )
         .timeout(const Duration(seconds: 30));
 
@@ -473,7 +488,9 @@ class ProjectService {
   /// GET /api/projects/client/my-offers  (Client only)
   Future<List<dynamic>> getMyOffers() async {
     final token = await _mustToken();
-    final uri = Uri.parse(ApiConfig.join("/api/projects/client/my-offers"));
+
+    // ✅ للمقاول (My Submitted Offers)
+    final uri = Uri.parse(ApiConfig.join("/api/projects/contractor/my-offers"));
 
     final res = await http
         .get(uri, headers: _authHeaders(token))
@@ -493,7 +510,9 @@ class ProjectService {
   Future<List<dynamic>> getRecentOffers() async {
     try {
       final token = await _mustToken();
-      final uri = Uri.parse(ApiConfig.join("/api/projects/client/recent-offers"));
+      final uri = Uri.parse(
+        ApiConfig.join("/api/projects/client/recent-offers"),
+      );
 
       final res = await http
           .get(uri, headers: _authHeaders(token))
@@ -514,7 +533,8 @@ class ProjectService {
   /// GET /api/projects/contractor/my
   Future<List<dynamic>> getMyProjectsForContractor() async {
     final token = await _mustToken();
-    final uri = Uri.parse(ApiConfig.join("/api/projects/contractor/my"));
+    // تأكد أن الرابط يطابق الراوت في السيرفر
+    final uri = Uri.parse(ApiConfig.join("/api/projects/contractor/my")); // أو my-projects حسب السيرفر
 
     final res = await http
         .get(uri, headers: _authHeaders(token))
@@ -524,15 +544,29 @@ class ProjectService {
 
     if (res.statusCode == 200) {
       if (decoded is Map && decoded["projects"] is List) {
-        return List.from(decoded["projects"]);
+        final list = List.from(decoded["projects"]);
+
+        // 👇👇 كود الفحص: طباعة بيانات أول مشروع للتأكد من وجود الصورة
+        if (list.isNotEmpty) {
+          final firstProject = list.first;
+          final owner = firstProject['owner'];
+          if (owner != null && owner is Map) {
+             debugPrint("🔍 [MyProjects] Owner Image: ${owner['profileImage']}");
+          } else {
+             debugPrint("⚠️ [MyProjects] Owner data is missing or not populated!");
+          }
+        }
+        // 👆👆 نهاية الفحص
+
+        return list;
       }
+      
       if (decoded is List) return decoded;
       return [];
     }
 
     throw Exception("(${res.statusCode}) ${_errMsg(res)}");
   }
-
   // =========================
   // 🔥 NEW: Get client-related contractors only
   // GET /api/clients/my-contractors
@@ -566,7 +600,8 @@ class ProjectService {
       }
 
       // If API returns object with list inside
-      if (decoded is Map && (decoded['data'] is List || decoded['contractors'] is List)) {
+      if (decoded is Map &&
+          (decoded['data'] is List || decoded['contractors'] is List)) {
         final list = decoded['data'] ?? decoded['contractors'];
         return (list as List).map((e) {
           if (e is Map) {

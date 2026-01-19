@@ -129,14 +129,23 @@ exports.createProject = async (req, res) => {
       return res.status(400).json({ message: "Invalid floors" });
     }
 
+    // معالجة مستوى التشطيب
     const level = String(finishingLevel || "basic").toLowerCase().trim();
     const allowedLevels = ["basic", "medium", "premium"];
     const safeLevel = allowedLevels.includes(level) ? level : "basic";
 
+    // ✅ معالجة نوع البناء (بدون تحويل House إلى Villa)
     const bt = String(buildingType || "House").toLowerCase().trim();
-    const allowedTypes = ["House", "villa", "commercial", "house"];
-    let safeBuildingType = allowedTypes.includes(bt) ? bt : "House";
-    if (safeBuildingType === "house") safeBuildingType = "villa";
+    let safeBuildingType = "House"; // القيمة الافتراضية (House)
+
+    if (bt === "villa") {
+      safeBuildingType = "villa";
+    } else if (bt === "commercial") {
+      safeBuildingType = "commercial";
+    } else {
+      // أي شيء آخر (بما فيه house) سيصبح House
+      safeBuildingType = "House";
+    }
 
     const safePlanAnalysis =
       typeof sanitizePlanAnalysis === "function"
@@ -151,7 +160,7 @@ exports.createProject = async (req, res) => {
       area: areaNum,
       floors: floorsNum,
       finishingLevel: safeLevel,
-      buildingType: safeBuildingType,
+      buildingType: safeBuildingType, // ✅ سيحفظ القيمة الصحيحة الآن
       planAnalysis: safePlanAnalysis,
       status: "draft",
     });
@@ -167,7 +176,6 @@ exports.createProject = async (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 };
-
 // =======================
 // Publish project
 // PATCH /api/projects/:projectId/publish
@@ -243,7 +251,8 @@ exports.getMyProjectsForContractor = async (req, res) => {
     const projects = await Project.find({
       contractor: contractorId,
     })
-      .populate("owner", "name email")
+      // ✅ التعديل هنا: أضفنا profileImage و phone
+      .populate("owner", "name email profileImage phone")
       .sort({ createdAt: -1 });
 
     return res.json({ projects });
@@ -293,6 +302,9 @@ exports.getOpenProjects = async (req, res) => {
 // =======================
 // Get project by ID
 // =======================
+// =======================
+// Get project by ID
+// =======================
 exports.getProjectById = async (req, res) => {
   try {
     const { projectId } = req.params;
@@ -300,7 +312,8 @@ exports.getProjectById = async (req, res) => {
       return res.status(404).json({ message: "Project not found" });
     }
     const project = await Project.findById(projectId)
-      .populate("owner", "name email")
+      // ✅ التعديل: أضفنا profileImage و phone
+      .populate("owner", "name email profileImage phone") 
       .populate(
         "contractor",
         "_id name email phone profileImage contractorStatus isActive"
@@ -452,6 +465,9 @@ exports.getProjectOffers = async (req, res) => {
 // =======================
 // Accept offer
 // =======================
+// =======================
+// Accept offer
+// =======================
 exports.acceptOffer = async (req, res) => {
   try {
     const { projectId, offerId } = req.params;
@@ -468,8 +484,23 @@ exports.acceptOffer = async (req, res) => {
     project.contractor = offer.contractor;
     project.status = "in_progress";
 
+    // ✅ Persist the agreed price on the project itself so the apps can show
+    // "Project Price" after the client accepts an offer.
+    project.agreedPrice = offer.price;
+
+    // Optional: keep a lightweight snapshot of the accepted offer
+    // (helps the frontend if you ever change field names).
+    project.acceptedOffer = {
+      contractor: offer.contractor,
+      price: offer.price,
+      message: offer.message || "",
+      offerId: offer._id,
+      acceptedAt: new Date(),
+    };
+
     project.offers.forEach((o) => {
-      o.status = o._id.toString() === offerId.toString() ? "accepted" : "rejected";
+      o.status =
+        o._id.toString() === offerId.toString() ? "accepted" : "rejected";
     });
 
     await project.save();
@@ -841,5 +872,77 @@ exports.getMyContractors = async (req, res) => {
   } catch (err) {
     console.error("getMyContractors error:", err);
     return res.status(500).json({ message: "Server error" });
+  }
+};
+// =======================
+// Contractor - My Submitted Offers (across all projects)
+// GET /api/projects/contractor/my-offers
+// =======================
+exports.getContractorMyOffers = async (req, res) => {
+  try {
+    const contractorId = req.user._id.toString();
+
+    // نجيب المشاريع اللي فيها offer للمقاول الحالي
+    const projects = await Project.find({
+      "offers.contractor": req.user._id,
+    })
+      .select("title offers createdAt")
+      .populate({
+        path: "owner",
+        select: "name profileImage",
+      })
+      .populate({
+        path: "offers.contractor",
+        select: "name profileImage",
+      })
+      .sort({ createdAt: -1 });
+
+    const baseUrl = getBaseUrl(req);
+
+    const myOffers = [];
+
+    projects.forEach((project) => {
+      const p = project.toObject();
+
+      // owner image full url (اختياري)
+      if (p.owner && p.owner.profileImage) {
+        p.owner.profileImage = p.owner.profileImage.startsWith("http")
+          ? p.owner.profileImage
+          : `${baseUrl}${p.owner.profileImage.replaceAll("\\", "/")}`;
+      }
+
+      (p.offers || []).forEach((offer) => {
+        // بس عروض المقاول الحالي
+        const offerContractorId =
+          offer.contractor && offer.contractor._id
+            ? offer.contractor._id.toString()
+            : offer.contractor?.toString();
+
+        if (offerContractorId !== contractorId) return;
+
+        myOffers.push({
+          offerId: offer._id,
+          projectId: p._id,
+          projectTitle: p.title,
+
+          price: offer.price,
+          message: offer.message || "",
+          status: offer.status || "pending",
+          createdAt: offer.createdAt,
+
+          // معلومات صاحب المشروع (للواجهة إذا بدك)
+          ownerName: p.owner?.name || "Unknown",
+          ownerImage: p.owner?.profileImage || null,
+        });
+      });
+    });
+
+    // ترتيب من الأحدث للأقدم
+    myOffers.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    return res.json(myOffers);
+  } catch (err) {
+    console.error("getContractorMyOffers error:", err);
+    return res.status(500).json({ message: "Server error", error: err.message });
   }
 };
