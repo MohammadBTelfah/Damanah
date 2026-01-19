@@ -41,7 +41,7 @@ dependencies:
   url_launcher: ^6.3.2
   carousel_slider: ^5.1.1
   logger: ^1.0.0
-
+  printing: ^5.13.0
 
 
 
