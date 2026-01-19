@@ -17,7 +17,10 @@ const app = express();
 // 🟢 (2) باقي الـ Middlewares تأتي بعد الصور
 // ============================================================
 
-app.use(cors());
+app.use(cors({
+  origin: ['https://damanah-admin.vercel.app', 'http://localhost:3000'], // ضع رابط Vercel هنا
+  credentials: true
+}));
 app.use(express.json());
 
 // Routes imports
