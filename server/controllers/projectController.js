@@ -843,3 +843,75 @@ exports.getMyContractors = async (req, res) => {
     return res.status(500).json({ message: "Server error" });
   }
 };
+// =======================
+// Contractor - My Submitted Offers (across all projects)
+// GET /api/projects/contractor/my-offers
+// =======================
+exports.getContractorMyOffers = async (req, res) => {
+  try {
+    const contractorId = req.user._id.toString();
+
+    // نجيب المشاريع اللي فيها offer للمقاول الحالي
+    const projects = await Project.find({
+      "offers.contractor": req.user._id,
+    })
+      .select("title offers createdAt")
+      .populate({
+        path: "owner",
+        select: "name profileImage",
+      })
+      .populate({
+        path: "offers.contractor",
+        select: "name profileImage",
+      })
+      .sort({ createdAt: -1 });
+
+    const baseUrl = getBaseUrl(req);
+
+    const myOffers = [];
+
+    projects.forEach((project) => {
+      const p = project.toObject();
+
+      // owner image full url (اختياري)
+      if (p.owner && p.owner.profileImage) {
+        p.owner.profileImage = p.owner.profileImage.startsWith("http")
+          ? p.owner.profileImage
+          : `${baseUrl}${p.owner.profileImage.replaceAll("\\", "/")}`;
+      }
+
+      (p.offers || []).forEach((offer) => {
+        // بس عروض المقاول الحالي
+        const offerContractorId =
+          offer.contractor && offer.contractor._id
+            ? offer.contractor._id.toString()
+            : offer.contractor?.toString();
+
+        if (offerContractorId !== contractorId) return;
+
+        myOffers.push({
+          offerId: offer._id,
+          projectId: p._id,
+          projectTitle: p.title,
+
+          price: offer.price,
+          message: offer.message || "",
+          status: offer.status || "pending",
+          createdAt: offer.createdAt,
+
+          // معلومات صاحب المشروع (للواجهة إذا بدك)
+          ownerName: p.owner?.name || "Unknown",
+          ownerImage: p.owner?.profileImage || null,
+        });
+      });
+    });
+
+    // ترتيب من الأحدث للأقدم
+    myOffers.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    return res.json(myOffers);
+  } catch (err) {
+    console.error("getContractorMyOffers error:", err);
+    return res.status(500).json({ message: "Server error", error: err.message });
+  }
+};

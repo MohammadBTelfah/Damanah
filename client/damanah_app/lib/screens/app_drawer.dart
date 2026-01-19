@@ -6,6 +6,8 @@ import 'create_project_flow.dart'; // ✅ صفحة إنشاء مشروع
 import 'my_projects_page.dart'; // ✅ صفحة مشاريعي
 import 'contractors_page.dart'; // ✅ صفحة المقاولين
 import 'contracts_page.dart';
+import 'my_offers_page.dart'; // ✅ صفحة عروضي
+import 'my_contracts_page.dart'; // ✅ صفحة عقودي
 
 class AppDrawer extends StatefulWidget {
   final Map<String, dynamic> user;
@@ -218,12 +220,12 @@ class _AppDrawerState extends State<AppDrawer> {
                     _item(
                       Icons.assignment_outlined,
                       "My Offers",
-                      () => _showSnack("Offers page coming soon"),
+                      () => _navTo( const MyOffersPage()),
                     ),
                     _item(
                       Icons.description_outlined,
                       "Contracts",
-                      () => _navTo(const ContractsPage()),
+                      () => _navTo(const MyContractsPage()),
                     ),
                   ],
                 ],

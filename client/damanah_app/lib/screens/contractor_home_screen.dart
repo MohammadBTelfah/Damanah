@@ -6,9 +6,10 @@ import '../services/session_service.dart';
 import '../services/project_service.dart';
 import '../services/contract_service.dart';
 import '../services/jcca_news_service.dart';
+import '../services/notification_service.dart';
 import 'app_drawer.dart';
 import 'contractor_project_details_page.dart';
-import 'contractor_stats_pages.dart'; 
+import 'contractor_stats_pages.dart';
 import 'my_contracts_page.dart';
 import 'my_offers_page.dart';
 import 'contractor_notifications_page.dart'; // ✅ الاستدعاء الجديد
@@ -37,7 +38,7 @@ class ContractorHomeScreen extends StatefulWidget {
 
 class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
-  
+
   final ProjectService _projectService = ProjectService();
   final ContractService _contractService = ContractService();
   final JccaNewsService _newsService = JccaNewsService();
@@ -53,6 +54,10 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
   int _contractsCount = 0;
   bool _loadingStats = true;
 
+  // ✅✅✅ (تعديل) عداد الإشعارات غير المقروءة
+  int _unreadNotifications = 0;
+  bool _loadingNotiCount = true;
+
   // للتحريك التلقائي للأخبار
   final PageController _newsPageController = PageController(viewportFraction: 0.85);
   int _currentNewsPage = 0;
@@ -64,6 +69,7 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
     _syncUserAndLoad();
     _loadNews();
     _loadDashboardStats();
+    _loadNotificationCount(); // ✅✅✅ (تعديل) تحميل عداد الإشعارات
   }
 
   @override
@@ -109,8 +115,8 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
     } catch (_) {}
 
     try {
-       final res = await _projectService.getMyOffers(); 
-       offers = res.length;
+      final res = await _projectService.getMyOffers();
+      offers = res.length;
     } catch (_) {}
 
     if (!mounted) return;
@@ -120,6 +126,29 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
       _offersCount = offers;
       _loadingStats = false;
     });
+  }
+
+  // ✅✅✅ (تعديل) تحميل عداد الإشعارات (غير المقروءة)
+  Future<void> _loadNotificationCount() async {
+    if (!mounted) return;
+    setState(() => _loadingNotiCount = true);
+
+    try {
+      final list = await NotificationService().getMyNotifications(); // لازم تكون موجودة
+      final unread = list.where((n) => (n is Map && n['read'] == false)).length;
+
+      if (!mounted) return;
+      setState(() {
+        _unreadNotifications = unread;
+        _loadingNotiCount = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _unreadNotifications = 0;
+        _loadingNotiCount = false;
+      });
+    }
   }
 
   void _loadNews() {
@@ -159,6 +188,7 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
     await _syncUserAndLoad();
     _loadNews();
     await _loadDashboardStats();
+    await _loadNotificationCount(); // ✅✅✅ (تعديل) يحدث العداد عند السحب
   }
 
   Future<void> _openUrl(String url) async {
@@ -182,11 +212,11 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
   Widget build(BuildContext context) {
     const bgTop = Color(0xFF0F261F);
     const bgBottom = Color(0xFF0B1D17);
-    
+
     final user = _userLocal;
     final name = (user?["name"] ?? "Contractor").toString();
     final profilePath = (user?["profileImage"] ?? "").toString();
-    
+
     final profileUrl = (profilePath.isNotEmpty && !profilePath.startsWith("http"))
         ? _joinUrl(widget.baseUrl, profilePath)
         : (profilePath.startsWith("http") ? profilePath : null);
@@ -242,15 +272,44 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
                           ),
                         ),
                         const Spacer(),
-                        // ✅ تم تفعيل الزر هنا
-                        IconButton(
-                          onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(builder: (_) => const ContractorNotificationsPage()),
-                            );
-                          }, 
-                          icon: const Icon(Icons.notifications_outlined, color: Colors.white, size: 28),
+
+                        // ✅✅✅ (تعديل) جرس الإشعارات + عداد
+                        Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            IconButton(
+                              onPressed: () async {
+                                await Navigator.push(
+                                  context,
+                                  MaterialPageRoute(builder: (_) => const ContractorNotificationsPage()),
+                                );
+                                _loadNotificationCount(); // يحدث العداد بعد الرجوع
+                              },
+                              icon: const Icon(Icons.notifications_outlined, color: Colors.white, size: 28),
+                            ),
+
+                            if (!_loadingNotiCount && _unreadNotifications > 0)
+                              Positioned(
+                                right: 6,
+                                top: 6,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF9EE7B7), // ✅ أخضر
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(color: const Color(0xFF0F261F), width: 2),
+                                  ),
+                                  child: Text(
+                                    _unreadNotifications > 99 ? "99+" : "$_unreadNotifications",
+                                    style: const TextStyle(
+                                      color: Color(0xFF0F261F),
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
                         ),
                       ],
                     ),
@@ -282,7 +341,7 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  
+
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 20),
                     child: Row(
@@ -363,7 +422,7 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
                           return const Center(child: CircularProgressIndicator(color: Color(0xFF9EE7B7)));
                         }
                         final newsList = snap.data ?? [];
-                        
+
                         if (newsList.isEmpty) {
                           return Container(
                             margin: const EdgeInsets.symmetric(horizontal: 20),
@@ -378,14 +437,14 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
                         return PageView.builder(
                           controller: _newsPageController,
                           itemCount: newsList.length,
-                          padEnds: false, 
+                          padEnds: false,
                           itemBuilder: (context, index) {
                             final newsItem = newsList[index];
                             return Padding(
                               padding: EdgeInsets.only(
-                                left: 20, 
-                                right: index == newsList.length - 1 ? 20 : 0
-                              ), 
+                                left: 20,
+                                right: index == newsList.length - 1 ? 20 : 0,
+                              ),
                               child: _NewsCard(
                                 title: newsItem['title'] ?? "News Update",
                                 link: newsItem['link'] ?? "",
@@ -397,7 +456,7 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
                       },
                     ),
                   ),
-                  
+
                   const SizedBox(height: 40),
                 ],
               ),
@@ -433,7 +492,7 @@ class _OverviewCard extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(20),
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 8), 
+          padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 8),
           decoration: BoxDecoration(
             color: const Color(0xFF1B3A35),
             borderRadius: BorderRadius.circular(20),
@@ -498,7 +557,7 @@ class _ProjectsList extends StatelessWidget {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: LinearProgressIndicator(color: Color(0xFF9EE7B7), backgroundColor: Colors.white10));
         }
-        
+
         final projects = snapshot.data ?? [];
 
         if (projects.isEmpty) {
@@ -525,7 +584,7 @@ class _ProjectsList extends StatelessWidget {
           separatorBuilder: (_, __) => const SizedBox(height: 12),
           itemBuilder: (context, index) {
             final project = projects[index];
-            
+
             final status = project['status'] ?? "open";
             final isDirectRequest = status == 'pending';
 
@@ -570,8 +629,8 @@ class _ProjectCard extends StatelessWidget {
           decoration: BoxDecoration(
             color: const Color(0xFF1B3A35),
             borderRadius: BorderRadius.circular(16),
-            border: isDirectRequest 
-                ? Border.all(color: const Color(0xFFFFA726).withOpacity(0.5)) 
+            border: isDirectRequest
+                ? Border.all(color: const Color(0xFFFFA726).withOpacity(0.5))
                 : Border.all(color: Colors.white.withOpacity(0.08)),
           ),
           child: Row(
@@ -579,14 +638,14 @@ class _ProjectCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: isDirectRequest 
-                      ? const Color(0xFFFFA726).withOpacity(0.15) 
+                  color: isDirectRequest
+                      ? const Color(0xFFFFA726).withOpacity(0.15)
                       : Colors.white.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
-                  isDirectRequest ? Icons.person_add_alt_1 : Icons.assignment_outlined, 
-                  color: isDirectRequest ? const Color(0xFFFFA726) : const Color(0xFF9EE7B7)
+                  isDirectRequest ? Icons.person_add_alt_1 : Icons.assignment_outlined,
+                  color: isDirectRequest ? const Color(0xFFFFA726) : const Color(0xFF9EE7B7),
                 ),
               ),
               const SizedBox(width: 16),
@@ -662,12 +721,12 @@ class _NewsCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: Colors.white.withOpacity(0.08)),
           boxShadow: [
-             BoxShadow(
-                color: Colors.black.withOpacity(0.1),
-                blurRadius: 8,
-                offset: const Offset(0, 4),
-              )
-          ]
+            BoxShadow(
+              color: Colors.black.withOpacity(0.1),
+              blurRadius: 8,
+              offset: const Offset(0, 4),
+            )
+          ],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -692,20 +751,20 @@ class _NewsCard extends StatelessWidget {
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
-                color: Colors.white, 
-                fontWeight: FontWeight.bold, 
-                fontSize: 15, 
-                height: 1.4
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: 15,
+                height: 1.4,
               ),
             ),
             const SizedBox(height: 8),
             const Text(
-              "Read full article", 
+              "Read full article",
               style: TextStyle(
-                color: Color(0xFF9EE7B7), 
-                fontSize: 12, 
-                fontWeight: FontWeight.w600
-              )
+                color: Color(0xFF9EE7B7),
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ],
         ),

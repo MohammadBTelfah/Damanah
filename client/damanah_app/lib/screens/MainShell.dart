@@ -7,8 +7,10 @@ import '../config/api_config.dart';
 import 'client_home_screen.dart';
 import 'contractor_home_screen.dart';
 import 'profile_screen.dart';
-import 'my_projects_page.dart'; 
-import 'contractors_page.dart'; 
+import 'my_projects_page.dart';
+import 'contractors_page.dart';
+import 'my_offers_page.dart';
+import 'contractor_stats_pages.dart'; // فيها MyWorksPage
 
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
@@ -60,21 +62,41 @@ class _MainShellState extends State<MainShell> {
           baseUrl: baseUrl,
           onRefreshUser: _loadUser,
         ),
-        const _Placeholder(title: "My Works"), // صفحة مشاريع المقاول
-        const _Placeholder(title: "Offers"),   // صفحة العروض المقدمة
+        const MyWorksPage(),
+        const MyOffersPage(), // صفحة العروض المقدمة
         if (_user != null)
-          ProfileScreen(user: _user!, baseUrl: baseUrl, isRoot: true, onRefreshUser: _loadUser)
+          ProfileScreen(
+            user: _user!,
+            baseUrl: baseUrl,
+            isRoot: true,
+            onRefreshUser: _loadUser,
+          )
         else
           const _LoadingPage(),
       ];
 
       destinations = const [
-        NavigationDestination(icon: Icon(Icons.grid_view_outlined), selectedIcon: Icon(Icons.grid_view_rounded), label: "Dashboard"),
-        NavigationDestination(icon: Icon(Icons.assignment_outlined), selectedIcon: Icon(Icons.assignment_rounded), label: "Works"),
-        NavigationDestination(icon: Icon(Icons.local_offer_outlined), selectedIcon: Icon(Icons.local_offer_rounded), label: "Offers"),
-        NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person_rounded), label: "Profile"),
+        NavigationDestination(
+          icon: Icon(Icons.grid_view_outlined),
+          selectedIcon: Icon(Icons.grid_view_rounded),
+          label: "Dashboard",
+        ),
+        NavigationDestination(
+          icon: Icon(Icons.assignment_outlined),
+          selectedIcon: Icon(Icons.assignment_rounded),
+          label: "Works",
+        ),
+        NavigationDestination(
+          icon: Icon(Icons.local_offer_outlined),
+          selectedIcon: Icon(Icons.local_offer_rounded),
+          label: "Offers",
+        ),
+        NavigationDestination(
+          icon: Icon(Icons.person_outline),
+          selectedIcon: Icon(Icons.person_rounded),
+          label: "Profile",
+        ),
       ];
-
     } else {
       // 👤 إعدادات العميل (Client Shell)
       pages = [
@@ -87,16 +109,37 @@ class _MainShellState extends State<MainShell> {
         const MyProjectsPage(), // صفحة مشاريع العميل
         const ContractorsPage(), // صفحة البحث عن مقاولين
         if (_user != null)
-          ProfileScreen(user: _user!, baseUrl: baseUrl, isRoot: true, onRefreshUser: _loadUser)
+          ProfileScreen(
+            user: _user!,
+            baseUrl: baseUrl,
+            isRoot: true,
+            onRefreshUser: _loadUser,
+          )
         else
           const _LoadingPage(),
       ];
 
       destinations = const [
-        NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home_rounded), label: "Home"),
-        NavigationDestination(icon: Icon(Icons.folder_copy_outlined), selectedIcon: Icon(Icons.folder_copy_rounded), label: "Projects"),
-        NavigationDestination(icon: Icon(Icons.engineering_outlined), selectedIcon: Icon(Icons.engineering_rounded), label: "Contractors"),
-        NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person_rounded), label: "Profile"),
+        NavigationDestination(
+          icon: Icon(Icons.home_outlined),
+          selectedIcon: Icon(Icons.home_rounded),
+          label: "Home",
+        ),
+        NavigationDestination(
+          icon: Icon(Icons.folder_copy_outlined),
+          selectedIcon: Icon(Icons.folder_copy_rounded),
+          label: "Projects",
+        ),
+        NavigationDestination(
+          icon: Icon(Icons.engineering_outlined),
+          selectedIcon: Icon(Icons.engineering_rounded),
+          label: "Contractors",
+        ),
+        NavigationDestination(
+          icon: Icon(Icons.person_outline),
+          selectedIcon: Icon(Icons.person_rounded),
+          label: "Profile",
+        ),
       ];
     }
 
@@ -104,10 +147,10 @@ class _MainShellState extends State<MainShell> {
 
     return Scaffold(
       backgroundColor: const Color(0xFF0F261F),
-      
+
       // ✅ عرض الصفحة المناسبة حسب الدور والفهرس
       body: IndexedStack(index: _index, children: pages),
-      
+
       // ✅ عرض البار السفلي المناسب حسب الدور
       bottomNavigationBar: NavigationBarTheme(
         data: NavigationBarThemeData(
@@ -116,10 +159,16 @@ class _MainShellState extends State<MainShell> {
           labelTextStyle: WidgetStateProperty.resolveWith((states) {
             if (states.contains(WidgetState.selected)) {
               return const TextStyle(
-                  color: Color(0xFF9EE7B7), fontSize: 12, fontWeight: FontWeight.bold);
+                color: Color(0xFF9EE7B7),
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              );
             }
             return const TextStyle(
-                color: Colors.white60, fontSize: 12, fontWeight: FontWeight.w500);
+              color: Colors.white60,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+            );
           }),
           iconTheme: WidgetStateProperty.resolveWith((states) {
             if (states.contains(WidgetState.selected)) {
@@ -129,7 +178,7 @@ class _MainShellState extends State<MainShell> {
           }),
         ),
         child: NavigationBar(
-          height: 70, 
+          height: 70,
           elevation: 0,
           selectedIndex: _index,
           onDestinationSelected: (i) => setState(() => _index = i),
@@ -160,7 +209,11 @@ class _Placeholder extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.construction, size: 60, color: Colors.white.withOpacity(0.2)),
+            Icon(
+              Icons.construction,
+              size: 60,
+              color: Colors.white.withOpacity(0.2),
+            ),
             const SizedBox(height: 16),
             Text(
               "$title\n(Coming Soon)",

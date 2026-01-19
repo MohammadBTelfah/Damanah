@@ -95,6 +95,14 @@ router.post(
 );
 
 router.get(
+  "/contractor/my-offers",
+  protect,
+  contractorOnly,
+  projectController.getContractorMyOffers
+);
+
+
+router.get(
   "/:projectId/offers",
   protect,
   clientOnly,
