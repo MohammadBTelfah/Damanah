@@ -133,9 +133,9 @@ exports.createProject = async (req, res) => {
     const allowedLevels = ["basic", "medium", "premium"];
     const safeLevel = allowedLevels.includes(level) ? level : "basic";
 
-    const bt = String(buildingType || "apartment").toLowerCase().trim();
-    const allowedTypes = ["apartment", "villa", "commercial", "house"];
-    let safeBuildingType = allowedTypes.includes(bt) ? bt : "apartment";
+    const bt = String(buildingType || "House").toLowerCase().trim();
+    const allowedTypes = ["House", "villa", "commercial", "house"];
+    let safeBuildingType = allowedTypes.includes(bt) ? bt : "House";
     if (safeBuildingType === "house") safeBuildingType = "villa";
 
     const safePlanAnalysis =
