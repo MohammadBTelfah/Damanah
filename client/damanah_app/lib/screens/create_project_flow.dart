@@ -821,7 +821,7 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                         Text(
+                          Text(
                            name, 
                            style: TextStyle(
                              color: isChecked ? Colors.white : Colors.white54, 
@@ -829,10 +829,10 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
                              fontSize: 15,
                            ),
                            maxLines: 1, overflow: TextOverflow.ellipsis
-                         ),
-                         const SizedBox(height: 8),
-                         
-                         SizedBox(
+                          ),
+                          const SizedBox(height: 8),
+                          
+                          SizedBox(
                            height: 44,
                            child: DropdownButtonFormField<String>(
                             value: current,
@@ -865,7 +865,7 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
                               setState(() => _selectedVariant[id] = v);
                             },
                           ),
-                         ),
+                          ),
                       ],
                     ),
                   ),
