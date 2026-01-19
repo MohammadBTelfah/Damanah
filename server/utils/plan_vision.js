@@ -1,22 +1,14 @@
 // utils/plan_vision.js
-const fs = require("fs");
-const path = require("path");
 const OpenAI = require("openai");
 
+// تأكد أن OPENAI_API_KEY موجود في Environment Variables على Render
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-function guessMime(filePath) {
-  const ext = path.extname(filePath).toLowerCase();
-  if (ext === ".png") return "image/png";
-  if (ext === ".webp") return "image/webp";
-  return "image/jpeg"; // jpg/jpeg default
-}
-
-async function analyzeFloorPlanImage(filePath) {
-  const mime = guessMime(filePath);
-  const b64 = fs.readFileSync(filePath, { encoding: "base64" });
-  const dataUrl = `data:${mime};base64,${b64}`;
-
+/**
+ * تحليل مخطط الأرضية باستخدام OpenAI Vision
+ * @param {string} imageUrl - رابط الصورة القادم من Cloudinary أو Base64
+ */
+async function analyzeFloorPlanImage(imageUrl) {
   const prompt = `
 You are a professional architectural floor plan analyzer.
 Extract information from the floor plan image and return STRICT JSON only.
@@ -44,37 +36,34 @@ Rules:
 - JSON only. No markdown. No extra text.
 `;
 
-  // الصور كـ input: إما URL أو Base64 data URL :contentReference[oaicite:1]{index=1}
-  const resp = await openai.responses.create({
-    model: "gpt-4o-mini", // سريع ورخيص ويدعم صور :contentReference[oaicite:2]{index=2}
-    input: [
-      {
-        role: "user",
-        content: [
-          { type: "input_text", text: prompt },
-          { type: "input_image", image_url: dataUrl },
-        ],
-      },
-    ],
-  });
-
-  // استخراج النص النهائي
-  const outText =
-    resp.output_text ||
-    (resp.output?.[0]?.content || [])
-      .map((c) => c.text)
-      .filter(Boolean)
-      .join("\n");
-
-  let json;
   try {
-    json = JSON.parse(outText);
-  } catch (e) {
-    // إذا طلع نص مش JSON (نادر) رجّع خطأ واضح
-    throw new Error("Vision returned non-JSON output. Raw: " + outText);
-  }
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini", // يدعم تحليل الصور بكفاءة عالية وتكلفة منخفضة
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: prompt },
+            {
+              type: "image_url",
+              image_url: {
+                url: imageUrl, // نمرر الرابط القادم من Cloudinary مباشرة
+              },
+            },
+          ],
+        },
+      ],
+      response_format: { type: "json_object" }, // نضمن أن النتيجة JSON دائماً
+      max_tokens: 1000,
+    });
 
-  return json;
+    const outText = response.choices[0].message.content;
+    return JSON.parse(outText);
+
+  } catch (e) {
+    console.error("Vision Analysis Error:", e);
+    throw new Error("Failed to analyze plan image: " + e.message);
+  }
 }
 
 module.exports = { analyzeFloorPlanImage };
