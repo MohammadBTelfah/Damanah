@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../services/project_service.dart';
 import '../services/session_service.dart';
+import '../services/contract_service.dart';
 
 class ContractorProjectDetailsPage extends StatefulWidget {
   final String projectId;
@@ -19,6 +21,7 @@ class ContractorProjectDetailsPage extends StatefulWidget {
 class _ContractorProjectDetailsPageState
     extends State<ContractorProjectDetailsPage> {
   final ProjectService _service = ProjectService();
+  final ContractService _contractService = ContractService();
 
   bool _loading = true;
   String? _error;
@@ -31,6 +34,10 @@ class _ContractorProjectDetailsPageState
   bool _submittingOffer = false;
 
   Map<String, dynamic>? _myOfferCache;
+
+  // ✅ عقد المشروع الحالي (إذا موجود)
+  Map<String, dynamic>? _myContract;
+  bool _loadingContract = false;
 
   @override
   void initState() {
@@ -72,10 +79,51 @@ class _ContractorProjectDetailsPageState
       }
 
       setState(() => _project = p);
+
+      // ✅ إذا المشروع صار بعد approve (مش open) نحاول نجيب العقد
+      await _loadMyContractIfNeeded(p);
     } catch (e) {
       setState(() => _error = e.toString());
     } finally {
       if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _loadMyContractIfNeeded(Map<String, dynamic> p) async {
+    final status = (p["status"] ?? "").toString().toLowerCase().trim();
+    if (status == "open") {
+      // لسا ما في approve
+      setState(() => _myContract = null);
+      return;
+    }
+
+    if (_loadingContract) return;
+
+    setState(() => _loadingContract = true);
+    try {
+      final list = await _contractService.getMyContracts();
+
+      Map<String, dynamic>? found;
+      for (final c in list) {
+        if (c is! Map) continue;
+        final m = (c as Map).cast<String, dynamic>();
+
+        final proj = m["project"];
+        final projId =
+            proj is Map ? (proj["_id"] ?? proj["id"]).toString() : proj?.toString();
+
+        if (projId == widget.projectId) {
+          found = m;
+          break;
+        }
+      }
+
+      if (mounted) setState(() => _myContract = found);
+    } catch (_) {
+      // لو فشلنا ما بنكسر الصفحة، بس ما بنعرض زر pdf
+      if (mounted) setState(() => _myContract = null);
+    } finally {
+      if (mounted) setState(() => _loadingContract = false);
     }
   }
 
@@ -91,7 +139,9 @@ class _ContractorProjectDetailsPageState
   Map<String, dynamic> _estimationOf(Map<String, dynamic> p) {
     if (p["estimation"] is Map) return Map<String, dynamic>.from(p["estimation"]);
     if (p["estimate"] is Map) return Map<String, dynamic>.from(p["estimate"]);
-    if (p["estimationResult"] is Map) return Map<String, dynamic>.from(p["estimationResult"]);
+    if (p["estimationResult"] is Map) {
+      return Map<String, dynamic>.from(p["estimationResult"]);
+    }
     return {};
   }
 
@@ -120,6 +170,8 @@ class _ContractorProjectDetailsPageState
   Future<void> _submitOffer() async {
     final p = _project ?? {};
     final status = (p["status"] ?? "").toString().toLowerCase().trim();
+
+    // ✅ بعد approve (مش open) ممنوع إرسال/تحديث
     if (status.isNotEmpty && status != "open") {
       _snack("This project is not open for offers.");
       return;
@@ -134,7 +186,7 @@ class _ContractorProjectDetailsPageState
 
     setState(() => _submittingOffer = true);
     try {
-      // same endpoint (now UPSERT on backend)
+      // same endpoint (UPSERT on backend)
       await _service.createOffer(
         projectId: widget.projectId,
         price: price,
@@ -150,6 +202,35 @@ class _ContractorProjectDetailsPageState
     } finally {
       if (mounted) setState(() => _submittingOffer = false);
     }
+  }
+
+  Future<void> _openContractPdf() async {
+    final c = _myContract;
+    if (c == null) {
+      _snack("Contract not found yet.");
+      return;
+    }
+
+    // ✅ الأفضل: إذا العقد فيه contractFile (Cloudinary URL)
+    final pdfUrl = (c["contractFile"] ?? c["pdfUrl"] ?? "").toString();
+
+    if (pdfUrl.trim().isNotEmpty) {
+      final uri = Uri.parse(pdfUrl);
+      final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!ok) _snack("Could not open PDF.");
+      return;
+    }
+
+    // ✅ بديل: افتح endpoint بالـ id
+    final contractId = (c["_id"] ?? c["id"] ?? "").toString();
+    if (contractId.isEmpty) {
+      _snack("Contract id missing.");
+      return;
+    }
+
+    // هذا endpoint محمي (Bearer) — فتحه بالمتصفح ممكن يطلب auth
+    // لذلك الأفضل أنك تخزن contractFile دائمًا.
+    _snack("PDF url is missing. Please ensure contractFile is saved.");
   }
 
   void _snack(String msg) {
@@ -217,6 +298,8 @@ class _ContractorProjectDetailsPageState
     final total = est["totalCost"] ?? est["total"] ?? est["total_cost"];
     final currency = (est["currency"] ?? "JOD").toString();
 
+    final status = (p["status"] ?? "").toString().toLowerCase().trim();
+    final canOffer = status.isEmpty || status == "open";
     final isUpdate = _myOfferCache != null;
 
     return ListView(
@@ -284,8 +367,56 @@ class _ContractorProjectDetailsPageState
 
         const SizedBox(height: 12),
 
-        _offerCard(isUpdate: isUpdate),
+        // ✅ بعد approve: اعرض زر PDF (لو العقد موجود)
+        if (!canOffer) _contractCard(),
+
+        // ✅ قبل approve (open): اعرض offer card
+        if (canOffer) _offerCard(isUpdate: isUpdate, status: status),
       ],
+    );
+  }
+
+  Widget _contractCard() {
+    final c = _myContract;
+
+    return _card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            "Contract",
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 10),
+
+          if (_loadingContract)
+            const Text("Loading contract...", style: TextStyle(color: Colors.white70))
+          else if (c == null)
+            const Text(
+              "No contract found yet for this project.",
+              style: TextStyle(color: Colors.white70),
+            )
+          else ...[
+            _rowText("Agreed Price", c["agreedPrice"]),
+            _rowText("Status", c["status"]),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _openContractPdf,
+                icon: const Icon(Icons.picture_as_pdf),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF9EE7B7),
+                  foregroundColor: Colors.black,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  minimumSize: const Size.fromHeight(48),
+                ),
+                label: const Text("Open Contract PDF"),
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 
@@ -358,9 +489,15 @@ class _ContractorProjectDetailsPageState
     );
   }
 
-  
+  // ✅ خيار 2: Update Offer يظهر فقط إذا status == open
+  Widget _offerCard({required bool isUpdate, required String status}) {
+    final canEditOffer = status.isEmpty || status == "open";
 
-  Widget _offerCard({required bool isUpdate}) {
+    // ✅ إذا مش open (بعد approve) ما بدنا كرت offer أصلاً
+    if (!canEditOffer) {
+      return const SizedBox.shrink();
+    }
+
     return _card(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

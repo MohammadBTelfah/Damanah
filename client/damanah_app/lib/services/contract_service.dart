@@ -28,8 +28,10 @@ class ContractService {
     if (res.statusCode == 200) {
       final decoded = jsonDecode(res.body);
 
+      // ✅ أشكال محتملة
       if (decoded is List) return decoded;
       if (decoded is Map && decoded["data"] is List) return decoded["data"] as List;
+      if (decoded is Map && decoded["contracts"] is List) return decoded["contracts"] as List;
 
       throw Exception("Unexpected response shape: ${res.body}");
     }
@@ -49,8 +51,8 @@ class ContractService {
     String? projectDescription,
     List<String>? materialsAndServices,
     String? terms,
-    String? startDate, 
-    String? endDate,   
+    String? startDate,
+    String? endDate,
   }) async {
     final token = await _mustToken();
     final uri = Uri.parse(ApiConfig.join("/api/contracts"));
@@ -84,24 +86,18 @@ class ContractService {
     throw Exception("Failed to create contract: ${res.body}");
   }
 
-  /// ✅ التعديل الأهم: جلب الـ PDF من Cloudinary
-  /// بما أن الرابط أصبح يبدأ بـ https://res.cloudinary.com فلا نحتاج لدمجه مع ApiConfig
+  /// ✅ جلب PDF من رابط Cloudinary (public)
   Future<Uint8List> fetchPdfBytesFromUrl(String pdfUrl) async {
-    // نتحقق إذا كان الرابط يبدأ بـ http (رابط Cloudinary كامل) أو مسار محلي قديم
-    final finalUrl = pdfUrl.startsWith('http') 
-        ? pdfUrl 
-        : ApiConfig.join(pdfUrl);
-        
+    final finalUrl = pdfUrl.startsWith('http') ? pdfUrl : ApiConfig.join(pdfUrl);
     final uri = Uri.parse(finalUrl);
-    
-    // Cloudinary لا يتطلب Authorization header لجلب الملفات العامة
+
     final res = await http.get(uri);
 
     if (res.statusCode == 200) return res.bodyBytes;
     throw Exception("Failed to fetch pdf from url: ${res.statusCode}");
   }
 
-  /// دالة جلب الـ PDF بواسطة الـ ID (إذا كنت تستخدم Endpoint خاص في الباك إند)
+  /// جلب PDF بالـ ID (endpoint محمي)
   Future<Uint8List> fetchContractPdfBytesById(String contractId) async {
     final token = await _mustToken();
     final uri = Uri.parse(ApiConfig.join("/api/contracts/$contractId/pdf"));
