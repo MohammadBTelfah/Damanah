@@ -12,7 +12,7 @@ const {
 } = require("../middleware/authMiddleWare");
 
 // ✅ NEW: استيراد إعدادات Cloudinary
-const upload = require("../config/cloudinaryConfig");
+const upload = require("../../utils/upload");
 
 // ================================
 // ✅ Contractor routes (لازم قبل :projectId)

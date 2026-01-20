@@ -11,7 +11,7 @@ const {
 } = require("../../middleware/rateLimiters");
 
 // ✅ NEW: استدعاء إعدادات Cloudinary
-const upload = require("../../config/cloudinaryConfig");
+const upload = require("../../utils/upload");
 
 router.get("/me", protect, contractorOnly, verifiedAndActive, me.getMe);
 

@@ -2,7 +2,7 @@ const router = require("express").Router();
 const adminAuth = require("../../controllers/Auth/adminauthcontroller");
 
 // ✅ NEW: استدعاء إعدادات Cloudinary بدلاً من الـ Multer المحلي
-const upload = require("../../config/cloudinaryConfig");
+const upload = require("../../utils/upload");
 
 /* ================== ROUTES (NO AUTH) ================== */
 

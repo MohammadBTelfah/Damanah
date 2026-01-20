@@ -2,7 +2,7 @@ const router = require("express").Router();
 const clientAuth = require("../../controllers/Auth/clientauthcontroller");
 
 // ✅ NEW: استدعاء إعدادات Cloudinary الجاهزة
-const upload = require("../../config/cloudinaryConfig");
+const upload = require("../../utils/upload");
 
 /* ================== ROUTES (NO AUTH) ================== */
 

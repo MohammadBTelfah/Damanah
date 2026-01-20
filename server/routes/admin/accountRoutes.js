@@ -12,7 +12,7 @@ const {
 } = require("../../middleware/rateLimiters");
 
 // ✅ NEW: استيراد إعدادات Cloudinary بدلاً من الكود المحلي
-const upload = require("../../config/cloudinaryConfig");
+const upload = require("../../utils/upload");
 
 router.get("/me", protect, adminOnly, verifiedAndActive, me.getMe);
 
