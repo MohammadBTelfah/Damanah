@@ -319,7 +319,7 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
                         decoration: InputDecoration(
                           filled: true,
                           fillColor: inputFill,
-                          hintText: "Full name",
+                          hintText: "Display name",
                           hintStyle: const TextStyle(color: Colors.white54),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
@@ -336,6 +336,29 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
                           }
                           return null;
                         },
+                      ),
+
+                      const SizedBox(height: 12),
+
+                      // ✅✅✅ Full Name (from ID) تحت Full name مباشرة ✅✅✅
+                      TextFormField(
+                        controller: _fullNameController,
+                        style: const TextStyle(color: Colors.white),
+                        readOnly: true, // ✅ غير قابل للتعديل (مثل ما كان عندك)
+                        decoration: InputDecoration(
+                          filled: true,
+                          fillColor: inputFill,
+                          hintText: "Full Name (from ID)",
+                          hintStyle: const TextStyle(color: Colors.white54),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 16,
+                          ),
+                        ),
                       ),
 
                       const SizedBox(height: 12),
@@ -436,10 +459,12 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
                         validator: (value) {
                           final v = value?.trim() ?? '';
                           if (v.isEmpty) return 'Password is required';
-                          if (v.length < 8)
+                          if (v.length < 8) {
                             return 'Password must be at least 8 characters';
-                          if (!v.contains('@'))
+                          }
+                          if (!v.contains('@')) {
                             return 'Password must contain @';
+                          }
                           return null;
                         },
                       ),
@@ -487,26 +512,6 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
                           }
                           return null;
                         },
-                      ),
-
-                      // ================= Full Name from ID (غير قابل للتعديل) =================
-                      TextFormField(
-                        controller: _fullNameController,
-                        style: const TextStyle(color: Colors.white),
-                        readOnly: true, // ✅ غير قابل للتعديل
-                        decoration: InputDecoration(
-                          filled: true,
-                          fillColor: inputFill,
-                          labelText: "Full Name (from ID)",
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide.none,
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 16,
-                          ),
-                        ),
                       ),
 
                       const SizedBox(height: 16),

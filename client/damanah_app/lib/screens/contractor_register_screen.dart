@@ -343,7 +343,7 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
                         decoration: InputDecoration(
                           filled: true,
                           fillColor: inputFill,
-                          hintText: "Full name",
+                          hintText: "Display name",
                           hintStyle: const TextStyle(color: Colors.white54),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
