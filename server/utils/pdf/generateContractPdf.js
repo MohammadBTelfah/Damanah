@@ -55,9 +55,23 @@ module.exports = async function generateContractPdf(contract, absPdfPath) {
 
       // --- المواد والخدمات ---
       // [cite: 21] تعبئة قائمة المواد
-      materialsAndServices: (contract.materialsAndServices && contract.materialsAndServices.length > 0) 
-        ? contract.materialsAndServices 
-        : [], 
+     materialsAndServices: (() => {
+        // 1. الأولوية: إذا كانت المواد محفوظة في العقد، نستخدمها
+        if (contract.materialsAndServices && contract.materialsAndServices.length > 0) {
+          return contract.materialsAndServices;
+        }
+        
+        // 2. الاحتياط: إذا لم توجد في العقد، نحاول جلبها من تقديرات المشروع (إذا كان المشروع معمولة له populate)
+        if (project.estimation && project.estimation.items && project.estimation.items.length > 0) {
+          return project.estimation.items.map(item => {
+             // تحويل كائن المادة إلى نص مقروء
+             return `${item.name} (الكمية: ${item.quantity} ${item.unit || ''})`;
+          });
+        }
+
+        // 3. إذا لم نجد شيباً
+        return [];
+      })(),
 
       // --- الشروط ---
       // [cite: 22] تعبئة الشروط والأحكام
