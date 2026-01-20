@@ -3,39 +3,33 @@ const nodemailer = require("nodemailer");
 const sendEmail = async ({ to, subject, html }) => {
   try {
     const transporter = nodemailer.createTransport({
-      host: "smtp.gmail.com",
-      port: 587,              // ✅ نستخدم المنفذ 587 بدلاً من 465
-      secure: false,          // ✅ يجب أن تكون false مع المنفذ 587
+      host: process.env.EMAIL_HOST, // ✅ سيقرأ: smtp-relay.brevo.com
+      port: process.env.EMAIL_PORT, // ✅ سيقرأ: 587
+      secure: false,                  // ✅ إعداد صحيح للمنفذ 587
       auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
+        user: process.env.EMAIL_USER, // ✅ اسم مستخدم Brevo
+        pass: process.env.EMAIL_PASS, // ✅ كلمة مرور Brevo
       },
-      tls: {
-        rejectUnauthorized: false, // ✅ للمساعدة في تخطي مشاكل شهادات الحماية في السيرفرات
-        ciphers: 'SSLv3'
-      },
-      // ✅ تفعيل السجلات لمعرفة سبب الخطأ في Logs الخاصة بـ Render
-      logger: true,
-      debug: true, 
+      // إعدادات المهلة لمنع تعليق السيرفر
       connectionTimeout: 10000, 
+      greetingTimeout: 5000,
     });
 
-    // التأكد من الاتصال قبل الإرسال (اختياري للتشخيص)
-    await transporter.verify();
-    console.log("SMTP Connection Established Successfully");
+    // ⚠️ نقطة مهمة:
+    // Brevo يستخدم EMAIL_USER للدخول فقط (Login)، لكنه يسمح لك بالإرسال من إيميلك الشخصي
+    // ضع إيميلك هنا ليظهر للمستلم بشكل احترافي
+    const senderEmail = "telfahmohammad2003@gmail.com"; 
 
     await transporter.sendMail({
-      from: `"Damana App" <${process.env.EMAIL_USER}>`,
+      from: `"Damana App" <${senderEmail}>`, 
       to,
       subject,
       html,
     });
-    console.log("Email sent successfully");
+    console.log("✅ Email sent successfully via Brevo");
 
   } catch (error) {
-    console.error("Failed to send email:", error);
-    // لا نرمي الخطأ لكي لا يوقف السيرفر، أو يمكنك رميه حسب حاجتك
-    // throw error; 
+    console.error("❌ Failed to send email:", error.message);
   }
 };
 
