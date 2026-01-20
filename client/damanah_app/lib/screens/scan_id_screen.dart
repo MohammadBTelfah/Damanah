@@ -3,15 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 
+// ✅ التعديل 1: حذفنا confidence لأنه لم يعد مطلوباً في الـ API
 class ScanIdResult {
   final File imageFile;
   final String nationalId;
-  final double? confidence; // حالياً null (ML Kit text_recognition ما يعطي confidence بسهولة)
 
   ScanIdResult({
     required this.imageFile,
     required this.nationalId,
-    this.confidence,
   });
 }
 
@@ -28,14 +27,11 @@ class _ScanIdScreenState extends State<ScanIdScreen> {
 
   File? _image;
   bool _loading = false;
-  String _rawText = "";
+  // String _rawText = ""; // يمكن حذفها إذا لم تكن تريد عرض النص الخام للمستخدم
 
-  /// ✅ استخراج الرقم الوطني الأردني:
-  /// - 10 أرقام
-  /// - يبدأ عادةً بـ 1 أو 2
+  /// ✅ استخراج الرقم الوطني الأردني
   String? _extractJordanNationalId(String text) {
-    // خلي النص كما هو (بدون حذف أرقام مهمة)، بس بدنا نلتقط 10 أرقام متتالية
-    // pattern: يبدأ بـ 1 أو 2 ثم 9 أرقام = 10 أرقام
+    // يبحث عن أي رقم يبدأ بـ 1 أو 2 ويتكون من 10 خانات
     final regex = RegExp(r'\b[12]\d{9}\b');
     final match = regex.firstMatch(text);
     return match?.group(0);
@@ -45,7 +41,7 @@ class _ScanIdScreenState extends State<ScanIdScreen> {
     try {
       final xfile = await _picker.pickImage(
         source: ImageSource.camera,
-        imageQuality: 90,
+        imageQuality: 90, // جودة جيدة للـ OCR
       );
 
       if (xfile == null) return;
@@ -53,36 +49,35 @@ class _ScanIdScreenState extends State<ScanIdScreen> {
       setState(() {
         _loading = true;
         _image = File(xfile.path);
-        _rawText = "";
+        // _rawText = "";
         _nationalIdCtrl.clear();
       });
 
       final inputImage = InputImage.fromFile(_image!);
 
-      // ✅ عربي + إنجليزي؟ (الهوية الأردنية غالباً EN بالأرقام + نص عربي/إنجليزي)
-      // latin مناسب للأرقام والانجليزي
+      // استخدام Script Latin كافٍ للأرقام الإنجليزية المستخدمة في الهوية
       final textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
 
       final recognizedText = await textRecognizer.processImage(inputImage);
       await textRecognizer.close();
 
       final text = recognizedText.text;
-
-      // ✅ استخراج الرقم الوطني
       final extracted = _extractJordanNationalId(text);
 
       setState(() {
-        _rawText = text;
+        // _rawText = text;
         if (extracted != null) {
           _nationalIdCtrl.text = extracted;
         }
         _loading = false;
       });
 
-      // إذا ما لقاه، أعطي تنبيه خفيف
       if (extracted == null && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("لم يتم اكتشاف الرقم الوطني تلقائياً، اكتبُه يدوياً.")),
+          const SnackBar(
+            content: Text("Could not detect ID automatically. Please enter it manually."),
+            duration: Duration(seconds: 2),
+          ),
         );
       }
     } catch (e) {
@@ -104,20 +99,20 @@ class _ScanIdScreenState extends State<ScanIdScreen> {
 
     final nid = _nationalIdCtrl.text.trim();
 
-    // ✅ تحقق بسيط: 10 أرقام
+    // ✅ التحقق من الطول (10 أرقام)
     if (!RegExp(r'^[0-9]{10}$').hasMatch(nid)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("National ID must be 10 digits")),
+        const SnackBar(content: Text("National ID must be exactly 10 digits")),
       );
       return;
     }
 
+    // ✅ إرجاع النتيجة (الصورة + الرقم)
     Navigator.pop(
       context,
       ScanIdResult(
         imageFile: _image!,
         nationalId: nid,
-        confidence: null,
       ),
     );
   }
@@ -131,54 +126,82 @@ class _ScanIdScreenState extends State<ScanIdScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Scan ID")),
+      appBar: AppBar(title: const Text("Scan Identity Document")),
       body: Padding(
         padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            ElevatedButton.icon(
-              onPressed: _loading ? null : _pickAndScan,
-              icon: const Icon(Icons.camera_alt),
-              label: const Text("Scan your ID"),
-            ),
-            const SizedBox(height: 12),
-
-            if (_loading) const LinearProgressIndicator(),
-
-            const SizedBox(height: 12),
-            if (_image != null)
-              ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Image.file(_image!, height: 180, fit: BoxFit.cover),
-              ),
-
-            const SizedBox(height: 12),
-            TextField(
-              controller: _nationalIdCtrl,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: "National ID",
-                hintText: "Auto-filled if detected (editable)",
-                border: OutlineInputBorder(),
-              ),
-            ),
-
-            const SizedBox(height: 12),
-            ElevatedButton(
-              onPressed: _loading ? null : _confirm,
-              child: const Text("Confirm"),
-            ),
-
-            const SizedBox(height: 12),
-            Expanded(
-              child: SingleChildScrollView(
-                child: Text(
-                  _rawText.isEmpty ? "OCR text will appear here..." : _rawText,
-                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+        child: SingleChildScrollView( // إضافة Scroll لتجنب overflow
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // زر الالتقاط
+              ElevatedButton.icon(
+                onPressed: _loading ? null : _pickAndScan,
+                icon: const Icon(Icons.camera_alt),
+                label: Text(_image == null ? "Take Photo" : "Retake Photo"),
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
                 ),
               ),
-            ),
-          ],
+              
+              const SizedBox(height: 12),
+
+              if (_loading) const LinearProgressIndicator(),
+
+              const SizedBox(height: 12),
+
+              // عرض الصورة الملتقطة
+              if (_image != null)
+                Container(
+                  height: 200,
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.grey),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.file(_image!, fit: BoxFit.cover),
+                  ),
+                )
+              else
+                Container(
+                  height: 200,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: Colors.grey[200],
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.grey.shade400),
+                  ),
+                  child: const Text("No image captured", style: TextStyle(color: Colors.grey)),
+                ),
+
+              const SizedBox(height: 20),
+
+              // حقل الرقم الوطني
+              TextField(
+                controller: _nationalIdCtrl,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: "National ID Number",
+                  hintText: "Scanned number (editable)",
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.badge),
+                ),
+              ),
+
+              const SizedBox(height: 20),
+
+              // زر التأكيد
+              ElevatedButton(
+                onPressed: _loading ? null : _confirm,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green, // لون مميز للتأكيد
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                ),
+                child: const Text("Confirm & Use This ID", style: TextStyle(fontSize: 16)),
+              ),
+            ],
+          ),
         ),
       ),
     );
