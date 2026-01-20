@@ -31,6 +31,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _service = UserService();
   bool _saving = false;
   String? _pickedImagePath;
+  // استخدام الـ Timestamp لضمان تحديث الصورة فوراً وتخطي الكاش
   int _imageBust = DateTime.now().millisecondsSinceEpoch;
 
   @override
@@ -59,6 +60,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _user = u;
       _name.text = (u["name"] ?? "").toString();
       _phone.text = (u["phone"] ?? "").toString();
+      // تحديث الـ timestamp عند تحميل بيانات جديدة
+      _imageBust = DateTime.now().millisecondsSinceEpoch;
     });
   }
 
@@ -70,19 +73,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return '$b/$p';
   }
 
- String? get _profileUrl {
+  String? get _profileUrl {
     final u = _user;
     if (u == null) return null;
     
     final raw = (u["profileImage"] ?? "").toString().trim();
     if (raw.isEmpty) return null;
 
-    // ✅ إذا كان الرابط يبدأ بـ http، فهو رابط Cloudinary كامل نستخدمه فوراً
     if (raw.startsWith('http')) {
       return "$raw?t=$_imageBust";
     }
 
-    // ✅ للصور القديمة التي لا تبدأ بـ http، نستخدم دالة الدمج الذكية
     final clean = _joinUrlSmart(widget.baseUrl, raw);
     return "$clean?t=$_imageBust";
   }
@@ -136,18 +137,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _saveProfile() async {
     setState(() => _saving = true);
     try {
+      // 1. إرسال التحديث للسيرفر
       final res = await _service.updateMe(
         name: _name.text.trim(),
         phone: _phone.text.trim(),
         profileImagePath: _pickedImagePath,
       );
 
+      // 2. استخراج البيانات المحدثة من الرد
       final updatedUser = Map<String, dynamic>.from(res["user"]);
       final token = await SessionService.getToken();
-      if (token == null) throw Exception("No token");
+      if (token == null) throw Exception("No token found");
 
+      // 3. حفظ البيانات الجديدة في الـ Session (مهم جداً للـ MainShell)
       await SessionService.saveSession(token: token, user: updatedUser);
 
+      // 4. تحديث حالة الصفحة الحالية
       if (!mounted) return;
       setState(() {
         _user = updatedUser;
@@ -157,12 +162,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _imageBust = DateTime.now().millisecondsSinceEpoch;
       });
 
-      await _loadUser();
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Profile updated successfully ✅"), backgroundColor: Colors.green));
+      // 5. استدعاء الدالة الممرة من الـ MainShell لتحديث البار السفلي والواجهات الأخرى
       await widget.onRefreshUser();
 
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Profile updated successfully ✅"), 
+            backgroundColor: Colors.green
+          )
+        );
+      }
+
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()), backgroundColor: Colors.red));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString()), backgroundColor: Colors.red)
+        );
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -265,7 +282,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 children: [
                   _tile(Icons.person_outline, "Name", displayName, onTap: () => _editField("Edit Name", _name)),
                   Divider(color: Colors.white.withOpacity(0.05), height: 1),
-                  _tile(Icons.email_outlined, "Email", email, isEditable: false), // Email usually read-only
+                  _tile(Icons.email_outlined, "Email", email, isEditable: false), 
                   Divider(color: Colors.white.withOpacity(0.05), height: 1),
                   _tile(Icons.phone_outlined, "Phone", _phone.text, onTap: () => _editField("Edit Phone", _phone)),
                 ],

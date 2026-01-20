@@ -31,6 +31,7 @@ class _MainShellState extends State<MainShell> {
     _loadUser();
   }
 
+  /// دالة لجلب أحدث بيانات للمستخدم من الـ Session
   Future<void> _loadUser() async {
     final u = await SessionService.getUser();
     if (!mounted) return;
@@ -47,6 +48,9 @@ class _MainShellState extends State<MainShell> {
     final role = (_user?["role"] ?? "client").toString().toLowerCase().trim();
     final isContractor = role == "contractor";
 
+    // ✅ مفتاح فريد يعتمد على رابط الصورة لضمان تحديث الـ Widget عند تغييرها
+    final profileKey = ValueKey(_user?["profileImage"] ?? "no-image");
+
     // ====================================================
     // 🏗️ فصل القوائم (Shells) بناءً على الدور
     // ====================================================
@@ -58,18 +62,19 @@ class _MainShellState extends State<MainShell> {
       // 👷‍♂️ إعدادات المقاول (Contractor Shell)
       pages = [
         ContractorHomeScreen(
-          user: _user,
+          user: _user, // يمرر أحدث نسخة محدثة
           baseUrl: baseUrl,
           onRefreshUser: _loadUser,
         ),
         const MyWorksPage(),
-        const MyOffersPage(), // صفحة العروض المقدمة
+        const MyOffersPage(), 
         if (_user != null)
           ProfileScreen(
+            key: profileKey, // مهم جداً لإجبار Flutter على إعادة بناء الصفحة عند تغيير الصورة
             user: _user!,
             baseUrl: baseUrl,
             isRoot: true,
-            onRefreshUser: _loadUser,
+            onRefreshUser: _loadUser, // نمرر الدالة لتحديث الحالة هنا عند الحفظ
           )
         else
           const _LoadingPage(),
@@ -106,10 +111,11 @@ class _MainShellState extends State<MainShell> {
           onRefreshUser: _loadUser,
           onOpenProfile: _goToProfileTab,
         ),
-        const MyProjectsPage(), // صفحة مشاريع العميل
-        const ContractorsPage(), // صفحة البحث عن مقاولين
+        const MyProjectsPage(), 
+        const ContractorsPage(), 
         if (_user != null)
           ProfileScreen(
+            key: profileKey, // مهم جداً لإجبار التحديث
             user: _user!,
             baseUrl: baseUrl,
             isRoot: true,
@@ -148,7 +154,7 @@ class _MainShellState extends State<MainShell> {
     return Scaffold(
       backgroundColor: const Color(0xFF0F261F),
 
-      // ✅ عرض الصفحة المناسبة حسب الدور والفهرس
+      // ✅ IndexedStack يحافظ على حالة الصفحات، الـ Keys المضافة فوق تضمن تحديث المحتوى
       body: IndexedStack(index: _index, children: pages),
 
       // ✅ عرض البار السفلي المناسب حسب الدور
@@ -181,8 +187,11 @@ class _MainShellState extends State<MainShell> {
           height: 70,
           elevation: 0,
           selectedIndex: _index,
-          onDestinationSelected: (i) => setState(() => _index = i),
-          destinations: destinations, // ✅ نمرر القائمة التي حددناها فوق
+          onDestinationSelected: (i) {
+            setState(() => _index = i);
+            _loadUser(); // تحديث البيانات عند التنقل لضمان مزامنة الصورة في البار
+          },
+          destinations: destinations,
         ),
       ),
     );

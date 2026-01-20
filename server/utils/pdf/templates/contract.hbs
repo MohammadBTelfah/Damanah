@@ -4,7 +4,6 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 
-  <!-- خط عربي (ممتاز للطباعة) -->
   <link href="https://fonts.googleapis.com/css2?family=Noto+Naskh+Arabic:wght@400;700&display=swap" rel="stylesheet">
 
   <style>
@@ -76,8 +75,8 @@
 
   <div class="section">
     <div class="row">رقم العقد: <span class="dots small-dots">{{contractId}}</span> التاريخ: <span class="dots small-dots">{{contractDate}}</span></div>
-    <div class="row">صاحب العمل: <span class="dots">{{clientName}}</span></div>
-    <div class="row">المقاول: <span class="dots">{{contractorName}}</span></div>
+    <div class="row">صاحب العمل (الطرف الأول): <span class="dots">{{clientName}}</span></div>
+    <div class="row">المقاول (الطرف الثاني): <span class="dots">{{contractorName}}</span></div>
   </div>
 
   <div class="section">
@@ -137,12 +136,14 @@
       <tbody>
         <tr>
           <td>
-            الاسم: {{clientName}}<br/>
+            الاسم الرسمي: {{clientName}}<br/>
+            الرقم الوطني: {{clientNationalId}}<br/>
             الهاتف: {{clientPhone}}<br/>
             البريد: {{clientEmail}}<br/>
           </td>
           <td>
-            الاسم: {{contractorName}}<br/>
+            الاسم الرسمي: {{contractorName}}<br/>
+            الرقم الوطني: {{contractorNationalId}}<br/>
             الهاتف: {{contractorPhone}}<br/>
             البريد: {{contractorEmail}}<br/>
           </td>
@@ -153,12 +154,12 @@
     <div class="signs">
       <div class="sign-col">
         <div class="sign-title">توقيع صاحب العمل</div>
-        <div>الاسم: <span class="dots small-dots"></span></div>
+        <div style="margin-bottom: 10px;">الاسم: <b>{{clientName}}</b></div>
         <div>التوقيع: <span class="dots small-dots"></span></div>
       </div>
       <div class="sign-col">
         <div class="sign-title">توقيع المقاول</div>
-        <div>الاسم: <span class="dots small-dots"></span></div>
+        <div style="margin-bottom: 10px;">الاسم: <b>{{contractorName}}</b></div>
         <div>التوقيع: <span class="dots small-dots"></span></div>
       </div>
     </div>
