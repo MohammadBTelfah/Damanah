@@ -197,18 +197,76 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
         _buildInfoCard(p),
         const SizedBox(height: 20),
 
+        // ✅ القسم المطور لعرض تحليل المخطط بشكل Pills متناسق
+        if (p["planAnalysis"] != null)
+          _buildEnhancedPlanAnalysisCard(p["planAnalysis"]),
+
         if (p["contractor"] != null) ...[
-          _buildContractorCard(p),
           const SizedBox(height: 20),
+          _buildContractorCard(p),
         ],
 
-        if (showOffers) ...[_buildOffersSection(), const SizedBox(height: 20)],
-
-        if (p["planAnalysis"] != null)
-          _buildPlanAnalysisCard(p["planAnalysis"]),
+        if (showOffers) ...[
+          const SizedBox(height: 20),
+          _buildOffersSection(),
+        ],
 
         const SizedBox(height: 40),
       ],
+    );
+  }
+
+  // ✅ كرت التحليل الهندسي الموحد (Pills Style)
+  Widget _buildEnhancedPlanAnalysisCard(dynamic paRaw) {
+    final pa = (paRaw is Map) ? paRaw : {};
+    final openings = pa["openings"] ?? {};
+    final windows = openings["windows"] ?? {};
+    final internalDoors = openings["internalDoors"] ?? {};
+    final voids = openings["voids"] ?? {};
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: _cardDeco(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _sectionTitle("ARCHITECTURE TAKEOFF (AI)"),
+          const SizedBox(height: 16),
+          
+          // استخدام Wrap لظهور الكبسولات بشكل متناسق كالتصميم الأصلي
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              _pill(Icons.crop_square, "${pa["totalArea"] ?? "--"} m²"),
+              _pill(Icons.layers, "${pa["floors"] ?? "1"} Floors"),
+              _pill(Icons.straighten, "${pa["wallPerimeterLinear"] ?? pa["wallPerimeter"] ?? "--"} m Perimeter"),
+              _pill(Icons.height, "${pa["ceilingHeight"] ?? pa["ceilingHeightDefault"] ?? "3.0"} m Ceiling"),
+              _pill(Icons.meeting_room_outlined, "${pa["rooms"] ?? "?"} Rooms"),
+              _pill(Icons.bathtub_outlined, "${pa["bathrooms"] ?? "?"} Baths"),
+              _pill(Icons.window, "${windows["count"] ?? pa["windowsCount"] ?? "0"} Windows"),
+              _pill(Icons.door_front_door, "${internalDoors["count"] ?? pa["internalDoorsCount"] ?? "0"} Doors"),
+              
+              if (voids["totalVoidArea"] != null && voids["totalVoidArea"] > 0)
+                _pill(
+                  Icons.grid_view_rounded, 
+                  "${voids["totalVoidArea"]} m² Voids", 
+                  color: const Color(0xFFFFCC80)
+                ),
+            ],
+          ),
+          
+          if (pa["notes"] != null && (pa["notes"] as List).isNotEmpty) ...[
+            const SizedBox(height: 20),
+            const Text("AI NOTES", style: TextStyle(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1)),
+            const SizedBox(height: 8),
+            ...(pa["notes"] as List).map((n) => Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text("• $n", style: const TextStyle(color: Colors.white60, fontSize: 12)),
+            )),
+          ]
+        ],
+      ),
     );
   }
 
@@ -445,7 +503,6 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
     final phone = map["phone"] ?? "";
     final email = map["email"] ?? "";
     
-    // ✅ جلب صورة المقاول باستخدام الدالة الذكية لتعمل مع Cloudinary
     final img = _toAbsoluteUrl(map["profileImageUrl"] ?? map["profileImage"] ?? "");
 
     return Container(
@@ -518,31 +575,6 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
                   ],
                 ),
               ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPlanAnalysisCard(dynamic paRaw) {
-    final pa = (paRaw is Map) ? paRaw : {};
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: _cardDeco(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _sectionTitle("AI Plan Analysis"),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: [
-              _pill(Icons.crop_square, "${pa["totalArea"] ?? "?"} m²"),
-              _pill(Icons.stairs, "${pa["floors"] ?? "?"} Floors"),
-              _pill(Icons.meeting_room_outlined, "${pa["rooms"] ?? "?"} Rooms"),
-              _pill(Icons.bathtub_outlined, "${pa["bathrooms"] ?? "?"} Baths"),
             ],
           ),
         ],
@@ -779,19 +811,26 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
     );
   }
 
-  Widget _pill(IconData icon, String text) {
+  Widget _pill(IconData icon, String text, {Color? color}) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: Colors.white70, size: 16),
+          Icon(icon, color: color ?? Colors.white70, size: 16),
           const SizedBox(width: 8),
-          Text(text, style: const TextStyle(color: Colors.white, fontSize: 13)),
+          Text(
+            text, 
+            style: TextStyle(
+              color: color ?? Colors.white, 
+              fontSize: 13, 
+              fontWeight: FontWeight.w500
+            )
+          ),
         ],
       ),
     );
@@ -825,7 +864,7 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
         border: Border.all(color: fg.withOpacity(0.3)),
       ),
       child: Text(
-        text,
+        text.toUpperCase(),
         style: TextStyle(color: fg, fontSize: 12, fontWeight: FontWeight.bold),
       ),
     );

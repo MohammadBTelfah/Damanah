@@ -127,6 +127,31 @@ class ProjectService {
     final token = await _mustToken();
     final uri = Uri.parse(ApiConfig.join("/api/projects"));
 
+    // ✅ التعديل الجوهري: إعادة هيكلة البيانات لتطابق الـ Schema في السيرفر
+    // هذا يضمن أن الأرقام التي أدخلتها (أو استخرجها الـ AI) لا تضيع وتتحول لأصفار
+    Map<String, dynamic>? formattedAnalysis;
+    if (planAnalysis != null) {
+      formattedAnalysis = {
+        "totalArea": area, // نأخذ المساحة المراجعة يدوياً
+        "floors": floors,   // نأخذ عدد الطوابق المراجع يدوياً
+        "wallPerimeterLinear": planAnalysis["wallPerimeter"] ?? planAnalysis["wallPerimeterLinear"] ?? 0,
+        "ceilingHeight": planAnalysis["ceilingHeight"] ?? 3.0,
+        "rooms": planAnalysis["rooms"] ?? 0,
+        "bathrooms": planAnalysis["bathrooms"] ?? 0,
+        "openings": {
+          "windows": {
+            "count": planAnalysis["windowsCount"] ?? planAnalysis["openings"]?["windows"]?["count"] ?? 0
+          },
+          "internalDoors": {
+            "count": planAnalysis["internalDoorsCount"] ?? planAnalysis["openings"]?["internalDoors"]?["count"] ?? 0
+          },
+          "voids": {
+             "totalVoidArea": planAnalysis["openings"]?["voids"]?["totalVoidArea"] ?? 0
+          }
+        }
+      };
+    }
+
     final body = {
       "title": title,
       "description": description ?? "",
@@ -135,7 +160,7 @@ class ProjectService {
       "floors": floors,
       "finishingLevel": finishingLevel,
       "buildingType": buildingType,
-      if (planAnalysis != null) "planAnalysis": planAnalysis,
+      if (formattedAnalysis != null) "planAnalysis": formattedAnalysis,
     };
 
     final res = await http
@@ -161,7 +186,6 @@ class ProjectService {
       "(${res.statusCode}) ${data["message"] ?? "Create project failed"}",
     );
   }
-
   /// POST /api/projects/:id/estimate
   Future<Map<String, dynamic>> estimateProject({
     required String projectId,
@@ -188,28 +212,53 @@ class ProjectService {
   }
 
   /// POST /api/projects/plan/analyze
-  Future<Map<String, dynamic>> analyzePlan({required String filePath}) async {
-    final token = await _mustToken();
-    final uri = Uri.parse(ApiConfig.join("/api/projects/plan/analyze"));
+Future<Map<String, dynamic>> analyzePlan({required String filePath}) async {
+  final token = await _mustToken();
+  final uri = Uri.parse(ApiConfig.join("/api/projects/plan/analyze"));
 
-    final req = http.MultipartRequest("POST", uri);
-    req.headers.addAll(_authHeaders(token));
-    req.files.add(await http.MultipartFile.fromPath("planFile", filePath));
+  final req = http.MultipartRequest("POST", uri);
+  req.headers.addAll(_authHeaders(token));
+  req.files.add(await http.MultipartFile.fromPath("planFile", filePath));
 
-    final streamed = await req.send().timeout(const Duration(seconds: 60));
-    final res = await http.Response.fromStream(streamed);
+  final streamed = await req.send().timeout(const Duration(seconds: 60));
+  final res = await http.Response.fromStream(streamed);
 
-    final map = _safeJsonMap(res.body);
-    if (res.statusCode == 200) return map;
+  final map = _safeJsonMap(res.body);
 
-    final code = map["code"]?.toString();
-    if (code == "AI_UNAVAILABLE") throw Exception("AI_UNAVAILABLE");
-
-    throw Exception(
-      "(${res.statusCode}) ${map["message"] ?? "Analyze plan failed"}",
-    );
+  if (res.statusCode >= 200 && res.statusCode < 300) {
+    // ✅ تعديل جوهري: التأكد من هيكلة البيانات الجديدة قبل إعادتها
+    // لضمان أن الواجهة (Step 2) تستلم القيم الصحيحة
+    if (map.containsKey("analysis")) {
+      final analysis = map["analysis"] as Map<String, dynamic>;
+      
+      // نضمن وجود كائن openings حتى لو لم يرسله السيرفر لتجنب الـ Null errors
+      analysis["openings"] ??= {
+        "windows": {"count": 0},
+        "internalDoors": {"count": 0},
+        "voids": {"totalVoidArea": 0}
+      };
+    }
+    return map;
   }
 
+  final code = map["code"]?.toString();
+
+  // منطق تحويل المستخدم لليدوي في حال تعطل الـ AI (كما هو في كودك)
+  final isAiUnavailable =
+      code == "AI_UNAVAILABLE" ||
+      res.statusCode == 503 ||
+      res.statusCode == 429 ||
+      (map["error"]?.toString().contains("rate_limit_exceeded") ?? false) ||
+      (map["message"]?.toString().toLowerCase().contains("rate limit") ?? false);
+
+  if (isAiUnavailable) {
+    throw Exception("AI_UNAVAILABLE (${res.statusCode})");
+  }
+
+  throw Exception(
+    "(${res.statusCode}) ${map["message"] ?? "Analyze plan failed"}",
+  );
+}
   /// GET /api/materials
   Future<List<dynamic>> getMaterials() async {
     final token = await _mustToken();

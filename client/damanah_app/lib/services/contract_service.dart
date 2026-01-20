@@ -6,19 +6,32 @@ import '../config/api_config.dart';
 import 'session_service.dart';
 
 class ContractService {
+  
+  // =========================
+  // Helpers
+  // =========================
+
   Future<String> _mustToken() async {
     final token = await SessionService.getToken();
-    if (token == null) throw Exception("No token");
+    if (token == null || token.isEmpty) {
+      throw Exception("No token found. Please login.");
+    }
     return token;
   }
 
+  /// الهيدر الموحد: يضمن إرسال واستقبال JSON
   Map<String, String> _headers(String token) => {
         "Authorization": "Bearer $token",
         "Accept": "application/json",
         "Content-Type": "application/json",
       };
 
+  // =========================
+  // Methods
+  // =========================
+
   /// GET /api/contracts
+  /// جلب عقود المستخدم (سواء كان عميل أو مقاول)
   Future<List<dynamic>> getMyContracts() async {
     final token = await _mustToken();
     final uri = Uri.parse(ApiConfig.join("/api/contracts"));
@@ -28,17 +41,20 @@ class ContractService {
     if (res.statusCode == 200) {
       final decoded = jsonDecode(res.body);
 
+      // ✅ التعامل مع أشكال الاستجابة المختلفة من السيرفر
       if (decoded is List) return decoded;
       if (decoded is Map && decoded["data"] is List) return decoded["data"] as List;
-
-      throw Exception("Unexpected response shape: ${res.body}");
+      if (decoded is Map && decoded["contracts"] is List) return decoded["contracts"] as List;
+      
+      // في حال كانت القائمة فارغة أو الشكل غير معروف
+      return []; 
     }
 
-    throw Exception("Failed to load contracts: ${res.body}");
+    throw Exception("Failed to load contracts: ${res.statusCode} ${res.body}");
   }
 
   /// POST /api/contracts
-  /// ✅ التعديل: السيرفر الآن يرجع رابط Cloudinary كامل في pdfUrl
+  /// إنشاء عقد جديد (للمقاول)
   Future<Map<String, dynamic>> createContract({
     required String projectId,
     required String clientId,
@@ -49,12 +65,13 @@ class ContractService {
     String? projectDescription,
     List<String>? materialsAndServices,
     String? terms,
-    String? startDate, 
-    String? endDate,   
+    String? startDate,
+    String? endDate,
   }) async {
     final token = await _mustToken();
     final uri = Uri.parse(ApiConfig.join("/api/contracts"));
 
+    // بناء الجسم (Body) مع تجاهل القيم الفارغة (null)
     final body = <String, dynamic>{
       "project": projectId,
       "client": clientId,
@@ -71,37 +88,50 @@ class ContractService {
 
     final res = await http.post(
       uri,
-      headers: _headers(token),
+      headers: _headers(token), // ✅ تأكدنا أن الهيدر يحتوي application/json
       body: jsonEncode(body),
     );
 
     if (res.statusCode == 201 || res.statusCode == 200) {
       final decoded = jsonDecode(res.body);
+      
+      // نتوقع أن يرجع السيرفر كائن يحتوي على success, data, pdfUrl
       if (decoded is Map<String, dynamic>) return decoded;
+      
       throw Exception("Unexpected response shape: ${res.body}");
     }
 
-    throw Exception("Failed to create contract: ${res.body}");
+    // استخراج رسالة الخطأ من السيرفر إن وجدت
+    String errorMsg = "Failed to create contract";
+    try {
+      final errDecoded = jsonDecode(res.body);
+      if (errDecoded is Map && errDecoded["message"] != null) {
+        errorMsg = errDecoded["message"];
+      }
+    } catch (_) {}
+
+    throw Exception("$errorMsg (${res.statusCode})");
   }
 
-  /// ✅ التعديل الأهم: جلب الـ PDF من Cloudinary
-  /// بما أن الرابط أصبح يبدأ بـ https://res.cloudinary.com فلا نحتاج لدمجه مع ApiConfig
+  /// ✅ جلب ملف الـ PDF كـ Bytes
+  /// تدعم الروابط المباشرة (Cloudinary) أو الروابط النسبية (Local)
   Future<Uint8List> fetchPdfBytesFromUrl(String pdfUrl) async {
-    // نتحقق إذا كان الرابط يبدأ بـ http (رابط Cloudinary كامل) أو مسار محلي قديم
-    final finalUrl = pdfUrl.startsWith('http') 
-        ? pdfUrl 
-        : ApiConfig.join(pdfUrl);
-        
+    // 1. تحديد الرابط الصحيح (إذا كان يبدأ بـ http فهو خارجي، وإلا فهو من السيرفر المحلي)
+    final finalUrl = pdfUrl.startsWith('http') ? pdfUrl : ApiConfig.join(pdfUrl);
     final uri = Uri.parse(finalUrl);
-    
-    // Cloudinary لا يتطلب Authorization header لجلب الملفات العامة
+
+    // 2. إذا كان الرابط خارجي (Cloudinary Public)، غالباً لا نحتاج Header
+    // لكن إذا كان محلي، قد نحتاج Token. هنا سنفترض أنه Public Access كما حددنا في Backend
     final res = await http.get(uri);
 
-    if (res.statusCode == 200) return res.bodyBytes;
-    throw Exception("Failed to fetch pdf from url: ${res.statusCode}");
+    if (res.statusCode == 200) {
+      return res.bodyBytes;
+    }
+    
+    throw Exception("Failed to fetch PDF from URL: ${res.statusCode}");
   }
 
-  /// دالة جلب الـ PDF بواسطة الـ ID (إذا كنت تستخدم Endpoint خاص في الباك إند)
+  /// دالة احتياطية: جلب الـ PDF عن طريق الـ ID (Endpoint محمي)
   Future<Uint8List> fetchContractPdfBytesById(String contractId) async {
     final token = await _mustToken();
     final uri = Uri.parse(ApiConfig.join("/api/contracts/$contractId/pdf"));
@@ -114,6 +144,7 @@ class ContractService {
     if (res.statusCode == 200) {
       return res.bodyBytes;
     }
-    throw Exception("Failed to fetch pdf: ${res.statusCode} ${res.body}");
+    
+    throw Exception("Failed to fetch PDF by ID: ${res.statusCode}");
   }
 }

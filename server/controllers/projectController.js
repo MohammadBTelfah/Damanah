@@ -2,11 +2,16 @@ const Project = require("../models/Project");
 const Contract = require("../models/Contract");
 const Contractor = require("../models/Contractor");
 const Notification = require("../models/Notification");
+const generateContractPdf = require("../utils/pdf/generateContractPdf");
 
 const { generateBoqForProject } = require("../utils/boq");
 const { analyzeFloorPlanImage } = require("../utils/plan_vision");
+// ✅ التصحيح: استدعاء ملف الكونفيج مباشرة
+const cloudinary = require("../config/cloudinaryConfig");
 const mongoose = require("mongoose");
-
+const fs = require("fs");
+const path = require("path");
+const os = require("os");
 // =======================
 // Helpers
 // =======================
@@ -331,6 +336,9 @@ exports.getProjectById = async (req, res) => {
 // =======================
 // ✅ Create/Update Offer (Contractor)  (UPSERT)
 // =======================
+// =======================
+// ✅ Create Offer OR (if exists) Create Contract (Contractor)
+// =======================
 exports.createOffer = async (req, res) => {
   try {
     const { projectId } = req.params;
@@ -353,35 +361,92 @@ exports.createOffer = async (req, res) => {
 
     const contractorId = req.user._id.toString();
 
-    // If offer exists -> update it
+    // If offer exists -> بدل update: create contract
     const existing = project.offers.find(
       (o) => o.contractor.toString() === contractorId
     );
 
     if (existing) {
+      // ✅ امنع تكرار العقد لنفس المشروع
+      const already = await Contract.findOne({ project: project._id });
+      if (already) {
+        return res.status(200).json({
+          message: "Contract already exists for this project",
+          project,
+          contract: already,
+        });
+      }
+
+      // (اختياري) لو بدك تثبيت السعر المتفق عليه في نفس الـ Offer:
       existing.price = priceNum;
       existing.message = message;
 
+      // اربط المقاول بالمشروع وغيّر الحالة
+      project.contractor = req.user._id;
+      project.status = "in_progress";
+      project.agreedPrice = priceNum;
+
+      // snapshot اختياري مثل acceptOffer عندك
+      project.acceptedOffer = {
+        contractor: req.user._id,
+        price: priceNum,
+        message: message || "",
+        offerId: existing._id,
+        acceptedAt: new Date(),
+      };
+
+      // علّم عرض هذا المقاول accepted والباقي rejected (اختياري)
+      project.offers.forEach((o) => {
+        o.status =
+          o.contractor.toString() === contractorId ? "accepted" : "rejected";
+      });
+
       await project.save();
 
+      // ✅ Create Contract (واحد للطرفين)
+      const contract = await Contract.create({
+        project: project._id,
+        client: project.owner,
+        contractor: req.user._id,
+        agreedPrice: priceNum,
+        terms: message || "",
+        status: "active",
+        startDate: new Date(),
+      });
+
+      // Notifications للطرفين
       try {
         await Notification.create({
           user: project.owner,
           userModel: "Client",
-          title: "Offer updated",
-          body: `A contractor updated an offer on "${project.title}".`,
-          type: "offer_updated",
+          title: "Contract created",
+          body: `A contract was created for "${project.title}".`,
+          type: "contract_created",
+          projectId: project._id,
+          read: false,
+        });
+
+        await Notification.create({
+          user: req.user._id,
+          userModel: "Contractor",
+          title: "Contract created",
+          body: `A contract was created for "${project.title}".`,
+          type: "contract_created",
           projectId: project._id,
           read: false,
         });
       } catch (e) {
-        console.error("notification offer_updated failed:", e.message);
+        console.error("notification contract_created failed:", e.message);
       }
 
-      return res.json({ message: "Offer updated", project });
+      return res.status(201).json({
+        message: "Contract created (instead of updating offer)",
+        project,
+        contract,
+      });
     }
 
-    // Otherwise -> create new offer
+    // Otherwise -> create new offer (مثل ما هو عندك)
     project.offers.push({
       contractor: req.user._id,
       price: priceNum,
@@ -468,28 +533,36 @@ exports.getProjectOffers = async (req, res) => {
 // =======================
 // Accept offer
 // =======================
+// تأكد من أن مسار الكلاوديناري صحيح حسب ملفات مشروعك
+
+// =======================
+// Accept offer (Modified & Fixed)
+// =======================
+// projectController.js
+
 exports.acceptOffer = async (req, res) => {
   try {
     const { projectId, offerId } = req.params;
 
+    // 1) جلب المشروع
     const project = await Project.findById(projectId);
     if (!project) return res.status(404).json({ message: "Project not found" });
-    if (project.owner.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: "Not owner of this project" });
+
+    // 2) تحقق إن المستخدم هو صاحب المشروع (العميل)
+    if (String(project.owner) !== String(req.user._id)) {
+      return res.status(403).json({ message: "Not authorized" });
     }
 
+    // 3) جلب العرض
     const offer = project.offers.id(offerId);
     if (!offer) return res.status(404).json({ message: "Offer not found" });
 
+    // 4) تحديث بيانات المشروع (تعيين المقاول وتغيير الحالة)
     project.contractor = offer.contractor;
-    project.status = "in_progress";
-
-    // ✅ Persist the agreed price on the project itself so the apps can show
-    // "Project Price" after the client accepts an offer.
+    project.status = "in_progress"; // المشروع الآن قيد التنفيذ (بانتظار العقد)
     project.agreedPrice = offer.price;
 
-    // Optional: keep a lightweight snapshot of the accepted offer
-    // (helps the frontend if you ever change field names).
+    // snapshot للتوثيق
     project.acceptedOffer = {
       contractor: offer.contractor,
       price: offer.price,
@@ -498,19 +571,20 @@ exports.acceptOffer = async (req, res) => {
       acceptedAt: new Date(),
     };
 
+    // تحديث حالة العروض
     project.offers.forEach((o) => {
-      o.status =
-        o._id.toString() === offerId.toString() ? "accepted" : "rejected";
+      o.status = String(o._id) === String(offerId) ? "accepted" : "rejected";
     });
 
     await project.save();
 
+    // 5) إشعار للمقاول بأن عرضه تم قبوله (ويمكنه الآن إنشاء العقد)
     try {
       await Notification.create({
         user: offer.contractor,
         userModel: "Contractor",
-        title: "Offer accepted",
-        body: `Your offer was accepted for "${project.title}".`,
+        title: "Offer Accepted!",
+        body: `Your offer for "${project.title}" has been accepted. Please create the contract now.`,
         type: "offer_accepted",
         projectId: project._id,
         read: false,
@@ -519,41 +593,17 @@ exports.acceptOffer = async (req, res) => {
       console.error("notification offer_accepted failed:", e.message);
     }
 
-    const contract = await Contract.create({
-      project: project._id,
-      client: project.owner,
-      contractor: offer.contractor,
-      agreedPrice: offer.price,
-      terms: offer.message || "",
-      status: "active",
-      startDate: new Date(),
-    });
+    // ✅ تم حذف كود إنشاء العقد والـ PDF من هنا
 
-    try {
-      await Notification.create({
-        user: project.owner,
-        userModel: "Client",
-        title: "Contract created",
-        body: `A contract was created for "${project.title}".`,
-        type: "contract_created",
-        projectId: project._id,
-        read: false,
-      });
-    } catch (e) {
-      console.error("notification contract_created failed:", e.message);
-    }
-
-    return res.json({
-      message: "Offer accepted and contract created",
+    return res.status(200).json({
+      message: "Offer accepted. Waiting for contractor to create contract.",
       project,
-      contract,
     });
   } catch (err) {
     console.error("acceptOffer error:", err);
     return res.status(500).json({ error: err.message });
   }
 };
-
 // =======================
 // Analyze Plan
 // =======================
@@ -622,17 +672,45 @@ exports.estimateProject = async (req, res) => {
       return res.status(403).json({ message: "Not owner of this project" });
     }
 
-    const estimation = await generateBoqForProject(project, { selections });
+    // ✅ التعديل الجوهري: تحديث بيانات المشروع بالقيم المعمارية الجديدة القادمة من الفرونت اند
+    // لضمان أن دالة generateBoqForProject تستخدم أحدث الأرقام (المحيط، الارتفاع، إلخ)
+    if (req.body.planAnalysis) {
+      // ندمج البيانات الجديدة مع التحليل الموجود مسبقاً
+      project.planAnalysis = {
+        ...project.planAnalysis,
+        ...req.body.planAnalysis,
+        // نضمن تحديث الحقول الحساسة للحسابات
+        wallPerimeterLinear: req.body.planAnalysis.wallPerimeter || project.planAnalysis.wallPerimeterLinear,
+        ceilingHeight: req.body.planAnalysis.ceilingHeight || project.planAnalysis.ceilingHeight
+      };
+      
+      // تحديث الحقول الأساسية إذا تم تعديلها في Step 2
+      if (req.body.area) project.area = req.body.area;
+      if (req.body.floors) project.floors = req.body.floors;
+      
+      // وسم المشروع بأنه تم تعديله يدوياً لضمان الدقة
+      project.markModified('planAnalysis');
+    }
+
+    // استدعاء محرك الحسابات المطور
+    const estimation = await generateBoqForProject(project, { 
+      selections,
+      buildingType: project.buildingType 
+    });
+
+    // حفظ التقدير والبيانات المحدثة
     project.estimation = estimation;
     await project.save();
 
     return res.json({
-      message: "Estimate generated",
+      message: "Estimate generated successfully",
       items: estimation.items,
       totalCost: estimation.totalCost,
       currency: estimation.currency,
-      finishingLevel: estimation.finishingLevel,
+      finishingLevel: project.finishingLevel,
       buildingType: estimation.buildingType,
+      // نرسل المساحات المحسوبة للتأكيد في الواجهة
+      metadata: estimation.metadata 
     });
   } catch (err) {
     console.error("estimateProject error:", err);
@@ -641,7 +719,6 @@ exports.estimateProject = async (req, res) => {
       .json({ message: "Estimate failed", error: err.message });
   }
 };
-
 // =======================
 // Save Project
 // =======================

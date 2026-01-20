@@ -28,6 +28,12 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
   final _roomsCtrl = TextEditingController();
   final _bathsCtrl = TextEditingController();
 
+  // ✅ الحقول المعمارية الجديدة (Quantity Takeoff) المضافة لضمان دقة الحساب
+  final _windowsCountCtrl = TextEditingController();
+  final _internalDoorsCtrl = TextEditingController();
+  final _perimeterCtrl = TextEditingController(); // إجمالي طول الجدران
+  final _heightCtrl = TextEditingController();    // ارتفاع السقف
+
   final _titleCtrl = TextEditingController();
   final _descCtrl = TextEditingController();
   final _locationCtrl = TextEditingController();
@@ -36,9 +42,9 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
   String _buildingType = "House";
 
   List<dynamic> _materials = [];
-  
-  // ✅ المتغيرات الجديدة للتحكم بالـ Checkbox والاختيارات
-  final Set<String> _checkedMaterials = {}; 
+
+  // ✅ منطق الاختيارات الأصلي كما هو
+  final Set<String> _checkedMaterials = {};
   final Map<String, String> _selectedVariant = {};
 
   Map<String, dynamic>? _estimate;
@@ -50,6 +56,10 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
     _floorsCtrl.dispose();
     _roomsCtrl.dispose();
     _bathsCtrl.dispose();
+    _windowsCountCtrl.dispose();
+    _internalDoorsCtrl.dispose();
+    _perimeterCtrl.dispose();
+    _heightCtrl.dispose();
     _titleCtrl.dispose();
     _descCtrl.dispose();
     _locationCtrl.dispose();
@@ -67,8 +77,8 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
 
   InputDecoration _dec(String hint, {Widget? suffix, EdgeInsets? padding}) {
     return InputDecoration(
-      hintText: hint,
-      hintStyle: TextStyle(color: Colors.white.withOpacity(0.6)),
+      hintText: hint, // Placeholder
+      hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
       filled: true,
       fillColor: const Color(0xFF2F463D),
       suffixIcon: suffix,
@@ -77,6 +87,20 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(18),
         borderSide: BorderSide.none,
+      ),
+    );
+  }
+
+  Widget _fieldLabel(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 6, bottom: 6),
+      child: Text(
+        text,
+        style: TextStyle(
+          color: Colors.white.withOpacity(0.75),
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+        ),
       ),
     );
   }
@@ -109,6 +133,13 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
       final n = _toInt(a["floors"]);
       if (n != null) a["floors"] = n;
     }
+    
+    // ربط الحقول المعمارية الجديدة
+    a["windowsCount"] = _toInt(_windowsCountCtrl.text);
+    a["internalDoorsCount"] = _toInt(_internalDoorsCtrl.text);
+    a["wallPerimeter"] = _toDouble(_perimeterCtrl.text);
+    a["ceilingHeight"] = _toDouble(_heightCtrl.text);
+
     final roomsVal = a["rooms"];
     if (roomsVal is List) {
       a["roomsDetails"] = roomsVal;
@@ -149,17 +180,21 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
   }
 
   void _goManualReview({String? msg}) {
-    _analysis = {};
-    if (_floorsCtrl.text.trim().isEmpty) _floorsCtrl.text = "1";
-    setState(() => _step = 1);
     if (msg != null) _snack(msg, color: Colors.orange);
+    setState(() {
+      _analysis = {};
+      if (_floorsCtrl.text.trim().isEmpty) _floorsCtrl.text = "1";
+      if (_heightCtrl.text.trim().isEmpty) _heightCtrl.text = "3.0";
+      _step = 1;
+      _loading = false;
+    });
   }
 
   Future<void> _analyzePlan() async {
     if (_loading) return;
 
     if (_planFile == null) {
-      _goManualReview(msg: "Auto analysis unavailable. Please fill details manually.");
+      _goManualReview(msg: "No file selected. Please fill details manually.");
       return;
     }
 
@@ -172,8 +207,8 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
           : <String, dynamic>{};
 
       final area = (analysis["totalArea"] ?? analysis["area"] ?? "").toString();
-      final floors = (analysis["floors"] ?? "").toString();
-      final roomsVal = analysis["rooms"];
+      final floors = (analysis["floors"] ?? "1").toString();
+      final roomsVal = analysis["bedrooms"] ?? analysis["rooms"];
       final bathsVal = analysis["bathrooms"];
 
       String roomsText = "";
@@ -193,26 +228,23 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
       final loc = (analysis["locationGuess"] ?? "").toString();
 
       _areaCtrl.text = area;
-      _floorsCtrl.text = floors.isEmpty ? "1" : floors;
+      _floorsCtrl.text = floors;
       _roomsCtrl.text = roomsText;
       _bathsCtrl.text = bathsText;
       if (loc.trim().isNotEmpty) _locationCtrl.text = loc;
+
+      // ✅ تعبئة البيانات المعمارية المتقدمة من الـ AI
+      _windowsCountCtrl.text = (analysis["openings"]?["windows"]?["count"] ?? "0").toString();
+      _internalDoorsCtrl.text = (analysis["openings"]?["internalDoors"]?["count"] ?? "0").toString();
+      _perimeterCtrl.text = (analysis["wallPerimeterLinear"] ?? "").toString();
+      _heightCtrl.text = (analysis["ceilingHeightDefault"] ?? "3.0").toString();
 
       setState(() {
         _analysis = analysis;
         _step = 1;
       });
     } catch (e) {
-      final msg = e.toString();
-      final shouldManual = msg.contains("AI_UNAVAILABLE") ||
-          msg.contains("(503)") ||
-          msg.contains("(429)");
-
-      if (shouldManual) {
-        _goManualReview(msg: "Auto analysis failed. Please fill details manually.");
-      } else {
-        _snack(msg);
-      }
+      _goManualReview(msg: "Auto analysis failed. Please fill details manually.");
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -235,6 +267,10 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
     _analysis ??= {};
     _analysis!["totalArea"] = area;
     _analysis!["floors"] = floors;
+    _analysis!["wallPerimeter"] = double.tryParse(_perimeterCtrl.text.trim());
+    _analysis!["ceilingHeight"] = double.tryParse(_heightCtrl.text.trim());
+    _analysis!["windowsCount"] = int.tryParse(_windowsCountCtrl.text.trim());
+    _analysis!["internalDoorsCount"] = int.tryParse(_internalDoorsCtrl.text.trim());
 
     final rooms = int.tryParse(_roomsCtrl.text.trim());
     final baths = int.tryParse(_bathsCtrl.text.trim());
@@ -288,7 +324,6 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
     }
   }
 
-  // ✅ Step 4 Logic: التحقق من الاختيارات
   Future<void> _runEstimate() async {
     if (_loading) return;
     if (_projectId == null || _projectId!.isEmpty) {
@@ -296,7 +331,6 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
       return;
     }
 
-    // 1. هل اختار المستخدم مادة واحدة على الأقل؟
     if (_checkedMaterials.isEmpty) {
       _snack("Please choose at least one material", color: Colors.orange);
       return;
@@ -304,7 +338,6 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
 
     final List<Map<String, String>> selections = [];
 
-    // 2. هل اختار النوع لكل مادة تم تحديدها بالـ Checkbox؟
     for (String id in _checkedMaterials) {
       final variantKey = _selectedVariant[id];
       if (variantKey == null) {
@@ -367,16 +400,12 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
     }
   }
 
-  // =============================
-  // ✅ منطق Assign To Specific Contractor
-  // =============================
-
   void _showContractorPicker() async {
     if (_loading) return;
     setState(() => _loading = true);
 
     try {
-      final contractors = await _service.getContractors(); 
+      final contractors = await _service.getContractors();
 
       if (!mounted) return;
       setState(() => _loading = false);
@@ -410,20 +439,25 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
                 Expanded(
                   child: ListView.separated(
                     itemCount: contractors.length,
-                    separatorBuilder: (_, __) => Divider(color: Colors.white.withOpacity(0.1)),
+                    separatorBuilder: (_, __) =>
+                        Divider(color: Colors.white.withOpacity(0.1)),
                     itemBuilder: (ctx, index) {
                       final c = contractors[index];
-                      final name = c["name"] ?? "Unknown"; 
+                      final name = c["name"] ?? "Unknown";
                       final id = c["_id"];
 
                       return ListTile(
                         contentPadding: EdgeInsets.zero,
                         leading: CircleAvatar(
                           backgroundColor: const Color(0xFF2F463D),
-                          child: Text(name.toString().substring(0,1).toUpperCase(), style: const TextStyle(color: Colors.white)),
+                          child: Text(
+                              name.toString().substring(0, 1).toUpperCase(),
+                              style: const TextStyle(color: Colors.white)),
                         ),
-                        title: Text(name, style: const TextStyle(color: Colors.white)),
-                        trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.white54),
+                        title: Text(name,
+                            style: const TextStyle(color: Colors.white)),
+                        trailing: const Icon(Icons.arrow_forward_ios,
+                            size: 14, color: Colors.white54),
                         onTap: () {
                           Navigator.pop(ctx);
                           _confirmAssign(id, name);
@@ -449,9 +483,11 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF0E1814),
-        title: const Text("Confirm Assignment", style: TextStyle(color: Colors.white)),
-        content: Text("Are you sure you want to assign project to '$name'?\nOther contractors won't see this project.", 
-          style: const TextStyle(color: Colors.white70)),
+        title:
+            const Text("Confirm Assignment", style: TextStyle(color: Colors.white)),
+        content: Text(
+            "Are you sure you want to assign project to '$name'?\nOther contractors won't see this project.",
+            style: const TextStyle(color: Colors.white70)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
@@ -462,7 +498,8 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
               Navigator.pop(ctx);
               await _assignContractorApi(contractorId);
             },
-            child: const Text("Assign", style: TextStyle(color: Color(0xFF9EE7B7))),
+            child: const Text("Assign",
+                style: TextStyle(color: Color(0xFF9EE7B7))),
           ),
         ],
       ),
@@ -473,11 +510,12 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
     if (_projectId == null) return;
     setState(() => _loading = true);
     try {
-      await _service.assignContractor(projectId: _projectId!, contractorId: contractorId);
-      
+      await _service.assignContractor(
+          projectId: _projectId!, contractorId: contractorId);
+
       if (!mounted) return;
       _snack("Project assigned successfully! ✅", color: Colors.green);
-      Navigator.pop(context, true); 
+      Navigator.pop(context, true);
     } catch (e) {
       _snack("Assign failed: $e");
     } finally {
@@ -564,8 +602,6 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
     );
   }
 
-  // --- Widgets ---
-
   Widget _buildPrimaryButton(String text, VoidCallback onPressed) {
     return SizedBox(
       height: 54,
@@ -582,10 +618,11 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
             ? const SizedBox(
                 width: 22,
                 height: 22,
-                child: CircularProgressIndicator(strokeWidth: 2),
+                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
               )
             : Text(text,
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                style:
+                    const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
       ),
     );
   }
@@ -626,7 +663,9 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                _planFile == null ? "No file selected" : _planFile!.path.split(Platform.pathSeparator).last,
+                _planFile == null
+                    ? "No file selected"
+                    : _planFile!.path.split(Platform.pathSeparator).last,
                 style: const TextStyle(color: Colors.white70),
               ),
               const SizedBox(height: 10),
@@ -647,6 +686,13 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
                   Expanded(child: _buildPrimaryButton("Analyze", _analyzePlan)),
                 ],
               ),
+              const SizedBox(height: 10),
+              Center(
+                child: TextButton(
+                  onPressed: _loading ? null : () => _goManualReview(msg: "Manual entry mode."),
+                  child: const Text("Skip to manual entry", style: TextStyle(color: Color(0xFF9EE7B7), fontSize: 13)),
+                ),
+              )
             ],
           ),
         ),
@@ -658,17 +704,99 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Text("Step 2: Review & edit data",
+        const Text("Step 2: Architecture Takeoff",
             style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
         const SizedBox(height: 12),
-        TextFormField(controller: _areaCtrl, style: const TextStyle(color: Colors.white), keyboardType: TextInputType.number, decoration: _dec("Area (m²) *")),
+
+        _fieldLabel("Area (m²) *"),
+        TextFormField(
+          controller: _areaCtrl,
+          style: const TextStyle(color: Colors.white),
+          keyboardType: TextInputType.number,
+          decoration: _dec("e.g. 314.80"), // Placeholder
+        ),
         const SizedBox(height: 12),
-        TextFormField(controller: _floorsCtrl, style: const TextStyle(color: Colors.white), keyboardType: TextInputType.number, decoration: _dec("Floors *")),
+
+        _fieldLabel("Floors *"),
+        TextFormField(
+          controller: _floorsCtrl,
+          style: const TextStyle(color: Colors.white),
+          keyboardType: TextInputType.number,
+          decoration: _dec("e.g. 1"), // Placeholder
+        ),
         const SizedBox(height: 12),
-        TextFormField(controller: _roomsCtrl, style: const TextStyle(color: Colors.white), keyboardType: TextInputType.number, decoration: _dec("Rooms (optional)")),
+
+        Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _fieldLabel("Windows Count"),
+                  TextFormField(
+                    controller: _windowsCountCtrl,
+                    style: const TextStyle(color: Colors.white),
+                    keyboardType: TextInputType.number,
+                    decoration: _dec("e.g. 12"), // Placeholder
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _fieldLabel("Internal Doors"),
+                  TextFormField(
+                    controller: _internalDoorsCtrl,
+                    style: const TextStyle(color: Colors.white),
+                    keyboardType: TextInputType.number,
+                    decoration: _dec("e.g. 8"), // Placeholder
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
         const SizedBox(height: 12),
-        TextFormField(controller: _bathsCtrl, style: const TextStyle(color: Colors.white), keyboardType: TextInputType.number, decoration: _dec("Bathrooms (optional)")),
+
+        _fieldLabel("Wall Perimeter (m)"),
+        TextFormField(
+          controller: _perimeterCtrl,
+          style: const TextStyle(color: Colors.white),
+          keyboardType: TextInputType.number,
+          decoration: _dec("Linear meters (e.g. 150)"), // Placeholder
+        ),
+        const SizedBox(height: 12),
+
+        _fieldLabel("Ceiling Height (m)"),
+        TextFormField(
+          controller: _heightCtrl,
+          style: const TextStyle(color: Colors.white),
+          keyboardType: TextInputType.number,
+          decoration: _dec("Typical 3.0"), // Placeholder
+        ),
+        const SizedBox(height: 12),
+
+        _fieldLabel("Rooms (optional)"),
+        TextFormField(
+          controller: _roomsCtrl,
+          style: const TextStyle(color: Colors.white),
+          keyboardType: TextInputType.number,
+          decoration: _dec("e.g. 4"), // Placeholder
+        ),
+        const SizedBox(height: 12),
+
+        _fieldLabel("Bathrooms (optional)"),
+        TextFormField(
+          controller: _bathsCtrl,
+          style: const TextStyle(color: Colors.white),
+          keyboardType: TextInputType.number,
+          decoration: _dec("e.g. 3"), // Placeholder
+        ),
         const SizedBox(height: 16),
+
         Row(
           children: [
             Expanded(
@@ -697,14 +825,14 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
         const Text("Step 3: Project details",
             style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
         const SizedBox(height: 12),
-        TextFormField(controller: _titleCtrl, style: const TextStyle(color: Colors.white), decoration: _dec("Project Title *")),
+        TextFormField(controller: _titleCtrl, style: const TextStyle(color: Colors.white), decoration: _dec("Project Title (e.g. My Villa)")),
         const SizedBox(height: 12),
-        TextFormField(controller: _descCtrl, style: const TextStyle(color: Colors.white), maxLines: 2, decoration: _dec("Description (optional)", padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10))),
+        TextFormField(controller: _descCtrl, style: const TextStyle(color: Colors.white), maxLines: 2, decoration: _dec("Description (e.g. Ground floor only)", padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10))),
         const SizedBox(height: 12),
-        TextFormField(controller: _locationCtrl, style: const TextStyle(color: Colors.white), decoration: _dec("Location")),
+        TextFormField(controller: _locationCtrl, style: const TextStyle(color: Colors.white), decoration: _dec("Location (e.g. Amman, Jordan)")),
         const SizedBox(height: 12),
         DropdownButtonFormField<String>(
-          initialValue: _buildingType,
+          value: _buildingType,
           decoration: _dec("Building Type"),
           dropdownColor: const Color(0xFF2F463D),
           iconEnabledColor: Colors.white,
@@ -718,7 +846,7 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
         ),
         const SizedBox(height: 12),
         DropdownButtonFormField<String>(
-          initialValue: _finishing,
+          value: _finishing,
           decoration: _dec("Finishing Level"),
           dropdownColor: const Color(0xFF2F463D),
           iconEnabledColor: Colors.white,
@@ -752,10 +880,7 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
     );
   }
 
-  // =============================
-  // ✅ Step 4: اختيار المواد مع Checkbox
-  // =============================
-  Widget _buildStepMaterials() {
+Widget _buildStepMaterials() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -774,15 +899,15 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
             final mat = (m is Map) ? Map<String, dynamic>.from(m) : <String, dynamic>{};
             final id = mat["_id"]?.toString() ?? "";
             final name = mat["name"]?.toString() ?? "Material";
-            
+
             final variants = (mat["variants"] is List) ? List.from(mat["variants"]) : <dynamic>[];
             final fallbackVariants = [
-              {"key": "basic", "label": "Basic"},
-              {"key": "medium", "label": "Medium"},
-              {"key": "premium", "label": "Premium"},
+              {"key": "basic", "label": "Basic", "pricePerUnit": 0},
+              {"key": "medium", "label": "Medium", "pricePerUnit": 0},
+              {"key": "premium", "label": "Premium", "pricePerUnit": 0},
             ];
             final list = variants.isNotEmpty ? variants : fallbackVariants;
-            
+
             final isChecked = _checkedMaterials.contains(id);
             final String? current = _selectedVariant[id];
 
@@ -793,9 +918,9 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
                 color: const Color(0xFF0F261F).withOpacity(0.6),
                 borderRadius: BorderRadius.circular(18),
                 border: Border.all(
-                  color: isChecked 
-                    ? const Color(0xFF9EE7B7).withOpacity(0.5) 
-                    : Colors.white.withOpacity(0.06),
+                  color: isChecked
+                      ? const Color(0xFF9EE7B7).withOpacity(0.5)
+                      : Colors.white.withOpacity(0.06),
                 ),
               ),
               child: Row(
@@ -811,35 +936,36 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
                           _checkedMaterials.add(id);
                         } else {
                           _checkedMaterials.remove(id);
-                          _selectedVariant.remove(id); 
+                          _selectedVariant.remove(id);
                         }
                       });
                     },
                   ),
-                  
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                          Text(
-                           name, 
-                           style: TextStyle(
-                             color: isChecked ? Colors.white : Colors.white54, 
-                             fontWeight: FontWeight.w700,
-                             fontSize: 15,
-                           ),
-                           maxLines: 1, overflow: TextOverflow.ellipsis
+                        Text(
+                          name,
+                          style: TextStyle(
+                            color: isChecked ? Colors.white : Colors.white54,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 15,
                           ),
-                          const SizedBox(height: 8),
-                          
-                          SizedBox(
-                           height: 44,
-                           child: DropdownButtonFormField<String>(
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          height: 44,
+                          child: DropdownButtonFormField<String>(
                             value: current,
                             isExpanded: true,
                             hint: Text(
-                              isChecked ? "Select Type" : "Not Selected",
-                              style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 13),
+                              isChecked ? "Select Type & Price" : "Not Selected",
+                              style: TextStyle(
+                                  color: Colors.white.withOpacity(0.4),
+                                  fontSize: 13),
                             ),
                             decoration: InputDecoration(
                               contentPadding: const EdgeInsets.symmetric(horizontal: 12),
@@ -853,19 +979,58 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
                             dropdownColor: const Color(0xFF2F463D),
                             iconEnabledColor: isChecked ? Colors.white : Colors.white24,
                             style: const TextStyle(color: Colors.white),
-                            items: !isChecked ? [] : list.map((v) {
-                              final vm = (v is Map) ? Map<String, dynamic>.from(v) : <String, dynamic>{};
-                              return DropdownMenuItem<String>(
-                                value: vm["key"]?.toString(),
-                                child: Text(vm["label"]?.toString() ?? vm["key"]?.toString() ?? "", overflow: TextOverflow.ellipsis),
-                              );
-                            }).toList(),
-                            onChanged: !isChecked ? null : (v) {
-                              if (id.isEmpty || v == null) return;
-                              setState(() => _selectedVariant[id] = v);
-                            },
+                            items: !isChecked
+                                ? []
+                                : list.map((v) {
+                                    final vm = (v is Map)
+                                        ? Map<String, dynamic>.from(v)
+                                        : <String, dynamic>{};
+                                    
+                                    // استخراج السعر والوحدة مباشرة من بيانات قاعدة البيانات
+                                    final price = vm["pricePerUnit"]?.toString() ?? "0";
+                                    final label = vm["label"]?.toString() ?? vm["key"]?.toString() ?? "";
+                                    final unit = mat["unit"]?.toString() ?? "Unit";
+
+                                    return DropdownMenuItem<String>(
+                                      value: vm["key"]?.toString(),
+                                      child: Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              label,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: const TextStyle(fontSize: 13),
+                                            ),
+                                          ),
+                                          // عرض السعر بشكل احترافي جهة اليمين
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: const Color(0xFF9EE7B7).withOpacity(0.15),
+                                              borderRadius: BorderRadius.circular(4),
+                                            ),
+                                            child: Text(
+                                              "$price JOD/$unit",
+                                              style: const TextStyle(
+                                                color: Color(0xFF9EE7B7),
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  }).toList(),
+                            onChanged: !isChecked
+                                ? null
+                                : (v) {
+                                    if (id.isEmpty || v == null) return;
+                                    setState(() => _selectedVariant[id] = v);
+                                  },
                           ),
-                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -897,9 +1062,6 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
     );
   }
 
-  // =============================
-  // ✅ Step 5: النتيجة + أزرار الـ Action
-  // =============================
   Widget _buildStepEstimate() {
     final items = (_estimate?["items"] is List)
         ? List.from(_estimate?["items"])
@@ -921,7 +1083,6 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
         if (_estimate == null)
           const Text("No estimate yet", style: TextStyle(color: Colors.white60))
         else ...[
-          // --- Total Box ---
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
             decoration: BoxDecoration(
@@ -949,15 +1110,14 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
             ),
           ),
           const SizedBox(height: 16),
-          
+
           const Text("Breakdown:", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           const SizedBox(height: 10),
 
-          // --- Items List ---
           ...items.map((it) {
             final m = (it is Map) ? Map<String, dynamic>.from(it) : <String, dynamic>{};
             final name = m["name"] ?? "Item";
-            final variantLabel = m["variantLabel"] ?? ""; // From backend
+            final variantLabel = m["variantLabel"] ?? "";
             final qty = m["quantity"] ?? "0";
             final unit = m["unit"] ?? "";
             final price = m["total"] ?? "0";
@@ -980,7 +1140,7 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
                         child: Text(
                           name,
                           style: const TextStyle(
-                            color: Colors.white, 
+                            color: Colors.white,
                             fontWeight: FontWeight.w700,
                             fontSize: 15,
                           ),
@@ -996,52 +1156,46 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
                     ],
                   ),
                   const SizedBox(height: 4),
-                  
                   if (variantLabel.toString().isNotEmpty)
                     Text(
                       "Type: $variantLabel",
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.9), 
+                        color: Colors.white.withOpacity(0.9),
                         fontSize: 13,
-                        fontStyle: FontStyle.italic
+                        fontStyle: FontStyle.italic,
                       ),
                     ),
-                  
                   const SizedBox(height: 6),
                   Divider(color: Colors.white.withOpacity(0.05), height: 16),
-                  
                   Row(
                     children: [
-                       Icon(Icons.layers_outlined, color: Colors.white.withOpacity(0.5), size: 16),
-                       const SizedBox(width: 6),
-                       Text(
-                         "$qty $unit",
-                         style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 13),
-                       ),
+                      Icon(Icons.layers_outlined, color: Colors.white.withOpacity(0.5), size: 16),
+                      const SizedBox(width: 6),
+                      Text(
+                        "$qty $unit",
+                        style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 13),
+                      ),
                     ],
                   )
                 ],
               ),
             );
           }),
-          
+
           const SizedBox(height: 24),
 
-          _buildSecondaryButton("Download Details (PDF/JSON)", _downloadEstimate,
-              icon: Icons.download),
+          _buildSecondaryButton("Download Details (PDF/JSON)", _downloadEstimate, icon: Icons.download),
 
           const SizedBox(height: 20),
 
-          // ✅ صف الأزرار: Assign + Publish
           Row(
             children: [
               Expanded(
                 child: SizedBox(
-                  height: 58, // 1. قمنا بزيادة الارتفاع ليتسع للمحتوى
+                  height: 58,
                   child: OutlinedButton(
                     onPressed: _loading ? null : _showContractorPicker,
                     style: OutlinedButton.styleFrom(
-                      // 2. تقليل الحشوة الداخلية لتوفير مساحة
                       padding: const EdgeInsets.symmetric(vertical: 4),
                       side: const BorderSide(color: Color(0xFF9EE7B7)),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
@@ -1049,28 +1203,26 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: const [
-                        Icon(Icons.person_add_alt_1, color: Color(0xFF9EE7B7), size: 22), // حجم الأيقونة مناسب
-                        SizedBox(height: 2), // تقليل المسافة بين الأيقونة والنص
+                        Icon(Icons.person_add_alt_1, color: Color(0xFF9EE7B7), size: 22),
+                        SizedBox(height: 2),
                         Text(
-                          "Assign Specific", 
+                          "Assign Specific",
                           style: TextStyle(
-                            color: Color(0xFF9EE7B7), 
-                            fontSize: 11, // تصغير الخط قليلاً ليناسب المساحة
-                            fontWeight: FontWeight.bold
-                          )
+                            color: Color(0xFF9EE7B7),
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ],
                     ),
                   ),
                 ),
               ),
-              
               const SizedBox(width: 12),
-              
               Expanded(
                 flex: 2,
                 child: SizedBox(
-                  height: 58, // يجب توحيد الارتفاع مع الزر المجاور
+                  height: 58,
                   child: ElevatedButton.icon(
                     onPressed: _loading ? null : _publishProject,
                     style: ElevatedButton.styleFrom(
@@ -1081,7 +1233,7 @@ class _CreateProjectFlowState extends State<CreateProjectFlow> {
                       ),
                     ),
                     icon: _loading
-                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
                         : const Icon(Icons.public, size: 22),
                     label: const Text("Publish to All",
                         style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),

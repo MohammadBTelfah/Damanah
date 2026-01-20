@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:intl/intl.dart'; // ✅ تأكد من إضافة intl في pubspec.yaml
 
 import '../services/project_service.dart';
 import '../services/session_service.dart';
+import '../services/contract_service.dart';
 
 class ContractorProjectDetailsPage extends StatefulWidget {
   final String projectId;
@@ -19,6 +22,7 @@ class ContractorProjectDetailsPage extends StatefulWidget {
 class _ContractorProjectDetailsPageState
     extends State<ContractorProjectDetailsPage> {
   final ProjectService _service = ProjectService();
+  final ContractService _contractService = ContractService();
 
   bool _loading = true;
   String? _error;
@@ -31,6 +35,11 @@ class _ContractorProjectDetailsPageState
   bool _submittingOffer = false;
 
   Map<String, dynamic>? _myOfferCache;
+
+  // ✅ عقد المشروع الحالي (إذا موجود)
+  Map<String, dynamic>? _myContract;
+  bool _loadingContract = false;
+  bool _creatingContract = false; // ✅ حالة تحميل إنشاء العقد
 
   @override
   void initState() {
@@ -72,10 +81,53 @@ class _ContractorProjectDetailsPageState
       }
 
       setState(() => _project = p);
+
+      await _loadMyContractIfNeeded(p);
     } catch (e) {
       setState(() => _error = e.toString());
     } finally {
       if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _loadMyContractIfNeeded(Map<String, dynamic> p) async {
+    final status = (p["status"] ?? "").toString().toLowerCase().trim();
+    
+    // إذا المشروع لا يزال مفتوحاً، لا يوجد عقد بعد
+    if (status == "open") {
+      setState(() => _myContract = null);
+      return;
+    }
+
+    if (_loadingContract) return;
+
+    setState(() => _loadingContract = true);
+    try {
+      // نجلب كل عقود المقاول ونبحث عن العقد الخاص بهذا المشروع
+      final list = await _contractService.getMyContracts();
+
+      Map<String, dynamic>? found;
+      for (final c in list) {
+        if (c is! Map) continue;
+        final m = (c as Map).cast<String, dynamic>();
+
+        final proj = m["project"];
+        final projId = proj is Map 
+            ? (proj["_id"] ?? proj["id"]).toString() 
+            : proj?.toString();
+
+        if (projId == widget.projectId) {
+          found = m;
+          break;
+        }
+      }
+
+      if (mounted) setState(() => _myContract = found);
+    } catch (_) {
+      // في حال الفشل، نفترض عدم وجود عقد حالياً
+      if (mounted) setState(() => _myContract = null);
+    } finally {
+      if (mounted) setState(() => _loadingContract = false);
     }
   }
 
@@ -91,7 +143,9 @@ class _ContractorProjectDetailsPageState
   Map<String, dynamic> _estimationOf(Map<String, dynamic> p) {
     if (p["estimation"] is Map) return Map<String, dynamic>.from(p["estimation"]);
     if (p["estimate"] is Map) return Map<String, dynamic>.from(p["estimate"]);
-    if (p["estimationResult"] is Map) return Map<String, dynamic>.from(p["estimationResult"]);
+    if (p["estimationResult"] is Map) {
+      return Map<String, dynamic>.from(p["estimationResult"]);
+    }
     return {};
   }
 
@@ -120,6 +174,7 @@ class _ContractorProjectDetailsPageState
   Future<void> _submitOffer() async {
     final p = _project ?? {};
     final status = (p["status"] ?? "").toString().toLowerCase().trim();
+
     if (status.isNotEmpty && status != "open") {
       _snack("This project is not open for offers.");
       return;
@@ -134,7 +189,6 @@ class _ContractorProjectDetailsPageState
 
     setState(() => _submittingOffer = true);
     try {
-      // same endpoint (now UPSERT on backend)
       await _service.createOffer(
         projectId: widget.projectId,
         price: price,
@@ -149,6 +203,88 @@ class _ContractorProjectDetailsPageState
       _snack(e.toString());
     } finally {
       if (mounted) setState(() => _submittingOffer = false);
+    }
+  }
+
+  Future<void> _openContractPdf() async {
+    final c = _myContract;
+    if (c == null) {
+      _snack("No contract data available.");
+      return;
+    }
+
+    final pdfUrl = (c["contractFile"] ?? c["pdfUrl"] ?? "").toString();
+
+    if (pdfUrl.trim().isNotEmpty) {
+      final uri = Uri.parse(pdfUrl);
+      final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!ok) _snack("Could not open PDF.");
+      return;
+    }
+    _snack("PDF url is missing. Please create the contract first.");
+  }
+
+  // ✅ دالة جديدة: تفتح حوار لإنشاء العقد
+  void _onTapCreateContract() {
+    final p = _project ?? {};
+    
+    // استخراج بيانات العميل
+    final ownerObj = p["owner"];
+    final clientId = (ownerObj is Map ? (ownerObj["_id"] ?? ownerObj["id"]) : ownerObj).toString();
+    final contractorId = _myId();
+
+    // السعر: نأخذه من العرض المقبول أو من حقل الإدخال
+    double? initialPrice;
+    if (_myOfferCache != null) {
+      initialPrice = double.tryParse(_myOfferCache!["price"].toString());
+    }
+
+    showDialog(
+      context: context,
+      builder: (_) => _CreateContractDialog(
+        initialPrice: initialPrice,
+        onSubmit: (data) async {
+          // إغلاق الديالوج
+          Navigator.pop(context);
+          // استدعاء API الإنشاء
+          await _createContractApiCall(
+            clientId: clientId,
+            contractorId: contractorId,
+            data: data,
+          );
+        },
+      ),
+    );
+  }
+
+  // ✅ دالة جديدة: استدعاء الـ API لإنشاء العقد
+  Future<void> _createContractApiCall({
+    required String clientId,
+    required String contractorId,
+    required Map<String, dynamic> data,
+  }) async {
+    setState(() => _creatingContract = true);
+    try {
+      await _contractService.createContract(
+        projectId: widget.projectId,
+        clientId: clientId,
+        contractorId: contractorId,
+        agreedPrice: data['agreedPrice'],
+        durationMonths: int.tryParse(data['duration'] ?? "1"),
+        paymentTerms: data['paymentTerms'],
+        startDate: data['startDate'],
+        endDate: data['endDate'],
+        terms: data['terms'],
+      );
+
+      _snack("Contract Created Successfully! ✅");
+      
+      // إعادة تحميل الصفحة لجلب العقد الجديد
+      _load(); 
+    } catch (e) {
+      _snack("Failed to create contract: $e");
+    } finally {
+      if (mounted) setState(() => _creatingContract = false);
     }
   }
 
@@ -217,6 +353,9 @@ class _ContractorProjectDetailsPageState
     final total = est["totalCost"] ?? est["total"] ?? est["total_cost"];
     final currency = (est["currency"] ?? "JOD").toString();
 
+    final status = (p["status"] ?? "").toString().toLowerCase().trim();
+    // يمكن تقديم عرض فقط إذا كانت الحالة open
+    final canOffer = status.isEmpty || status == "open";
     final isUpdate = _myOfferCache != null;
 
     return ListView(
@@ -284,8 +423,82 @@ class _ContractorProjectDetailsPageState
 
         const SizedBox(height: 12),
 
-        _offerCard(isUpdate: isUpdate),
+        // ✅ عرض كرت العقد: إما لإنشاء العقد أو لعرضه
+        if (!canOffer) _contractCard(),
+
+        // ✅ عرض كرت العرض: لتقديم أو تحديث السعر
+        if (canOffer) _offerCard(isUpdate: isUpdate, status: status),
       ],
+    );
+  }
+
+  // ✅ كرت العقد المحدث: يعرض زر الإنشاء إذا لم يكن موجوداً
+  Widget _contractCard() {
+    final c = _myContract;
+    final hasContract = c != null;
+
+    return _card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                "Contract",
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+              ),
+              if (_loadingContract || _creatingContract)
+                 const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
+            ],
+          ),
+          const SizedBox(height: 10),
+
+          if (_loadingContract)
+            const Text("Loading status...", style: TextStyle(color: Colors.white70))
+          else if (hasContract) ...[
+            // ✅ إذا العقد موجود، نعرض بياناته وزر الفتح
+            _rowText("Agreed Price", c["agreedPrice"]),
+            _rowText("Status", c["status"]),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _openContractPdf,
+                icon: const Icon(Icons.picture_as_pdf),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF9EE7B7),
+                  foregroundColor: Colors.black,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  minimumSize: const Size.fromHeight(48),
+                ),
+                label: const Text("Open Contract PDF"),
+              ),
+            ),
+          ] else ...[
+            // ✅ إذا العقد غير موجود، نعرض زر الإنشاء
+            const Text(
+              "Contract pending creation.",
+              style: TextStyle(color: Colors.white70),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _creatingContract ? null : _onTapCreateContract,
+                icon: const Icon(Icons.edit_document),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF9EE7B7),
+                  foregroundColor: Colors.black,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  minimumSize: const Size.fromHeight(48),
+                ),
+                label: const Text("Create Contract"),
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 
@@ -358,9 +571,13 @@ class _ContractorProjectDetailsPageState
     );
   }
 
-  
+  Widget _offerCard({required bool isUpdate, required String status}) {
+    final canEditOffer = status.isEmpty || status == "open";
 
-  Widget _offerCard({required bool isUpdate}) {
+    if (!canEditOffer) {
+      return const SizedBox.shrink();
+    }
+
     return _card(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -497,6 +714,148 @@ class _ContractorProjectDetailsPageState
         child: Text(
           s.replaceAll("_", " "),
           style: TextStyle(color: fg, fontSize: 12, fontWeight: FontWeight.w700),
+        ),
+      ),
+    );
+  }
+}
+
+// ✅ ويدجت داخلي (Private Widget) لنموذج إنشاء العقد
+class _CreateContractDialog extends StatefulWidget {
+  final double? initialPrice;
+  final Function(Map<String, dynamic>) onSubmit;
+
+  const _CreateContractDialog({
+    this.initialPrice,
+    required this.onSubmit,
+  });
+
+  @override
+  State<_CreateContractDialog> createState() => _CreateContractDialogState();
+}
+
+class _CreateContractDialogState extends State<_CreateContractDialog> {
+  final _priceCtrl = TextEditingController();
+  final _durationCtrl = TextEditingController();
+  final _paymentTermsCtrl = TextEditingController();
+  final _termsCtrl = TextEditingController();
+
+  DateTime? _startDate;
+  DateTime? _endDate;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialPrice != null) {
+      _priceCtrl.text = widget.initialPrice.toString();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // استخدمنا Dialog عادي، يمكن استخدام AlertDialog
+    return Dialog(
+      backgroundColor: const Color(0xFF1A2C24),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              "Create Contract",
+              style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 20),
+            
+            _field("Agreed Price (JOD)", _priceCtrl, isNumber: true),
+            _field("Duration (Months)", _durationCtrl, isNumber: true),
+            _field("Payment Terms", _paymentTermsCtrl),
+            _field("Terms & Conditions", _termsCtrl, lines: 3),
+
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(child: _datePickerBtn("Start Date", _startDate, (d) => setState(() => _startDate = d))),
+                const SizedBox(width: 10),
+                Expanded(child: _datePickerBtn("End Date", _endDate, (d) => setState(() => _endDate = d))),
+              ],
+            ),
+            
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF9EE7B7),
+                  foregroundColor: Colors.black,
+                ),
+                onPressed: () {
+                   final price = double.tryParse(_priceCtrl.text) ?? 0;
+                   // يمكنك إضافة validation هنا
+                   
+                   final data = {
+                     "agreedPrice": price,
+                     "duration": _durationCtrl.text,
+                     "paymentTerms": _paymentTermsCtrl.text,
+                     "terms": _termsCtrl.text,
+                     "startDate": _startDate?.toIso8601String(),
+                     "endDate": _endDate?.toIso8601String(),
+                   };
+                   widget.onSubmit(data);
+                },
+                child: const Text("Create Now"),
+              ),
+            )
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _field(String label, TextEditingController ctrl, {bool isNumber = false, int lines = 1}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: TextField(
+        controller: ctrl,
+        keyboardType: isNumber ? TextInputType.number : TextInputType.text,
+        maxLines: lines,
+        style: const TextStyle(color: Colors.white),
+        decoration: InputDecoration(
+          labelText: label,
+          labelStyle: const TextStyle(color: Colors.white60),
+          filled: true,
+          fillColor: Colors.white.withOpacity(0.05),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      ),
+    );
+  }
+
+  Widget _datePickerBtn(String label, DateTime? date, Function(DateTime) onPick) {
+    return InkWell(
+      onTap: () async {
+        final now = DateTime.now();
+        final d = await showDatePicker(
+          context: context,
+          initialDate: date ?? now,
+          firstDate: now.subtract(const Duration(days: 365)),
+          lastDate: now.add(const Duration(days: 365 * 5)),
+        );
+        if (d != null) onPick(d);
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.white24),
+        ),
+        child: Text(
+          date == null ? label : DateFormat("yyyy-MM-dd").format(date),
+          style: TextStyle(color: date == null ? Colors.white60 : Colors.white),
+          textAlign: TextAlign.center,
         ),
       ),
     );
