@@ -72,11 +72,13 @@ function getBaseUrl(req) {
 // =======================
 exports.getAvailableContractors = async (req, res) => {
   try {
-    const contractors = await Contractor.find({
-      emailVerified: true,
-      contractorStatus: "verified",
-      isActive: true,
-    }).select("_id name email phone profileImage");
+  const contractors = await Contractor.find({
+  role: "contractor",
+  emailVerified: true,
+  contractorStatus: "verified",
+  isActive: true,
+}).select("_id name email phone profileImage");
+
 
     const baseUrl = getBaseUrl(req);  // تأكد من أن baseUrl يحتوي على البروتوكول (http:// أو https://)
     const list = contractors.map((c) => {
@@ -830,33 +832,49 @@ exports.shareProject = async (req, res) => {
 exports.assignContractor = async (req, res) => {
   try {
     const { contractorId } = req.body;
-    if (!contractorId)
+
+    if (!contractorId) {
       return res.status(400).json({ message: "contractorId is required" });
+    }
 
     const project = await Project.findById(req.params.id);
-    if (!project) return res.status(404).json({ message: "Project not found" });
+    if (!project) {
+      return res.status(404).json({ message: "Project not found" });
+    }
+
+    // ✅ فقط صاحب المشروع
     if (String(project.owner) !== String(req.user._id)) {
       return res.status(403).json({ message: "Not owner of this project" });
     }
 
+    // ✅ تأكد من المقاول
     const contractor = await Contractor.findById(contractorId)
       .select("name isActive role")
       .lean();
-    if (!contractor || contractor.role !== "contractor")
-      return res.status(404).json({ message: "Contractor not found" });
-    if (!contractor.isActive)
-      return res.status(400).json({ message: "Contractor is not active" });
 
+    if (!contractor || contractor.role !== "contractor") {
+      return res.status(404).json({ message: "Contractor not found" });
+    }
+
+    if (!contractor.isActive) {
+      return res.status(400).json({ message: "Contractor is not active" });
+    }
+
+    // ✅ الربط
     project.contractor = contractorId;
-    project.status = "in_progress";
+
+    // ✅ هنا التعديل المهم
+    project.status = "open"; // ⭐⭐⭐⭐
+
     await project.save();
 
+    // ✅ إشعار للمقاول
     try {
       await Notification.create({
         user: contractorId,
         userModel: "Contractor",
-        title: "You were assigned",
-        body: `You were assigned to project "${project.title}".`,
+        title: "New project request",
+        body: `You have a new client request for project "${project.title}".`,
         type: "contractor_assigned",
         projectId: project._id,
         read: false,
@@ -865,14 +883,19 @@ exports.assignContractor = async (req, res) => {
       console.error("notification contractor_assigned failed:", e.message);
     }
 
-    return res.json({ message: "Contractor assigned", project });
+    return res.json({
+      message: "Contractor assigned and project opened",
+      project,
+    });
   } catch (err) {
     console.error("assignContractor error:", err);
-    return res
-      .status(500)
-      .json({ message: "Assign failed", error: err.message });
+    return res.status(500).json({
+      message: "Assign failed",
+      error: err.message,
+    });
   }
 };
+
 // =======================
 // Get Recent Offers across all projects (Client Dashboard)
 // =======================
@@ -919,23 +942,26 @@ exports.getClientRecentOffers = async (req, res) => {
 // =======================
 // Client - My Contractors (ONLY RELATED)
 // =======================
+// جلب المقاولين المرتبطين بمشاريع العميل الحالي (العميل الذي وظفهم)
 exports.getMyContractors = async (req, res) => {
   try {
-    const clientId = req.user._id;
+    // 1. التأكد من تحويل المعرف إلى ObjectId لضمان مطابقة قاعدة البيانات
+    const clientId = new mongoose.Types.ObjectId(req.user._id);
 
-    // 1. جلب مشاريع العميل التي لها مقاول
+    // 2. البحث عن المشاريع التي يملكها العميل ولديها مقاول معين
+    // استخدمنا $exists للتأكد من وجود الحقل و $ne للتأكد أنه ليس null
     const projects = await Project.find({
       owner: clientId,
-      contractor: { $ne: null },
+      contractor: { $exists: true, $ne: null },
     })
       .select("contractor")
-      .populate("contractor", "name email phone profileImage contractorStatus isActive");
+      .populate("contractor", "name email phone profileImage contractorStatus isActive specialty city");
 
-    // 2. استخراج المقاولين بدون تكرار
+    // 3. استخدام Map لمنع تكرار المقاولين إذا كان المقاول يعمل في أكثر من مشروع لنفس العميل
     const contractorsMap = new Map();
 
     projects.forEach((p) => {
-      if (p.contractor) {
+      if (p.contractor && p.contractor._id) {
         contractorsMap.set(
           p.contractor._id.toString(),
           p.contractor
@@ -945,10 +971,37 @@ exports.getMyContractors = async (req, res) => {
 
     const contractors = Array.from(contractorsMap.values());
 
-    return res.json(contractors);
+    // 4. معالجة الروابط لضمان عمل الصور في Flutter (تحويل المسارات المحلية لروابط كاملة)
+    const baseUrl = `${req.protocol}://${req.get("host")}`;
+    
+    const processedList = contractors.map((c) => {
+      // تحويل وثيقة Mongoose إلى كائن عادي للتعديل عليه
+      const obj = c.toObject ? c.toObject() : c;
+      
+      let profileImageUrl = null;
+      if (obj.profileImage) {
+        // إذا كان الرابط يبدأ بـ http فهو من Cloudinary، وإلا فهو مسار محلي يحتاج baseUrl
+        profileImageUrl = obj.profileImage.startsWith("http")
+          ? obj.profileImage
+          : `${baseUrl}${obj.profileImage.replace(/\\/g, '/')}`;
+      }
+
+      return {
+        ...obj,
+        profileImageUrl: profileImageUrl // هذا الحقل هو ما يبحث عنه السيرفس في Flutter
+      };
+    });
+
+    // 5. إرجاع القائمة النهائية
+    console.log(`[Success] Found ${processedList.length} contractors for client: ${clientId}`);
+    return res.json(processedList);
+
   } catch (err) {
     console.error("getMyContractors error:", err);
-    return res.status(500).json({ message: "Server error" });
+    return res.status(500).json({ 
+      message: "Server error while fetching your contractors",
+      error: err.message 
+    });
   }
 };
 // =======================

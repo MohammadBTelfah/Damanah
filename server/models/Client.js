@@ -24,6 +24,15 @@ const clientSchema = new mongoose.Schema(
       enum: ["none", "pending", "verified", "rejected"],
       default: "none", // تصبح "pending" عند رفع هوية
     },
+    // fullNameFromId:
+    // Stores the official English name extracted from national ID
+    // or manually corrected by the user/admin.
+
+    fullNameFromId: {
+      type: String,
+      default: null,
+    },
+
 
     // 4. بيانات الذكاء الاصطناعي (OCR Data)
     // نخزن هنا ما قرأه النظام تلقائياً لنساعد الأدمن في القرار

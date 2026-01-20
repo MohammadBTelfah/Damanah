@@ -10,12 +10,6 @@ const contractorSchema = new mongoose.Schema(
     profileImage: { type: String, default: null },
     phone: { type: String, required: true },
 
-    // حالة توفر المقاول لاستلام مشاريع جديدة
-    availabilityStatus: {
-      type: String,
-      enum: ["available", "busy", "unavailable"],
-      default: "available",
-    },
 
     /* ================= Identity (الهوية الشخصية) ================= */
 
@@ -30,6 +24,12 @@ const contractorSchema = new mongoose.Schema(
       type: String,
       enum: ["none", "pending", "verified", "rejected"],
       default: "none",
+    },
+
+    // ✅ 3.5 الاسم الإنجليزي النهائي من الهوية (يدوي من Flutter أو من OCR)
+    fullNameFromId: {
+      type: String,
+      default: null,
     },
 
     // 4. بيانات الذكاء الاصطناعي (OCR Data)
