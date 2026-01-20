@@ -182,7 +182,7 @@ exports.register = async (req, res) => {
       try {
         console.log("Starting OCR for:", identityDocumentPath);
         const ocrRes = await extractNationalIdFromIdentity(identityDocumentPath);
-        
+
         if (ocrRes) {
           ocrData = {
             extractedName: ocrRes.extractedName || null,
@@ -212,7 +212,7 @@ exports.register = async (req, res) => {
       profileImage: profileImagePath,
 
       identityDocument: identityDocumentPath,
-      
+
       // الرقم الوطني المعتمد (يدوي)
       nationalId: manualNationalId || null,
 
@@ -256,10 +256,10 @@ exports.register = async (req, res) => {
 
         identityDocument: contractor.identityDocument,
         nationalId: contractor.nationalId, // اليدوي
-        
+
         // إرجاع كائن الـ OCR
-        identityData: contractor.identityData, 
-        
+        identityData: contractor.identityData,
+
         identityStatus: contractor.identityStatus,
 
         contractorDocument: contractor.contractorDocument,
@@ -318,9 +318,9 @@ exports.verifyEmail = async (req, res) => {
     contractor.emailVerified = true;
     contractor.emailVerificationToken = null;
     contractor.emailVerificationExpires = null;
-    
+
     // يبقى غير مفعل حتى يوافق الأدمن على الوثائق
-    contractor.isActive = false; 
+    contractor.isActive = true;
 
     await contractor.save();
 
@@ -423,10 +423,10 @@ exports.login = async (req, res) => {
 
         identityDocument: contractor.identityDocument,
         nationalId: contractor.nationalId,
-        
+
         // ✅ بيانات الـ OCR مجمعة
-        identityData: contractor.identityData, 
-        
+        identityData: contractor.identityData,
+
         identityStatus: contractor.identityStatus,
 
         contractorDocument: contractor.contractorDocument,
