@@ -919,21 +919,22 @@ exports.getClientRecentOffers = async (req, res) => {
 // =======================
 // Client - My Contractors (ONLY RELATED)
 // =======================
+// جلب المقاولين المرتبطين بمشاريع العميل الحالي (العميل الذي وظفهم)
 exports.getMyContractors = async (req, res) => {
   try {
-    // 1. التأكد من تحويل المعرف إلى ObjectId لضمان دقة البحث في MongoDB
-    const mongoose = require("mongoose");
+    // 1. التأكد من تحويل المعرف إلى ObjectId لضمان مطابقة قاعدة البيانات
     const clientId = new mongoose.Types.ObjectId(req.user._id);
 
-    // 2. جلب مشاريع العميل التي تحتوي على مقاول معين
+    // 2. البحث عن المشاريع التي يملكها العميل ولديها مقاول معين
+    // استخدمنا $exists للتأكد من وجود الحقل و $ne للتأكد أنه ليس null
     const projects = await Project.find({
       owner: clientId,
       contractor: { $exists: true, $ne: null },
     })
       .select("contractor")
-      .populate("contractor", "name email phone profileImage contractorStatus isActive");
+      .populate("contractor", "name email phone profileImage contractorStatus isActive specialty city");
 
-    // 3. استخراج المقاولين باستخدام Map لمنع التكرار
+    // 3. استخدام Map لمنع تكرار المقاولين إذا كان المقاول يعمل في أكثر من مشروع لنفس العميل
     const contractorsMap = new Map();
 
     projects.forEach((p) => {
@@ -947,34 +948,39 @@ exports.getMyContractors = async (req, res) => {
 
     const contractors = Array.from(contractorsMap.values());
 
-    // 4. معالجة روابط الصور (الخطوة التي كانت ناقصة وتسبب اختفاء الصور في Flutter)
+    // 4. معالجة الروابط لضمان عمل الصور في Flutter (تحويل المسارات المحلية لروابط كاملة)
     const baseUrl = `${req.protocol}://${req.get("host")}`;
     
     const processedList = contractors.map((c) => {
+      // تحويل وثيقة Mongoose إلى كائن عادي للتعديل عليه
       const obj = c.toObject ? c.toObject() : c;
       
-      // توحيد اسم الحقل ليكون profileImageUrl كما يتوقعه كود الـ Flutter والسيرفس لديك
       let profileImageUrl = null;
       if (obj.profileImage) {
-        profileImageUrl = obj.profileImage.startsWith("http") 
-          ? obj.profileImage 
+        // إذا كان الرابط يبدأ بـ http فهو من Cloudinary، وإلا فهو مسار محلي يحتاج baseUrl
+        profileImageUrl = obj.profileImage.startsWith("http")
+          ? obj.profileImage
           : `${baseUrl}${obj.profileImage.replace(/\\/g, '/')}`;
       }
 
       return {
         ...obj,
-        profileImageUrl: profileImageUrl
+        profileImageUrl: profileImageUrl // هذا الحقل هو ما يبحث عنه السيرفس في Flutter
       };
     });
 
-    // إرسال القائمة النهائية
+    // 5. إرجاع القائمة النهائية
+    console.log(`[Success] Found ${processedList.length} contractors for client: ${clientId}`);
     return res.json(processedList);
+
   } catch (err) {
     console.error("getMyContractors error:", err);
-    return res.status(500).json({ message: "Server error", error: err.message });
+    return res.status(500).json({ 
+      message: "Server error while fetching your contractors",
+      error: err.message 
+    });
   }
 };
-
 // =======================
 // Contractor - My Submitted Offers (across all projects)
 // GET /api/projects/contractor/my-offers
