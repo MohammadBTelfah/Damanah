@@ -73,26 +73,6 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
       ..showSnackBar(snackBar);
   }
 
-  // ✅✅✅ جديد: Dialog مضمون للنجاح/الرسائل المهمة
-  Future<void> _showSuccessDialog(String message) async {
-    if (!mounted) return;
-
-    await showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => AlertDialog(
-        title: const Text("Success"),
-        content: Text(message),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("OK"),
-          ),
-        ],
-      ),
-    );
-  }
-
   bool _isValidPassword(String v) {
     // حسب طلبك: طويل + يحتوي @
     return v.length >= 8 && v.contains('@');
@@ -123,14 +103,26 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
   }
 
   Future<void> _pickContractorDocument() async {
-    final result = await FilePicker.platform.pickFiles(type: FileType.any);
-    if (result != null && result.files.single.path != null) {
-      setState(() {
-        _contractorFilePath = result.files.single.path!;
-        _contractorFileName = result.files.single.name;
-      });
-    }
+  final result = await FilePicker.platform.pickFiles(
+    type: FileType.any,
+    withData: true, // ⭐ مهم جدًا للتلفون الحقيقي
+  );
+
+  if (result != null && result.files.isNotEmpty) {
+    final file = result.files.single;
+
+    setState(() {
+      _contractorFilePath = file.path; // قد تكون null على بعض الأجهزة
+      _contractorFileName = file.name;
+    });
+
+    debugPrint("Picked contractor file:");
+    debugPrint("name: ${file.name}");
+    debugPrint("path: ${file.path}");
+    debugPrint("bytes: ${file.bytes != null ? file.bytes!.length : 'null'}");
   }
+}
+
 
   Future<void> _handleRegister() async {
     if (!_formKey.currentState!.validate()) return;
@@ -184,36 +176,27 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
         profileImagePath: _profileImagePath,
       );
 
-      // ✅✅✅ جديد: طباعة للتأكد
-      debugPrint("✅ Contractor register response: $res");
+      debugPrint("Contractor register response: $res");
 
       if (!mounted) return;
-
-      // ✅✅✅ جديد: خذ رسالة السيرفر نفسها
-      final msg = (res["message"] ??
-              "Account created. Please check your email to verify.")
-          .toString();
-
-      // ✅✅✅ أهم تعديل: Dialog مضمون ما بضيع
-      await _showSuccessDialog(msg);
-
-      if (!mounted) return;
-
-      // بعد ما المستخدم يكبس OK، ننقله للوجين
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (_) => const LoginScreen(role: 'contractor'),
-        ),
+      _showTopSnackBar(
+        "Account created. Check your email to verify.",
+        Colors.green,
       );
+
+      Future.delayed(const Duration(milliseconds: 1400), () {
+        if (!mounted) return;
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => const LoginScreen(role: 'contractor'),
+          ),
+        );
+      });
     } catch (e) {
       if (!mounted) return;
-
-      // ✅✅✅ مهم: اعرض سبب الفشل الحقيقي بدل كلمة ثابتة
-      final errMsg = e.toString().replaceFirst("Exception: ", "");
-      _showTopSnackBar("Registration failed: $errMsg", Colors.red);
-
-      debugPrint("❌ Contractor register error: $e");
+      _showTopSnackBar("Registration failed", Colors.red);
+      debugPrint("Contractor register error: $e");
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -685,8 +668,7 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
                           Navigator.pushReplacement(
                             context,
                             MaterialPageRoute(
-                              builder: (_) =>
-                                  const LoginScreen(role: 'contractor'),
+                              builder: (_) => const LoginScreen(role: 'contractor'),
                             ),
                           );
                         },

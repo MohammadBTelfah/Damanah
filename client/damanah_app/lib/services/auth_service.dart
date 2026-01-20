@@ -241,66 +241,86 @@ class AuthService {
     throw Exception(data['message'] ?? 'Login failed');
   }
 
-  Future<Map<String, dynamic>> registerContractor({
-    required String name,
-    required String email,
-    required String password,
-    required String phone,
-    String? profileImagePath,
-    String? identityFilePath,
-    required String contractorFilePath,
-    String? nationalId,
-  }) async {
-    final uri = Uri.parse('$_contractorAuthBaseUrl/register');
-    final request = http.MultipartRequest('POST', uri);
+ Future<Map<String, dynamic>> registerContractor({
+  required String name,
+  required String email,
+  required String password,
+  required String phone,
+  String? profileImagePath,
+  String? identityFilePath,
+  required String contractorFilePath,
+  String? nationalId,
+}) async {
+  final uri = Uri.parse('$_contractorAuthBaseUrl/register');
+  final request = http.MultipartRequest('POST', uri);
 
-    request.fields['name'] = name;
-    request.fields['email'] = email;
-    request.fields['password'] = password;
-    request.fields['phone'] = phone;
+  request.fields['name'] = name;
+  request.fields['email'] = email;
+  request.fields['password'] = password;
+  request.fields['phone'] = phone;
 
-    if (nationalId != null && nationalId.trim().isNotEmpty) {
-      request.fields['nationalId'] = nationalId.trim();
-    }
-
-    // ✅ ضغط ورفع الصورة الشخصية
-    if (profileImagePath != null && profileImagePath.isNotEmpty) {
-      final compressedPath = await _compressFileIfNeeded(profileImagePath);
-      request.files.add(
-        await http.MultipartFile.fromPath('profileImage', compressedPath),
-      );
-    }
-
-    // ✅ ضغط ورفع الهوية
-    if (identityFilePath != null && identityFilePath.isNotEmpty) {
-      final compressedPath = await _compressFileIfNeeded(identityFilePath);
-      request.files.add(
-        await http.MultipartFile.fromPath('identityDocument', compressedPath),
-      );
-    }
-
-    // ✅ ضغط ورفع وثيقة المقاول (إذا لم تكن PDF)
-    // ملاحظة: المقاول قد يرفع رخصة PDF، الدالة _compressFileIfNeeded تتجاهلها تلقائياً
-    if (contractorFilePath.isNotEmpty) {
-      final compressedPath = await _compressFileIfNeeded(contractorFilePath);
-      request.files.add(
-        await http.MultipartFile.fromPath(
-          'contractorDocument',
-          compressedPath,
-        ),
-      );
-    }
-
-    final streamed = await request.send().timeout(_uploadTimeout);
-    final response = await http.Response.fromStream(streamed);
-
-    final data = _safeJson(response.body);
-
-    if (response.statusCode == 201 || response.statusCode == 200) {
-      return data;
-    }
-    throw Exception(data['message'] ?? 'Registration failed');
+  if (nationalId != null && nationalId.trim().isNotEmpty) {
+    request.fields['nationalId'] = nationalId.trim();
   }
+
+  // ✅ Helper داخلي: يضيف ملف بطريقة آمنة (bytes أولاً ثم path)
+  Future<void> _attachFile({
+    required String fieldName,
+    required String filePath,
+  }) async {
+    // حاول الضغط (للصور)، والـ PDF رح يرجّع نفس الملف
+    final effectivePath = await _compressFileIfNeeded(filePath);
+
+    // 1) لو عندنا path طبيعي (وهذا غالباً للمحاكي/ملفات حقيقية) استخدم fromPath
+    // 2) لو فشل fromPath (غالباً بسبب content:// على التلفون)، جرّب bytes
+    try {
+      request.files.add(
+        await http.MultipartFile.fromPath(fieldName, effectivePath),
+      );
+    } catch (e) {
+      // ✅ Fallback للـ bytes: مفيد جدًا للتلفون الحقيقي
+      final f = File(effectivePath);
+      if (await f.exists()) {
+        final bytes = await f.readAsBytes();
+        request.files.add(
+          http.MultipartFile.fromBytes(
+            fieldName,
+            bytes,
+            filename: effectivePath.split('/').last,
+          ),
+        );
+      } else {
+        rethrow; // إذا لا path ولا ملف موجود، خلّي الخطأ يطلع
+      }
+    }
+  }
+
+  // ✅ رفع الصورة الشخصية (اختياري)
+  if (profileImagePath != null && profileImagePath.isNotEmpty) {
+    await _attachFile(fieldName: 'profileImage', filePath: profileImagePath);
+  }
+
+  // ✅ رفع الهوية
+  if (identityFilePath != null && identityFilePath.isNotEmpty) {
+    await _attachFile(fieldName: 'identityDocument', filePath: identityFilePath);
+  }
+
+  // ✅ رفع وثيقة المقاول
+  if (contractorFilePath.isNotEmpty) {
+    await _attachFile(fieldName: 'contractorDocument', filePath: contractorFilePath);
+  }
+
+  final streamed = await request.send().timeout(_uploadTimeout);
+  final response = await http.Response.fromStream(streamed);
+
+  final data = _safeJson(response.body);
+
+  if (response.statusCode == 201 || response.statusCode == 200) {
+    return data;
+  }
+  throw Exception(data['message'] ?? 'Registration failed');
+}
+
 
   Future<Map<String, dynamic>> resendContractorVerificationEmail({
     required String email,
