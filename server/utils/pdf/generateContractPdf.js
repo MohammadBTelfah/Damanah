@@ -19,7 +19,7 @@ function normalizeString(v) {
 module.exports = async function generateContractPdf(contract, absPdfPath) {
   try {
     // 1) قراءة ملف القالب
-    //  قراءة ملف contract.hbs
+    // قراءة ملف contract.hbs
     const templatePath = path.join(__dirname, "templates", "contract.hbs");
     const templateHtml = fs.readFileSync(templatePath, "utf8");
     const template = Handlebars.compile(templateHtml);
@@ -34,13 +34,15 @@ module.exports = async function generateContractPdf(contract, absPdfPath) {
       // --- رأس العقد ---
       contractId: String(contract._id).slice(-6), // نأخذ آخر 6 أرقام فقط للجمالية
       contractDate: formatDate(contract.createdAt || new Date()),
-      clientName: normalizeString(client.name),
-      contractorName: normalizeString(contractor.name),
+
+      // ✅ التعديل: جلب الاسم الحقيقي المستخرج من الهوية لكل من الطرفين
+      clientName: normalizeString(client.identityData?.extractedName || client.name),
+      contractorName: normalizeString(contractor.identityData?.extractedName || contractor.name),
 
       // --- تفاصيل المشروع ---
       projectName: normalizeString(project.title || project.name),
       projectLocation: normalizeString(project.location || project.address),
-      // [cite: 20] تعبئة مساحة المشروع
+      // تعبئة مساحة المشروع
       projectArea: normalizeString(project.area || project.totalArea),
       projectDescription: normalizeString(contract.projectDescription || project.description),
 
@@ -54,8 +56,8 @@ module.exports = async function generateContractPdf(contract, absPdfPath) {
       paymentTerms: normalizeString(contract.paymentTerms),
 
       // --- المواد والخدمات ---
-      // [cite: 21] تعبئة قائمة المواد
-     materialsAndServices: (() => {
+      // تعبئة قائمة المواد
+      materialsAndServices: (() => {
         // 1. الأولوية: إذا كانت المواد محفوظة في العقد، نستخدمها
         if (contract.materialsAndServices && contract.materialsAndServices.length > 0) {
           return contract.materialsAndServices;
@@ -69,21 +71,21 @@ module.exports = async function generateContractPdf(contract, absPdfPath) {
           });
         }
 
-        // 3. إذا لم نجد شيباً
+        // 3. إذا لم نجد شيئاً
         return [];
       })(),
 
       // --- الشروط ---
-      // [cite: 22] تعبئة الشروط والأحكام
+      // تعبئة الشروط والأحكام
       terms: normalizeString(contract.terms),
 
       // --- التواقيع والبيانات الشخصية ---
-      // [cite: 23] بيانات العميل في الجدول
+      // بيانات العميل في الجدول
       clientPhone: normalizeString(client.phone || client.mobile),
       clientEmail: normalizeString(client.email),
       clientAddress: normalizeString(client.address || client.city),
 
-      // [cite: 24] بيانات المقاول في الجدول
+      // بيانات المقاول في الجدول
       contractorPhone: normalizeString(contractor.phone || contractor.mobile),
       contractorEmail: normalizeString(contractor.email),
       contractorAddress: normalizeString(contractor.address || contractor.city),

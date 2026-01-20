@@ -24,45 +24,32 @@ class _ContractorsPageState extends State<ContractorsPage> {
     _load();
   }
 
+  /// ✅ تم تعديل هذه الدالة لتجلب فقط المقاولين الخاصين بك
   Future<void> _load() async {
+    if (!mounted) return;
     setState(() {
       _loading = true;
       _error = null;
     });
 
     try {
-      final list = await _tryGetMyContractorsWithFallback();
-      setState(() => _contractors = list);
-    } catch (e) {
-      setState(() => _error = e.toString());
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
-  }
-
-  Future<List<dynamic>> _tryGetMyContractorsWithFallback() async {
-    try {
+      // نطلب فقط المقاولين المربوطين بمشاريعي
       final list = await _service.getMyContractors();
-      return list;
+      
+      if (mounted) {
+        setState(() => _contractors = list);
+      }
     } catch (e) {
       final msg = e.toString();
+      // ✅ إذا كان السيرفر يعيد 404 فهذا يعني "لا يوجد مقاولين مربوطين حالياً"
+      // نعتبرها حالة قائمة فارغة وليست خطأ أحمر
       if (msg.contains('404')) {
-        try {
-          final fallback = await _service.getContractors();
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text("Showing public contractors (fallback)."),
-                duration: Duration(seconds: 2),
-              ),
-            );
-          }
-          return fallback;
-        } catch (e2) {
-          throw Exception("Primary endpoint returned 404, fallback failed: ${e2.toString()}");
-        }
+        if (mounted) setState(() => _contractors = []);
+      } else {
+        if (mounted) setState(() => _error = msg);
       }
-      rethrow;
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
   }
 
@@ -98,7 +85,7 @@ class _ContractorsPageState extends State<ContractorsPage> {
       body: RefreshIndicator(
         onRefresh: _load,
         child: _loading
-            ? const Center(child: CircularProgressIndicator())
+            ? const Center(child: CircularProgressIndicator(color: Color(0xFF9EE7B7)))
             : _error != null
                 ? _errorView()
                 : _contractors.isEmpty
@@ -292,14 +279,14 @@ class _ContractorsPageState extends State<ContractorsPage> {
             textAlign: TextAlign.center,
           ),
         ),
-        if (_error != null)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
-            child: ElevatedButton(
-              onPressed: _load,
-              child: const Text("Retry"),
-            ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 100, vertical: 18),
+          child: ElevatedButton(
+            onPressed: _load,
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF9EE7B7), foregroundColor: Colors.black),
+            child: const Text("Retry"),
           ),
+        ),
       ],
     );
   }
@@ -307,13 +294,13 @@ class _ContractorsPageState extends State<ContractorsPage> {
   Widget _emptyView() {
     return ListView(
       children: const [
-        SizedBox(height: 70),
-        Icon(Icons.groups_outlined, size: 52, color: Colors.white38),
-        SizedBox(height: 12),
+        SizedBox(height: 100),
+        Icon(Icons.person_search_outlined, size: 64, color: Colors.white24),
+        SizedBox(height: 16),
         Center(
           child: Text(
-            "No contractors available",
-            style: TextStyle(color: Colors.white60),
+            "No contractors linked to your projects yet",
+            style: TextStyle(color: Colors.white60, fontSize: 16),
           ),
         ),
       ],
