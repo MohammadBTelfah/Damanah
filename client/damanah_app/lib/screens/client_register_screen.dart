@@ -97,7 +97,6 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
       setState(() {
         _identityImageFile = result.imageFile;
         _nationalIdController.text = result.nationalId;
-        _nationalIdConfidence = result.confidence;
       });
 
       _showTopSnackBar("ID scanned successfully", Colors.green);
@@ -140,7 +139,6 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
         
         // ✅ الرقم الوطني
         nationalId: nationalId,
-        nationalIdConfidence: _nationalIdConfidence,
         
         // ✅ الصورة الشخصية (اختياري)
         profileImagePath: _profileImagePath,

@@ -7,6 +7,7 @@ const Client = require("../../models/Client");
 const Admin = require("../../models/Admin");
 
 const sendEmail = require("../../utils/sendEmail");
+// ✅ استدعاء الخدمة الجديدة من المسار الصحيح
 const { extractNationalIdFromIdentity } = require("../../utils/identity_ocr");
 const isStrongPassword = require("../../utils/checkPassword");
 
@@ -50,7 +51,7 @@ function signToken(userId) {
   });
 }
 
-// ✅ helper: send verification email + store hashed token
+// ✅ helper: send verification email
 async function sendVerificationEmailForContractor(contractor) {
   const emailToken = crypto.randomBytes(32).toString("hex");
   const emailTokenHash = crypto
@@ -77,9 +78,6 @@ async function sendVerificationEmailForContractor(contractor) {
          style="display:inline-block;padding:10px 16px;background:#2e7d32;color:#fff;text-decoration:none;border-radius:6px;font-weight:bold;">
         Verify Email
       </a>
-
-      <p>This link is valid for 24 hours.</p>
-      <p>If you didn’t create this account, you can ignore this email.</p>
       <br />
       <p>— Damana Team</p>
     `,
@@ -95,10 +93,7 @@ async function sendIdentityPendingEmailForContractor(contractor) {
       <h2>Hello ${contractor.name},</h2>
       <p>We received your identity document.</p>
       <p><b>Status:</b> Pending review ✅</p>
-      <p>Please wait until an admin reviews and verifies your identity.</p>
       <p>We will notify you once it's verified.</p>
-      <br />
-      <p>— Damana Team</p>
     `,
   });
 }
@@ -112,10 +107,7 @@ async function sendContractorPendingEmail(contractor) {
       <h2>Hello ${contractor.name},</h2>
       <p>We received your contractor documents.</p>
       <p><b>Status:</b> Pending admin approval ✅</p>
-      <p>Please wait until an admin reviews and approves your contractor account.</p>
       <p>We will notify you once it's approved.</p>
-      <br />
-      <p>— Damana Team</p>
     `,
   });
 }
@@ -137,20 +129,21 @@ exports.register = async (req, res) => {
       return res.status(400).json({ message: "Invalid role" });
     }
 
+    // ✅ 1. تطبيع البيانات
     name = String(name || "").trim();
     const emailNorm = normalizeEmail(email);
     const phoneNorm = normalizePhone(phone);
 
-    // ✅ Files from Multer (Cloudinary)
+    // ✅ 2. استلام الملفات (Cloudinary URLs)
     const profileFile = req.files?.profileImage?.[0] || null;
     const identityFile = req.files?.identityDocument?.[0] || null;
     const contractorDocFile = req.files?.contractorDocument?.[0] || null;
 
-    // ✅ FIX: Use Cloudinary URL (path) directly
     const profileImagePath = profileFile ? profileFile.path : null;
     const identityDocumentPath = identityFile ? identityFile.path : null;
     const contractorDocumentPath = contractorDocFile ? contractorDocFile.path : null;
 
+    // ✅ 3. التحقق الأساسي
     if (!name || !emailNorm || !phoneNorm || !password) {
       return res.status(400).json({ message: "Missing required fields" });
     }
@@ -159,14 +152,13 @@ exports.register = async (req, res) => {
 
     if (!isStrongPassword(password)) {
       return res.status(400).json({
-        message:
-          "Password must be at least 8 characters long and include uppercase, lowercase, number, and special character (@$!%*?#&).",
+        message: "Password must be at least 8 characters long...",
       });
     }
 
     const hashed = await bcrypt.hash(password, 10);
 
-    // ✅ manual nationalId (أولوية)
+    // ✅ 4. معالجة الرقم الوطني اليدوي (له الأولوية)
     const manualNationalId =
       typeof nationalIdInput === "string" && nationalIdInput.trim()
         ? nationalIdInput.trim()
@@ -176,30 +168,40 @@ exports.register = async (req, res) => {
       return res.status(400).json({ message: "Invalid national ID format" });
     }
 
-    // ================= OCR (optional) =================
-    let nationalIdCandidate = null;
-    let nationalIdConfidence = null;
-    let identityRawText = null;
-    let identityExtractedAt = null;
+    // ================= 5. OCR Processing (ذكاء اصطناعي) =================
+    // تجهيز كائن البيانات الافتراضي
+    let ocrData = {
+      extractedName: null,
+      extractedNationalId: null,
+      confidence: 0,
+      rawText: null,
+      extractedAt: null
+    };
 
     if (identityDocumentPath) {
       try {
-        // OCR works with URL now (assuming utils supported)
+        console.log("Starting OCR for:", identityDocumentPath);
         const ocrRes = await extractNationalIdFromIdentity(identityDocumentPath);
-        nationalIdCandidate = ocrRes?.nationalId ?? null;
-        nationalIdConfidence = ocrRes?.confidence ?? null;
-        identityRawText = ocrRes?.rawText ?? null;
-        identityExtractedAt = new Date();
+        
+        if (ocrRes) {
+          ocrData = {
+            extractedName: ocrRes.extractedName || null,
+            extractedNationalId: ocrRes.nationalId || null,
+            confidence: ocrRes.confidence || 0,
+            rawText: ocrRes.rawText || null,
+            extractedAt: new Date()
+          };
+        }
       } catch (ocrError) {
         console.error("OCR Error:", ocrError.message);
-        // Continue registration even if OCR fails
       }
     }
 
-    // ✅ statuses: pending only if document exists
+    // ✅ 6. تحديد الحالات
     const identityStatus = identityDocumentPath ? "pending" : "none";
     const contractorStatus = contractorDocumentPath ? "pending" : "none";
 
+    // ✅ 7. إنشاء المقاول
     const contractor = await Contractor.create({
       name,
       email: emailNorm,
@@ -207,30 +209,26 @@ exports.register = async (req, res) => {
       password: hashed,
 
       role: "contractor",
-      profileImage: profileImagePath, // Cloudinary URL
+      profileImage: profileImagePath,
 
-      identityDocument: identityDocumentPath, // Cloudinary URL
-
-      // ✅ FINAL = يدوي فقط
+      identityDocument: identityDocumentPath,
+      
+      // الرقم الوطني المعتمد (يدوي)
       nationalId: manualNationalId || null,
 
-      // ✅ OCR suggestion
-      nationalIdCandidate,
-      nationalIdConfidence,
-      identityRawText,
-      identityExtractedAt,
+      // ✅ بيانات الـ OCR مجمعة
+      identityData: ocrData,
+
       identityStatus,
 
-      contractorDocument: contractorDocumentPath, // Cloudinary URL
+      contractorDocument: contractorDocumentPath,
       contractorStatus,
 
       emailVerified: false,
-      emailVerificationToken: null,
-      emailVerificationExpires: null,
-
-      isActive: false,
+      isActive: false, // يجب أن ينتظر التفعيل
     });
 
+    // ✅ 8. إرسال الإيميلات
     await sendVerificationEmailForContractor(contractor);
 
     if (contractor.identityStatus === "pending") {
@@ -242,9 +240,9 @@ exports.register = async (req, res) => {
 
     const token = signToken(contractor._id);
 
+    // ✅ 9. الرد
     return res.status(201).json({
-      message:
-        "Contractor account created. Please check your email to verify your account.",
+      message: "Contractor account created. Please check your email.",
       token,
       role: contractor.role,
       user: {
@@ -252,16 +250,16 @@ exports.register = async (req, res) => {
         name: contractor.name,
         email: contractor.email,
         phone: contractor.phone,
-
         role: contractor.role,
 
         profileImage: contractor.profileImage,
 
         identityDocument: contractor.identityDocument,
-        nationalId: contractor.nationalId,
-        nationalIdCandidate: contractor.nationalIdCandidate,
-        nationalIdConfidence: contractor.nationalIdConfidence,
-        identityExtractedAt: contractor.identityExtractedAt,
+        nationalId: contractor.nationalId, // اليدوي
+        
+        // إرجاع كائن الـ OCR
+        identityData: contractor.identityData, 
+        
         identityStatus: contractor.identityStatus,
 
         contractorDocument: contractor.contractorDocument,
@@ -272,6 +270,7 @@ exports.register = async (req, res) => {
       },
     });
   } catch (err) {
+    console.error("Register Error:", err);
     return res.status(err.statusCode || 500).json({
       message: err.message || "Server error",
     });
@@ -281,7 +280,6 @@ exports.register = async (req, res) => {
 exports.verifyEmail = async (req, res) => {
   try {
     const { token } = req.params;
-
     const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
 
     const contractor = await Contractor.findOne({
@@ -290,17 +288,15 @@ exports.verifyEmail = async (req, res) => {
     });
 
     if (!contractor) {
-      return res.status(400).json({
-        message: "Invalid or expired verification link (or already verified).",
-      });
+      return res.status(400).json({ message: "Invalid or expired link." });
     }
 
     contractor.emailVerified = true;
     contractor.emailVerificationToken = null;
     contractor.emailVerificationExpires = null;
-
-    // ✅ يبقى غير مفعل لحد ما الأدمن يعتمد الوثائق
-    contractor.isActive = false;
+    
+    // يبقى غير مفعل حتى يوافق الأدمن على الوثائق
+    contractor.isActive = false; 
 
     await contractor.save();
 
@@ -315,7 +311,7 @@ exports.verifyEmail = async (req, res) => {
 exports.resendVerificationEmail = async (req, res) => {
   try {
     const emailNorm = normalizeEmail(req.body.email);
-    if (!emailNorm) return res.status(400).json({ message: "Email is required" });
+    if (!emailNorm) return res.status(400).json({ message: "Email required" });
 
     const contractor = await Contractor.findOne({ email: emailNorm });
     if (!contractor) return res.status(404).json({ message: "Account not found" });
@@ -326,9 +322,7 @@ exports.resendVerificationEmail = async (req, res) => {
 
     await sendVerificationEmailForContractor(contractor);
 
-    return res.json({
-      message: "Verification email re-sent. Please check your inbox.",
-    });
+    return res.json({ message: "Verification email re-sent." });
   } catch (err) {
     return res.status(500).json({ message: "Server error" });
   }
@@ -355,6 +349,7 @@ exports.login = async (req, res) => {
       });
     }
 
+    // للمقاول: يجب أن يكون مفعلاً من الأدمن للدخول
     if (!contractor.isActive) {
       return res.status(403).json({
         message: "Your documents are pending admin review. Please wait for approval.",
@@ -381,9 +376,10 @@ exports.login = async (req, res) => {
 
         identityDocument: contractor.identityDocument,
         nationalId: contractor.nationalId,
-        nationalIdCandidate: contractor.nationalIdCandidate,
-        nationalIdConfidence: contractor.nationalIdConfidence,
-        identityExtractedAt: contractor.identityExtractedAt,
+        
+        // ✅ بيانات الـ OCR مجمعة
+        identityData: contractor.identityData, 
+        
         identityStatus: contractor.identityStatus,
 
         contractorDocument: contractor.contractorDocument,
@@ -391,6 +387,7 @@ exports.login = async (req, res) => {
       },
     });
   } catch (err) {
+    console.error("Login Error:", err);
     return res.status(500).json({ message: "Server error" });
   }
 };

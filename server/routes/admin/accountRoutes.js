@@ -11,8 +11,8 @@ const {
   resetPasswordLimiter,
 } = require("../../middleware/rateLimiters");
 
-// ✅ NEW: استيراد إعدادات Cloudinary بدلاً من الكود المحلي
-const upload = require("../../config/cloudinaryConfig");
+// ✅ التعديل 1: استدعاء uploadProfileImage
+const { uploadProfileImage } = require("../../utils/upload");
 
 router.get("/me", protect, adminOnly, verifiedAndActive, me.getMe);
 
@@ -21,7 +21,8 @@ router.put(
   protect,
   adminOnly,
   verifiedAndActive,
-  upload.single("profileImage"), // سيتم الرفع الآن إلى Cloudinary مباشرة
+  // ✅ التعديل 2: استخدام uploadProfileImage بدلاً من upload
+  uploadProfileImage.single("profileImage"), 
   me.updateMe
 );
 

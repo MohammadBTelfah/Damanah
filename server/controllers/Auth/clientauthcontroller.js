@@ -7,6 +7,7 @@ const Contractor = require("../../models/Contractor");
 const Admin = require("../../models/Admin");
 
 const sendEmail = require("../../utils/sendEmail");
+// ✅ تحديث المسار ليشير إلى مجلد الخدمات كما أنشأناه سابقاً
 const { extractNationalIdFromIdentity } = require("../../utils/identity_ocr");
 const isStrongPassword = require("../../utils/checkPassword");
 
@@ -31,7 +32,7 @@ function signToken(userId) {
   });
 }
 
-// ✅ ensure email/phone is unique across ALL collections (case-insensitive email)
+// ✅ Ensure email/phone is unique across ALL collections
 async function ensureUniqueAcrossAll({ email, phone }) {
   const emailNorm = email ? normalizeEmail(email) : null;
   const phoneNorm = phone ? normalizePhone(phone) : null;
@@ -51,7 +52,7 @@ async function ensureUniqueAcrossAll({ email, phone }) {
   }
 }
 
-// ✅ helper: send verification email + store hashed token
+// ✅ Helper: Send verification email
 async function sendVerificationEmailForClient(client) {
   const emailToken = crypto.randomBytes(32).toString("hex");
   const emailTokenHash = crypto
@@ -80,14 +81,13 @@ async function sendVerificationEmailForClient(client) {
       </a>
 
       <p>This link is valid for 24 hours.</p>
-      <p>If you didn’t create this account, you can ignore this email.</p>
       <br />
       <p>— Damana Team</p>
     `,
   });
 }
 
-// ✅ identity is pending admin review
+// ✅ Identity pending email
 async function sendIdentityPendingEmailForClient(client) {
   await sendEmail({
     to: client.email,
@@ -110,19 +110,19 @@ exports.register = async (req, res) => {
   try {
     let { name, email, phone, password, nationalId: nationalIdInput } = req.body;
 
-    // ✅ normalize
+    // ✅ 1. تطبيع البيانات
     name = String(name || "").trim();
     const emailNorm = normalizeEmail(email);
     const phoneNorm = normalizePhone(phone);
 
-    // ✅ uploaded files from multer (Cloudinary)
+    // ✅ 2. استلام الملفات (Cloudinary)
     const profileFile = req.files?.profileImage?.[0] || null;
     const identityFile = req.files?.identityDocument?.[0] || null;
 
-    // ✅ FIX: Get Cloudinary URL directly
     const profileImagePath = profileFile ? profileFile.path : null;
     const identityDocumentPath = identityFile ? identityFile.path : null;
 
+    // ✅ 3. التحقق الأساسي
     if (!name || !emailNorm || !phoneNorm || !password) {
       return res.status(400).json({ message: "Missing required fields" });
     }
@@ -138,41 +138,51 @@ exports.register = async (req, res) => {
 
     const hashed = await bcrypt.hash(password, 10);
 
-    // ✅ USER INPUT has priority (يدوي)
+    // ✅ 4. معالجة الرقم الوطني اليدوي
     const manualNationalId =
       typeof nationalIdInput === "string" && nationalIdInput.trim()
         ? nationalIdInput.trim()
         : null;
 
-    // ✅ validate manual national ID (اختياري لكنه مفيد)
     if (manualNationalId && !isJordanNationalId(manualNationalId)) {
       return res.status(400).json({ message: "Invalid national ID format" });
     }
 
-    // ================= OCR (optional) =================
-    let nationalIdCandidate = null;
-    let nationalIdConfidence = null;
-    let identityRawText = null;
-    let identityExtractedAt = null;
+    // ================= 5. OCR Processing =================
+    // تجهيز كائن البيانات الافتراضي
+    let ocrData = {
+      extractedName: null,
+      extractedNationalId: null,
+      confidence: 0,
+      rawText: null,
+      extractedAt: null
+    };
 
     if (identityDocumentPath) {
-      // ⚠️ انتبه: identityDocumentPath الآن هو رابط (URL) وليس مسار محلي
-      // تأكد أن دالة OCR تدعم الروابط
       try {
+        console.log("Starting OCR for:", identityDocumentPath);
+        
+        // استدعاء خدمة OCR
         const ocrRes = await extractNationalIdFromIdentity(identityDocumentPath);
-        nationalIdCandidate = ocrRes?.nationalId ?? null;
-        nationalIdConfidence = ocrRes?.confidence ?? null;
-        identityRawText = ocrRes?.rawText ?? null;
-        identityExtractedAt = new Date();
+        
+        // تعبئة البيانات المستخرجة
+        if (ocrRes) {
+          ocrData = {
+            extractedName: ocrRes.extractedName || null,
+            extractedNationalId: ocrRes.nationalId || null,
+            confidence: ocrRes.confidence || 0,
+            rawText: ocrRes.rawText || null,
+            extractedAt: new Date()
+          };
+        }
       } catch (ocrError) {
         console.error("OCR Error:", ocrError.message);
-        // نكمل التسجيل حتى لو فشل الـ OCR
       }
     }
 
-    // ✅ statuses
     const identityStatus = identityDocumentPath ? "pending" : "none";
 
+    // ✅ 6. إنشاء العميل
     const client = await Client.create({
       name,
       email: emailNorm,
@@ -180,31 +190,24 @@ exports.register = async (req, res) => {
       password: hashed,
 
       role: "client",
+      profileImage: profileImagePath,
+      identityDocument: identityDocumentPath,
 
-      profileImage: profileImagePath,      // Cloudinary URL
-      identityDocument: identityDocumentPath, // Cloudinary URL
-
-      // ✅ IMPORTANT: لا تعتمد على OCR لتعبئة الرقم النهائي
+      // الرقم الوطني المعتمد (يدوياً)
       nationalId: manualNationalId || null,
 
-      // ✅ OCR suggestion فقط
-      nationalIdCandidate,
-      nationalIdConfidence,
-      identityRawText,
-      identityExtractedAt,
+      // ✅ بيانات الـ OCR مجمعة
+      identityData: ocrData,
+
       identityStatus,
 
       emailVerified: false,
-      emailVerificationToken: null,
-      emailVerificationExpires: null,
-
-      isActive: false,
+      isActive: false, 
     });
 
-    // ✅ send verification email
+    // ✅ 7. إرسال الإيميلات
     await sendVerificationEmailForClient(client);
 
-    // ✅ identity pending email (only if identity uploaded)
     if (client.identityStatus === "pending") {
       await sendIdentityPendingEmailForClient(client);
     }
@@ -212,6 +215,7 @@ exports.register = async (req, res) => {
     const token = signToken(client._id);
 
     return res.status(201).json({
+      success: true,
       message: "Account created. Please check your email to verify your account.",
       token,
       role: client.role,
@@ -220,9 +224,8 @@ exports.register = async (req, res) => {
         name: client.name,
         email: client.email,
         phone: client.phone,
-
         role: client.role,
-
+        
         profileImage: client.profileImage,
         identityDocument: client.identityDocument,
 
@@ -231,11 +234,14 @@ exports.register = async (req, res) => {
         isActive: client.isActive,
 
         nationalId: client.nationalId,
-        nationalIdCandidate: client.nationalIdCandidate,
-        nationalIdConfidence: client.nationalIdConfidence,
+        
+        // إرجاع بيانات الـ OCR
+        identityData: client.identityData 
       },
     });
+
   } catch (err) {
+    console.error("Register Error:", err);
     return res.status(err.statusCode || 500).json({
       message: err.message || "Server error",
     });
@@ -263,7 +269,7 @@ exports.verifyEmail = async (req, res) => {
     client.emailVerificationToken = null;
     client.emailVerificationExpires = null;
 
-    // ✅ activate after email verification (حسب نظامك)
+    // تفعيل الحساب بعد تأكيد الإيميل
     client.isActive = true;
 
     await client.save();
@@ -279,7 +285,7 @@ exports.verifyEmail = async (req, res) => {
   }
 };
 
-// ✅ resend verification email
+// ✅ Resend verification email
 exports.resendVerificationEmail = async (req, res) => {
   try {
     const emailNorm = normalizeEmail(req.body.email);
@@ -337,6 +343,7 @@ exports.login = async (req, res) => {
         name: client.name,
         email: client.email,
         phone: client.phone,
+        role: "client",
 
         profileImage: client.profileImage,
         identityDocument: client.identityDocument,
@@ -346,12 +353,13 @@ exports.login = async (req, res) => {
         identityStatus: client.identityStatus,
 
         nationalId: client.nationalId,
-        nationalIdCandidate: client.nationalIdCandidate,
-        nationalIdConfidence: client.nationalIdConfidence,
-        identityExtractedAt: client.identityExtractedAt,
+
+        // ✅ بيانات الـ OCR
+        identityData: client.identityData 
       },
     });
   } catch (err) {
+    console.error("Login Error:", err);
     return res.status(500).json({ message: "Server error" });
   }
 };

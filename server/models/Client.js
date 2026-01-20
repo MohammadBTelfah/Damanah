@@ -2,44 +2,40 @@ const mongoose = require("mongoose");
 
 const clientSchema = new mongoose.Schema(
   {
+    // --- البيانات الأساسية ---
     name: { type: String, required: true },
-
     email: { type: String, required: true, unique: true },
     password: { type: String, required: true, minlength: 6 },
-
     role: { type: String, enum: ["client"], default: "client" },
-
     profileImage: { type: String, default: null },
     phone: { type: String, required: true },
 
-    /* ================= Identity ================= */
+    /* ================= Identity (الهوية) ================= */
 
-    // ملف هوية مدنية (صورة أو PDF)
+    // 1. صورة الهوية (رابط Cloudinary)
     identityDocument: { type: String, default: null },
 
-    // الرقم الوطني المؤكد (يدوي أو بعد موافقة الأدمن)
+    // 2. الرقم الوطني النهائي المعتمد (يوضع يدوياً أو يُعتمد من الأدمن)
     nationalId: { type: String, default: null },
 
-    // ✅ اقتراح OCR (لا يطغى على الرقم اليدوي)
-    nationalIdCandidate: { type: String, default: null },
-
-    // نسبة الثقة 0 → 1
-    nationalIdConfidence: { type: Number, default: null, min: 0, max: 1 },
-
-    // النص المستخرج من OCR (اختياري – للتشخيص)
-    identityRawText: { type: String, default: null },
-
-    // وقت استخراج البيانات من الهوية
-    identityExtractedAt: { type: Date, default: null },
-
-    // حالة التحقق من الهوية من الأدمن
+    // 3. حالة التحقق من الهوية
     identityStatus: {
       type: String,
       enum: ["none", "pending", "verified", "rejected"],
-      default: "none",
+      default: "none", // تصبح "pending" عند رفع هوية
     },
 
-    /* ================= Account ================= */
+    // 4. بيانات الذكاء الاصطناعي (OCR Data)
+    // نخزن هنا ما قرأه النظام تلقائياً لنساعد الأدمن في القرار
+    identityData: {
+      extractedName: { type: String, default: null },       // الاسم المستخرج من الهوية
+      extractedNationalId: { type: String, default: null }, // الرقم الوطني المقترح من OCR
+      confidence: { type: Number, default: 0 },             // نسبة الثقة في القراءة
+      rawText: { type: String, default: null },             // النص الكامل المستخرج (للتشخيص)
+      extractedAt: { type: Date, default: Date.now }
+    },
+
+    /* ================= Account Status ================= */
 
     isActive: { type: Boolean, default: false },
 
