@@ -1,16 +1,17 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:http/http.dart' as http;
-
 import '../config/api_config.dart';
 import 'session_service.dart';
 
 class ContractService {
   
   // =========================
-  // Helpers
+  // Helpers (دوال مساعدة)
   // =========================
 
+  /// جلب التوكن والتأكد من وجوده
   Future<String> _mustToken() async {
     final token = await SessionService.getToken();
     if (token == null || token.isEmpty) {
@@ -19,7 +20,7 @@ class ContractService {
     return token;
   }
 
-  /// الهيدر الموحد: يضمن إرسال واستقبال JSON
+  /// الهيدر الموحد لجميع الطلبات
   Map<String, String> _headers(String token) => {
         "Authorization": "Bearer $token",
         "Accept": "application/json",
@@ -27,10 +28,9 @@ class ContractService {
       };
 
   // =========================
-  // Methods
+  // Methods (العمليات الأساسية)
   // =========================
 
-  /// GET /api/contracts
   /// جلب عقود المستخدم (سواء كان عميل أو مقاول)
   Future<List<dynamic>> getMyContracts() async {
     final token = await _mustToken();
@@ -41,19 +41,16 @@ class ContractService {
     if (res.statusCode == 200) {
       final decoded = jsonDecode(res.body);
 
-      // ✅ التعامل مع أشكال الاستجابة المختلفة من السيرفر
       if (decoded is List) return decoded;
       if (decoded is Map && decoded["data"] is List) return decoded["data"] as List;
       if (decoded is Map && decoded["contracts"] is List) return decoded["contracts"] as List;
       
-      // في حال كانت القائمة فارغة أو الشكل غير معروف
       return []; 
     }
 
-    throw Exception("Failed to load contracts: ${res.statusCode} ${res.body}");
+    throw Exception("Failed to load contracts: ${res.statusCode}");
   }
 
-  /// POST /api/contracts
   /// إنشاء عقد جديد (للمقاول)
   Future<Map<String, dynamic>> createContract({
     required String projectId,
@@ -86,42 +83,46 @@ class ContractService {
       if (endDate != null) "endDate": endDate,
     };
 
-    final res = await http.post(
-      uri,
-      headers: _headers(token), // ✅ تأكدنا أن الهيدر يحتوي application/json
-      body: jsonEncode(body),
-    );
-
-    if (res.statusCode == 201 || res.statusCode == 200) {
-      final decoded = jsonDecode(res.body);
-      
-      // نتوقع أن يرجع السيرفر كائن يحتوي على success, data, pdfUrl
-      if (decoded is Map<String, dynamic>) return decoded;
-      
-      throw Exception("Unexpected response shape: ${res.body}");
-    }
-
-    // استخراج رسالة الخطأ من السيرفر إن وجدت
-    String errorMsg = "Failed to create contract";
     try {
-      final errDecoded = jsonDecode(res.body);
-      if (errDecoded is Map && errDecoded["message"] != null) {
-        errorMsg = errDecoded["message"];
-      }
-    } catch (_) {}
+      // ✅ زيادة مهلة الانتظار لـ 90 ثانية لمنع الـ Timeout أثناء توليد الـ PDF
+      final res = await http.post(
+        uri,
+        headers: _headers(token), 
+        body: jsonEncode(body),
+      ).timeout(const Duration(seconds: 90)); 
 
-    throw Exception("$errorMsg (${res.statusCode})");
+      if (res.statusCode == 201 || res.statusCode == 200) {
+        final decoded = jsonDecode(res.body);
+        
+        // الرد يحتوي على النجاح، العقد، ورابط الـ PDF المحدث بالبيانات الرسمية
+        if (decoded is Map<String, dynamic>) return decoded;
+        
+        throw Exception("Unexpected response shape: ${res.body}");
+      }
+
+      String errorMsg = "Failed to create contract";
+      try {
+        final errDecoded = jsonDecode(res.body);
+        if (errDecoded is Map && errDecoded["message"] != null) {
+          errorMsg = errDecoded["message"];
+        }
+      } catch (_) {}
+
+      throw Exception("$errorMsg (${res.statusCode})");
+
+    } on TimeoutException catch (_) {
+      throw Exception("انتهت مهلة الاتصال: السيرفر يستغرق وقتاً طويلاً في إنشاء العقد، يرجى المحاولة لاحقاً.");
+    } catch (e) {
+      throw Exception("حدث خطأ غير متوقع: ${e.toString()}");
+    }
   }
 
-  /// ✅ جلب ملف الـ PDF كـ Bytes
-  /// تدعم الروابط المباشرة (Cloudinary) أو الروابط النسبية (Local)
+  /// ✅ جلب ملف الـ PDF كـ Bytes من رابط Cloudinary
   Future<Uint8List> fetchPdfBytesFromUrl(String pdfUrl) async {
-    // 1. تحديد الرابط الصحيح (إذا كان يبدأ بـ http فهو خارجي، وإلا فهو من السيرفر المحلي)
     final finalUrl = pdfUrl.startsWith('http') ? pdfUrl : ApiConfig.join(pdfUrl);
     final uri = Uri.parse(finalUrl);
 
-    // 2. إذا كان الرابط خارجي (Cloudinary Public)، غالباً لا نحتاج Header
-    // لكن إذا كان محلي، قد نحتاج Token. هنا سنفترض أنه Public Access كما حددنا في Backend
+    // التحميل من Cloudinary كـ Public Access
     final res = await http.get(uri);
 
     if (res.statusCode == 200) {
@@ -131,7 +132,7 @@ class ContractService {
     throw Exception("Failed to fetch PDF from URL: ${res.statusCode}");
   }
 
-  /// دالة احتياطية: جلب الـ PDF عن طريق الـ ID (Endpoint محمي)
+  /// جلب الـ PDF عن طريق الـ ID (في حال كان الرابط غير متاح)
   Future<Uint8List> fetchContractPdfBytesById(String contractId) async {
     final token = await _mustToken();
     final uri = Uri.parse(ApiConfig.join("/api/contracts/$contractId/pdf"));
