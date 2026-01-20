@@ -92,6 +92,12 @@ router.patch(
   projectController.acceptOffer
 );
 
+router.patch(
+  "/:projectId/offers/:offerId/reject",
+  protect,
+  clientOnly, // ✅ أضفنا هذا للتأكد أن العميل فقط هو من يرفض
+  projectController.rejectOfferAndCancel
+);
 // ================================
 // Plan analyze
 // ================================
@@ -100,7 +106,7 @@ router.post(
   protect,
   clientOnly,
   // ✅ التعديل 2: استخدام uploadPlan بدلاً من upload
-  uploadPlan.single("planFile"), 
+  uploadPlan.single("planFile"),
   projectController.analyzePlanOnly
 );
 

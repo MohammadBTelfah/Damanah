@@ -214,6 +214,61 @@ exports.publishProject = async (req, res) => {
   }
 };
 
+
+// =======================
+// Reject Offer & Cancel Project
+// PATCH /api/projects/:projectId/offers/:offerId/reject
+// =======================
+exports.rejectOfferAndCancel = async (req, res) => {
+  try {
+    const { projectId, offerId } = req.params;
+
+    // 1. جلب المشروع
+    const project = await Project.findById(projectId);
+    if (!project) return res.status(404).json({ message: "Project not found" });
+
+    // 2. التحقق من المالك
+    if (String(project.owner) !== String(req.user._id)) {
+      return res.status(403).json({ message: "Not authorized" });
+    }
+
+    // 3. العثور على العرض
+    const offer = project.offers.id(offerId);
+    if (!offer) return res.status(404).json({ message: "Offer not found" });
+
+    // 4. تحديث حالة العرض إلى مرفوض
+    offer.status = "rejected";
+
+    // 5. تحديث حالة المشروع إلى ملغي (كما طلبت)
+    project.status = "cancelled";
+
+    await project.save();
+
+    // 6. إشعار للمقاول (اختياري)
+    try {
+      await Notification.create({
+        user: offer.contractor,
+        userModel: "Contractor",
+        title: "Offer Rejected",
+        body: `Your offer for "${project.title}" was rejected and the project is cancelled.`,
+        type: "offer_rejected",
+        projectId: project._id,
+        read: false,
+      });
+    } catch (e) {
+      console.error("notification offer_rejected failed:", e.message);
+    }
+
+    return res.status(200).json({
+      message: "Offer rejected and project cancelled successfully.",
+      project,
+    });
+  } catch (err) {
+    console.error("rejectOfferAndCancel error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+};
+
 // =======================
 // Contractor - Available projects
 // =======================
