@@ -96,7 +96,6 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
       setState(() {
         _identityImageFile = result.imageFile;
         _nationalIdController.text = result.nationalId;
-        _nationalIdConfidence = result.confidence;
       });
 
       _showTopSnackBar("ID scanned successfully", Colors.green);
@@ -160,7 +159,6 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
 
         // national id
         nationalId: nationalId,
-        nationalIdConfidence: _nationalIdConfidence,
 
         // optional
         profileImagePath: _profileImagePath,
