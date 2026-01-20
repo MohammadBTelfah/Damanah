@@ -127,6 +127,31 @@ class ProjectService {
     final token = await _mustToken();
     final uri = Uri.parse(ApiConfig.join("/api/projects"));
 
+    // ✅ التعديل الجوهري: إعادة هيكلة البيانات لتطابق الـ Schema في السيرفر
+    // هذا يضمن أن الأرقام التي أدخلتها (أو استخرجها الـ AI) لا تضيع وتتحول لأصفار
+    Map<String, dynamic>? formattedAnalysis;
+    if (planAnalysis != null) {
+      formattedAnalysis = {
+        "totalArea": area, // نأخذ المساحة المراجعة يدوياً
+        "floors": floors,   // نأخذ عدد الطوابق المراجع يدوياً
+        "wallPerimeterLinear": planAnalysis["wallPerimeter"] ?? planAnalysis["wallPerimeterLinear"] ?? 0,
+        "ceilingHeight": planAnalysis["ceilingHeight"] ?? 3.0,
+        "rooms": planAnalysis["rooms"] ?? 0,
+        "bathrooms": planAnalysis["bathrooms"] ?? 0,
+        "openings": {
+          "windows": {
+            "count": planAnalysis["windowsCount"] ?? planAnalysis["openings"]?["windows"]?["count"] ?? 0
+          },
+          "internalDoors": {
+            "count": planAnalysis["internalDoorsCount"] ?? planAnalysis["openings"]?["internalDoors"]?["count"] ?? 0
+          },
+          "voids": {
+             "totalVoidArea": planAnalysis["openings"]?["voids"]?["totalVoidArea"] ?? 0
+          }
+        }
+      };
+    }
+
     final body = {
       "title": title,
       "description": description ?? "",
@@ -135,7 +160,7 @@ class ProjectService {
       "floors": floors,
       "finishingLevel": finishingLevel,
       "buildingType": buildingType,
-      if (planAnalysis != null) "planAnalysis": planAnalysis,
+      if (formattedAnalysis != null) "planAnalysis": formattedAnalysis,
     };
 
     final res = await http
@@ -161,7 +186,6 @@ class ProjectService {
       "(${res.statusCode}) ${data["message"] ?? "Create project failed"}",
     );
   }
-
   /// POST /api/projects/:id/estimate
   Future<Map<String, dynamic>> estimateProject({
     required String projectId,
@@ -201,11 +225,25 @@ Future<Map<String, dynamic>> analyzePlan({required String filePath}) async {
 
   final map = _safeJsonMap(res.body);
 
-  if (res.statusCode >= 200 && res.statusCode < 300) return map;
+  if (res.statusCode >= 200 && res.statusCode < 300) {
+    // ✅ تعديل جوهري: التأكد من هيكلة البيانات الجديدة قبل إعادتها
+    // لضمان أن الواجهة (Step 2) تستلم القيم الصحيحة
+    if (map.containsKey("analysis")) {
+      final analysis = map["analysis"] as Map<String, dynamic>;
+      
+      // نضمن وجود كائن openings حتى لو لم يرسله السيرفر لتجنب الـ Null errors
+      analysis["openings"] ??= {
+        "windows": {"count": 0},
+        "internalDoors": {"count": 0},
+        "voids": {"totalVoidArea": 0}
+      };
+    }
+    return map;
+  }
 
   final code = map["code"]?.toString();
 
-  // ✅ اجبار التحويل للـ manual في كل حالات عدم توفر الـ AI
+  // منطق تحويل المستخدم لليدوي في حال تعطل الـ AI (كما هو في كودك)
   final isAiUnavailable =
       code == "AI_UNAVAILABLE" ||
       res.statusCode == 503 ||
@@ -221,7 +259,6 @@ Future<Map<String, dynamic>> analyzePlan({required String filePath}) async {
     "(${res.statusCode}) ${map["message"] ?? "Analyze plan failed"}",
   );
 }
-
   /// GET /api/materials
   Future<List<dynamic>> getMaterials() async {
     final token = await _mustToken();

@@ -3,110 +3,102 @@ const path = require("path");
 const puppeteer = require("puppeteer");
 const Handlebars = require("handlebars");
 
-// صياغة تاريخ عربي بسيطة
+// دالة لتنسيق التاريخ (YYYY/MM/DD)
 function formatDate(d) {
-  if (!d) return "";
+  if (!d) return "غير محدد";
   const date = new Date(d);
-  if (Number.isNaN(date.getTime())) return "";
-  return `${date.getFullYear()}/${String(date.getMonth() + 1).padStart(
-    2,
-    "0"
-  )}/${String(date.getDate()).padStart(2, "0")}`;
+  if (Number.isNaN(date.getTime())) return "غير محدد";
+  return date.toLocaleDateString("en-GB"); // تنسيق يوم/شهر/سنة
 }
 
+// دالة للتأكد من أن النصوص لا تكون null أو undefined
 function normalizeString(v) {
-  return v == null ? "" : String(v);
+  return v ? String(v) : "-";
 }
 
 module.exports = async function generateContractPdf(contract, absPdfPath) {
-  // 1) اقرأ القالب
-  const templatePath = path.join(__dirname, "templates", "contract.hbs");
-  // تأكد من وجود ملف القالب في المسار الصحيح
-  const templateHtml = fs.readFileSync(templatePath, "utf8");
-  const template = Handlebars.compile(templateHtml);
-
-  // 2) جهّز الداتا من الـ populate
-  const client = contract.client || {};
-  const contractor = contract.contractor || {};
-  const project = contract.project || {};
-
-  const data = {
-    // عناوين عامة
-    contractId: String(contract._id),
-    contractDate: formatDate(contract.createdAt || new Date()),
-
-    // صاحب العمل
-    clientName: normalizeString(
-      client.name || client.fullName || client.username
-    ),
-    clientPhone: normalizeString(client.phone || client.mobile),
-    clientEmail: normalizeString(client.email),
-    clientAddress: normalizeString(client.address),
-
-    // المقاول
-    contractorName: normalizeString(
-      contractor.name || contractor.fullName || contractor.username
-    ),
-    contractorPhone: normalizeString(contractor.phone || contractor.mobile),
-    contractorEmail: normalizeString(contractor.email),
-    contractorAddress: normalizeString(contractor.address),
-
-    // المشروع
-    projectName: normalizeString(project.name || project.title),
-    projectLocation: normalizeString(project.location || project.address),
-    projectArea: normalizeString(project.area || project.totalArea),
-    projectDescription: normalizeString(contract.projectDescription),
-
-    // القيم المالية والشروط
-    agreedPrice: Number(contract.agreedPrice || 0).toLocaleString("en-US"),
-    durationMonths: contract.durationMonths ?? "",
-    paymentTerms: normalizeString(contract.paymentTerms),
-    terms: normalizeString(contract.terms),
-
-    // مواد وخدمات
-    materialsAndServices: Array.isArray(contract.materialsAndServices)
-      ? contract.materialsAndServices
-      : [],
-
-    // تواريخ البداية والنهاية
-    startDate: formatDate(contract.startDate),
-    endDate: formatDate(contract.endDate),
-  };
-
-  const html = template(data);
-
-  // 3) PDF - إعدادات متصفح Puppeteer الخاصة بـ Render
-  const browser = await puppeteer.launch({
-    headless: "new", // الصيغة الحديثة
-    args: [
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      "--disable-dev-shm-usage", // ✅ ضروري جداً لمنع الكراش بسبب الذاكرة في Render
-      "--disable-gpu",
-    ],
-    // احتياطاً لو أردت تحديد مسار كروم يدوياً مستقبلاً
-    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || null,
-  });
-
   try {
-    const page = await browser.newPage();
+    // 1) قراءة ملف القالب
+    //  قراءة ملف contract.hbs
+    const templatePath = path.join(__dirname, "templates", "contract.hbs");
+    const templateHtml = fs.readFileSync(templatePath, "utf8");
+    const template = Handlebars.compile(templateHtml);
 
-    // إعداد المحتوى وانتظار تحميل الشبكة (لضمان تحميل الخطوط والصور إن وجدت)
-    await page.setContent(html, { waitUntil: "networkidle0" });
+    // 2) تجهيز البيانات (Mapping)
+    // هنا نربط أسماء المتغيرات في hbs بأسماء الحقول في قاعدة البيانات
+    const client = contract.client || {};
+    const contractor = contract.contractor || {};
+    const project = contract.project || {};
+
+    const data = {
+      // --- رأس العقد ---
+      contractId: String(contract._id).slice(-6), // نأخذ آخر 6 أرقام فقط للجمالية
+      contractDate: formatDate(contract.createdAt || new Date()),
+      clientName: normalizeString(client.name),
+      contractorName: normalizeString(contractor.name),
+
+      // --- تفاصيل المشروع ---
+      projectName: normalizeString(project.title || project.name),
+      projectLocation: normalizeString(project.location || project.address),
+      // [cite: 20] تعبئة مساحة المشروع
+      projectArea: normalizeString(project.area || project.totalArea),
+      projectDescription: normalizeString(contract.projectDescription || project.description),
+
+      // --- المدة والتواريخ ---
+      durationMonths: contract.durationMonths ? String(contract.durationMonths) : "-",
+      startDate: formatDate(contract.startDate),
+      endDate: formatDate(contract.endDate),
+
+      // --- المال والدفعات ---
+      agreedPrice: Number(contract.agreedPrice || 0).toLocaleString("en-US"),
+      paymentTerms: normalizeString(contract.paymentTerms),
+
+      // --- المواد والخدمات ---
+      // [cite: 21] تعبئة قائمة المواد
+      materialsAndServices: (contract.materialsAndServices && contract.materialsAndServices.length > 0) 
+        ? contract.materialsAndServices 
+        : [], 
+
+      // --- الشروط ---
+      // [cite: 22] تعبئة الشروط والأحكام
+      terms: normalizeString(contract.terms),
+
+      // --- التواقيع والبيانات الشخصية ---
+      // [cite: 23] بيانات العميل في الجدول
+      clientPhone: normalizeString(client.phone || client.mobile),
+      clientEmail: normalizeString(client.email),
+      clientAddress: normalizeString(client.address || client.city),
+
+      // [cite: 24] بيانات المقاول في الجدول
+      contractorPhone: normalizeString(contractor.phone || contractor.mobile),
+      contractorEmail: normalizeString(contractor.email),
+      contractorAddress: normalizeString(contractor.address || contractor.city),
+    };
+
+    // 3) توليد HTML النهائي
+    const html = template(data);
+
+    // 4) تحويل HTML إلى PDF باستخدام Puppeteer
+    const browser = await puppeteer.launch({
+      headless: "new",
+      args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
+    });
+
+    const page = await browser.newPage();
+    await page.setContent(html, { waitUntil: "networkidle0" }); // ننتظر تحميل الخطوط
 
     await page.pdf({
-      path: absPdfPath, // سيتم الحفظ في المسار الذي تمرره (Temp folder)
+      path: absPdfPath,
       format: "A4",
       printBackground: true,
-      margin: { top: "12mm", right: "12mm", bottom: "12mm", left: "12mm" },
+      margin: { top: "15mm", right: "10mm", bottom: "15mm", left: "10mm" },
     });
+
+    await browser.close();
+    return true;
+
   } catch (error) {
-    console.error("Error generating PDF with Puppeteer:", error);
-    throw error; // ارمِ الخطأ ليعالجه الكونترولر
-  } finally {
-    // إغلاق المتصفح في كل الأحوال لتجنب استهلاك الذاكرة
-    if (browser) {
-      await browser.close();
-    }
+    console.error("Error generating PDF:", error);
+    throw error;
   }
 };
