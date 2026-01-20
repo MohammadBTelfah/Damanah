@@ -1,7 +1,10 @@
 const multer = require("multer");
 const { CloudinaryStorage } = require("multer-storage-cloudinary");
+
+// ✅ التعديل هنا: نستدعي ملف الكونفيج الجاهز بدلاً من إعداد المكتبة مرة أخرى
 const cloudinary = require("../config/cloudinaryConfig");
-// إعداد التخزين السحابي لصور البروفايل
+
+// 1. إعداد تخزين صور البروفايل
 const profileStorage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: {
@@ -10,20 +13,30 @@ const profileStorage = new CloudinaryStorage({
   },
 });
 
-// إعداد التخزين السحابي للهويات (يدعم PDF وصور)
+// 2. إعداد تخزين الهويات (يدعم PDF والصور)
 const identityStorage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: {
     folder: "damanah/identity",
-    resource_type: "auto", // مهم جداً لدعم الـ PDF والصور معاً
+    resource_type: "auto", // مهم جداً لدعم PDF
     allowed_formats: ["jpg", "png", "jpeg", "pdf"],
   },
 });
 
-// تصدير الـ Middleware لاستخدامها في الـ Routes
+// 3. إعداد تخزين مستندات المقاول (اختياري، يمكن دمجها)
+const contractorStorage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: "damanah/contractor_docs",
+    resource_type: "auto",
+    allowed_formats: ["jpg", "png", "jpeg", "pdf"],
+  },
+});
+
+// تعريف الـ Middleware
 const uploadProfileImage = multer({ storage: profileStorage });
 const uploadIdentityDoc = multer({ storage: identityStorage });
-const uploadContractorDoc = multer({ storage: profileStorage }); // يمكنك استخدام نفس إعداد البروفايل
+const uploadContractorDoc = multer({ storage: contractorStorage });
 
 module.exports = {
   uploadProfileImage,

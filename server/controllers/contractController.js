@@ -1,9 +1,12 @@
+const mongoose = require("mongoose"); // ✅ ضروري للدالة safeId
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
-const cloudinary = require("../utils/cloudinary"); // تأكد من المسار
 const Contract = require("../models/Contract");
 const generateContractPdf = require("../utils/pdf/generateContractPdf");
+
+// ✅ تصحيح: استدعاء ملف الإعدادات الذي يحتوي على مكتبة Cloudinary الأصلية
+const cloudinary = require("../config/cloudinaryConfig"); 
 
 // ========================
 // Helpers
@@ -110,7 +113,6 @@ exports.createContract = async (req, res) => {
     });
 
     // 2. جلب بيانات العقد كاملة (Populate) لملء القالب
-    // هذا الجزء مهم جداً لكي تظهر الأسماء بدلاً من الـ IDs في الـ Template
     const populatedContract = await Contract.findById(newContract._id)
       .populate("project") // لجلب اسم المشروع وموقعه
       .populate("client")  // لجلب اسم العميل وهاتفه
@@ -125,10 +127,12 @@ exports.createContract = async (req, res) => {
     await generateContractPdf(populatedContract, tempFilePath);
 
     // 5. رفع الملف الناتج إلى Cloudinary
+    // ✅ الآن المتغير cloudinary يحتوي على المكتبة الصحيحة ولن يعطي خطأ undefined
     const uploadResult = await cloudinary.uploader.upload(tempFilePath, {
       folder: "damanah_contracts",
-      resource_type: "raw", // استخدم raw للملفات غير الصور أحياناً، أو auto
+      resource_type: "auto", // يفضل auto ليتعرف عليه سواء كان pdf أو صورة
       access_mode: "public",
+      public_id: `contract_${newContract._id}`, // اسم ثابت للملف لتسهيل الوصول
     });
 
     // 6. حفظ الرابط في العقد وحذف الملف المؤقت
@@ -150,6 +154,7 @@ exports.createContract = async (req, res) => {
     return res.status(500).json({ success: false, message: err.message });
   }
 };
+
 // ========================
 // GET /api/contracts/:id/pdf
 // ✅ Redirect to Cloudinary PDF
