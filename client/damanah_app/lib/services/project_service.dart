@@ -333,25 +333,23 @@ Future<Map<String, dynamic>> analyzePlan({required String filePath}) async {
   // Contractor Utils (For Client)
   // =========================
   Future<List<dynamic>> getContractors() async {
-    final token = await _mustToken();
-    final uri = Uri.parse(
-      ApiConfig.join("/api/projects/contractors/available"),
-    );
+  final token = await _mustToken();
+  final uri = Uri.parse(ApiConfig.join("/api/contractors/available"));
 
-    final res = await http
-        .get(uri, headers: _authHeaders(token))
-        .timeout(const Duration(seconds: 30));
+  final res = await http
+      .get(uri, headers: _authHeaders(token))
+      .timeout(const Duration(seconds: 30));
 
-    final decoded = _safeDecode(res.body);
-    if (res.statusCode == 200) {
-      if (decoded is List) return decoded;
-      if (decoded is Map && decoded["contractors"] is List) {
-        return List.from(decoded["contractors"]);
-      }
-      throw Exception("Invalid contractors response shape: ${res.body}");
+  final decoded = _safeDecode(res.body);
+  if (res.statusCode == 200) {
+    if (decoded is List) return decoded;
+    if (decoded is Map && decoded["contractors"] is List) {
+      return List.from(decoded["contractors"]);
     }
-    throw Exception("(${res.statusCode}) ${_errMsg(res)}");
+    throw Exception("Invalid contractors response shape: ${res.body}");
   }
+  throw Exception("(${res.statusCode}) ${_errMsg(res)}");
+}
 
   Future<void> assignContractor({
     required String projectId,

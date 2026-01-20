@@ -72,11 +72,13 @@ function getBaseUrl(req) {
 // =======================
 exports.getAvailableContractors = async (req, res) => {
   try {
-    const contractors = await Contractor.find({
-      emailVerified: true,
-      contractorStatus: "verified",
-      isActive: true,
-    }).select("_id name email phone profileImage");
+  const contractors = await Contractor.find({
+  role: "contractor",
+  emailVerified: true,
+  contractorStatus: "verified",
+  isActive: true,
+}).select("_id name email phone profileImage");
+
 
     const baseUrl = getBaseUrl(req);  // تأكد من أن baseUrl يحتوي على البروتوكول (http:// أو https://)
     const list = contractors.map((c) => {
