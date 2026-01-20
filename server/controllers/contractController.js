@@ -1,10 +1,10 @@
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
-const cloudinary = require("../config/cloudinaryConfig"); // تأكد من المسار
 const Contract = require("../models/Contract");
 const generateContractPdf = require("../utils/pdf/generateContractPdf");
-
+const cloudinaryConfig = require("../config/cloudinaryConfig");
+const cloudinary = require("../utils/upload")
 // ========================
 // Helpers
 // ========================
