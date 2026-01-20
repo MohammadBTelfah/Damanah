@@ -2,12 +2,16 @@ const Project = require("../models/Project");
 const Contract = require("../models/Contract");
 const Contractor = require("../models/Contractor");
 const Notification = require("../models/Notification");
-const os = require("os");
 const generateContractPdf = require("../utils/pdf/generateContractPdf");
+
 const { generateBoqForProject } = require("../utils/boq");
 const { analyzeFloorPlanImage } = require("../utils/plan_vision");
+// ✅ التصحيح: استدعاء ملف الكونفيج مباشرة
+const cloudinary = require("../config/cloudinaryConfig");
 const mongoose = require("mongoose");
-
+const fs = require("fs");
+const path = require("path");
+const os = require("os");
 // =======================
 // Helpers
 // =======================
@@ -529,6 +533,11 @@ exports.getProjectOffers = async (req, res) => {
 // =======================
 // Accept offer
 // =======================
+// تأكد من أن مسار الكلاوديناري صحيح حسب ملفات مشروعك
+
+// =======================
+// Accept offer (Modified & Fixed)
+// =======================
 exports.acceptOffer = async (req, res) => {
   try {
     const { projectId, offerId } = req.params;
@@ -560,7 +569,7 @@ exports.acceptOffer = async (req, res) => {
       acceptedAt: new Date(),
     };
 
-    // علّم العروض
+    // علّم العروض (المقبول والمرفوض)
     project.offers.forEach((o) => {
       o.status = String(o._id) === String(offerId) ? "accepted" : "rejected";
     });
@@ -598,39 +607,45 @@ exports.acceptOffer = async (req, res) => {
       });
     }
 
-    // 8) إذا ما في PDF رابط: ولّده وارفعه واحفظه
-    if (!contract.contractFile) {
-      // لازم يكون populated لأن generateContractPdf يعتمد على بيانات client/contractor/project :contentReference[oaicite:1]{index=1}
-      const populated = await Contract.findById(contract._id)
-        .populate("project")
-        .populate("client")
-        .populate("contractor");
+    // =========================================================
+    // 8) توليد PDF ورفعه (محمية بـ Try/Catch منفصل)
+    // =========================================================
+    try {
+      if (!contract.contractFile) {
+        // Populating required fields for PDF generation
+        const populated = await Contract.findById(contract._id)
+          .populate("project")
+          .populate("client")
+          .populate("contractor");
 
-      const tempDir = os.tmpdir();
-      const tempFilePath = path.join(tempDir, `contract-${contract._id}.pdf`);
+        const tempDir = os.tmpdir();
+        const tempFilePath = path.join(tempDir, `contract-${contract._id}.pdf`);
 
-      // توليد PDF
-      await generateContractPdf(populated, tempFilePath);
+        // توليد PDF
+        await generateContractPdf(populated, tempFilePath);
 
-      // رفع Cloudinary
-      const uploadResult = await cloudinary.uploader.upload(tempFilePath, {
-        folder: "damanah_contracts",
-        resource_type: "auto",
-        public_id: `contract_${contract._id}`,
-        access_mode: "public",
-      });
+        // رفع Cloudinary
+        const uploadResult = await cloudinary.uploader.upload(tempFilePath, {
+          folder: "damanah_contracts",
+          resource_type: "auto",
+          public_id: `contract_${contract._id}`,
+          access_mode: "public",
+        });
 
-      // حفظ الرابط
-      contract.contractFile = uploadResult.secure_url;
-      await contract.save();
+        // حفظ الرابط
+        contract.contractFile = uploadResult.secure_url;
+        await contract.save();
 
-      // حذف الملف المؤقت
-      try {
-        if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath);
-      } catch (e) {
-        console.warn("Temp file cleanup failed:", e.message);
+        // حذف الملف المؤقت
+        if (fs.existsSync(tempFilePath)) {
+          fs.unlinkSync(tempFilePath);
+        }
       }
+    } catch (pdfError) {
+      // ⚠️ في حال فشل الـ PDF، نسجل الخطأ ولكن لا نوقف العملية
+      console.error("⚠️ Warning: Contract PDF generation failed:", pdfError.message);
     }
+    // =========================================================
 
     // 9) إشعار للعميل (اختياري)
     try {
@@ -647,20 +662,19 @@ exports.acceptOffer = async (req, res) => {
       console.error("notification contract_created failed:", e.message);
     }
 
-    // 10) رجّع البيانات
+    // 10) رجّع البيانات (نجاح العملية)
     return res.status(200).json({
       message: "Offer accepted and contract created",
       project,
       contract,
       pdfUrl: contract.contractFile || null,
     });
+
   } catch (err) {
     console.error("acceptOffer error:", err);
     return res.status(500).json({ error: err.message });
   }
 };
-
-
 // =======================
 // Analyze Plan
 // =======================

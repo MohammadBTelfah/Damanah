@@ -1,7 +1,6 @@
 const multer = require("multer");
 const { CloudinaryStorage } = require("multer-storage-cloudinary");
-const { cloudinary } = require("../config/cloudinary"); // تأكد من إنشاء هذا الملف
-
+const cloudinary = require("../config/cloudinaryConfig");
 // إعداد التخزين السحابي لصور البروفايل
 const profileStorage = new CloudinaryStorage({
   cloudinary: cloudinary,
