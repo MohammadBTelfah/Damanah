@@ -14,12 +14,14 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
   final _service = ProjectService();
 
   bool _loading = true;
-  bool _downloading = false; 
+  bool _downloading = false;
   String? _error;
   Map<String, dynamic>? _data;
 
   Future<List<dynamic>>? _offersFuture;
-  bool _accepting = false;
+  
+  // ✅ متغير واحد للتحميل (سواء قبول أو رفض) لتجنب التعارض
+  bool _processingOffer = false;
 
   @override
   void initState() {
@@ -94,17 +96,11 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
     }
   }
 
-  // ====================== Smart URL Helper (Cloudinary Support) ======================
-
-  /// ✅ دالة ذكية لمعالجة الروابط (دعم Cloudinary و Render)
+  // ====================== Smart URL Helper ======================
   String _toAbsoluteUrl(String? maybeUrl) {
     if (maybeUrl == null || maybeUrl.trim().isEmpty) return "";
     final v = maybeUrl.trim();
-    
-    // إذا كان الرابط يبدأ بـ http، فهو رابط كامل من Cloudinary نرجعه كما هو
     if (v.startsWith("http")) return v;
-    
-    // إذا كان مساراً نسبياً قديماً، ندمجه مع الرابط الأساسي من ApiConfig
     return ApiConfig.join(v);
   }
 
@@ -127,13 +123,13 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
               child: CircularProgressIndicator(color: Color(0xFF9EE7B7)),
             )
           : _error != null
-          ? _errorView()
-          : RefreshIndicator(
-              onRefresh: _load,
-              color: const Color(0xFF9EE7B7),
-              backgroundColor: const Color(0xFF1A2C24),
-              child: _buildContent(),
-            ),
+              ? _errorView()
+              : RefreshIndicator(
+                  onRefresh: _load,
+                  color: const Color(0xFF9EE7B7),
+                  backgroundColor: const Color(0xFF1A2C24),
+                  child: _buildContent(),
+                ),
     );
   }
 
@@ -197,7 +193,6 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
         _buildInfoCard(p),
         const SizedBox(height: 20),
 
-        // ✅ القسم المطور لعرض تحليل المخطط بشكل Pills متناسق
         if (p["planAnalysis"] != null)
           _buildEnhancedPlanAnalysisCard(p["planAnalysis"]),
 
@@ -216,7 +211,7 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
     );
   }
 
-  // ✅ كرت التحليل الهندسي الموحد (Pills Style)
+  // ✅ كرت التحليل الهندسي الموحد
   Widget _buildEnhancedPlanAnalysisCard(dynamic paRaw) {
     final pa = (paRaw is Map) ? paRaw : {};
     final openings = pa["openings"] ?? {};
@@ -232,38 +227,42 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
         children: [
           _sectionTitle("ARCHITECTURE TAKEOFF (AI)"),
           const SizedBox(height: 16),
-          
-          // استخدام Wrap لظهور الكبسولات بشكل متناسق كالتصميم الأصلي
           Wrap(
             spacing: 10,
             runSpacing: 10,
             children: [
               _pill(Icons.crop_square, "${pa["totalArea"] ?? "--"} m²"),
               _pill(Icons.layers, "${pa["floors"] ?? "1"} Floors"),
-              _pill(Icons.straighten, "${pa["wallPerimeterLinear"] ?? pa["wallPerimeter"] ?? "--"} m Perimeter"),
-              _pill(Icons.height, "${pa["ceilingHeight"] ?? pa["ceilingHeightDefault"] ?? "3.0"} m Ceiling"),
+              _pill(Icons.straighten,
+                  "${pa["wallPerimeterLinear"] ?? pa["wallPerimeter"] ?? "--"} m Perimeter"),
+              _pill(Icons.height,
+                  "${pa["ceilingHeight"] ?? pa["ceilingHeightDefault"] ?? "3.0"} m Ceiling"),
               _pill(Icons.meeting_room_outlined, "${pa["rooms"] ?? "?"} Rooms"),
               _pill(Icons.bathtub_outlined, "${pa["bathrooms"] ?? "?"} Baths"),
-              _pill(Icons.window, "${windows["count"] ?? pa["windowsCount"] ?? "0"} Windows"),
-              _pill(Icons.door_front_door, "${internalDoors["count"] ?? pa["internalDoorsCount"] ?? "0"} Doors"),
-              
+              _pill(Icons.window,
+                  "${windows["count"] ?? pa["windowsCount"] ?? "0"} Windows"),
+              _pill(Icons.door_front_door,
+                  "${internalDoors["count"] ?? pa["internalDoorsCount"] ?? "0"} Doors"),
               if (voids["totalVoidArea"] != null && voids["totalVoidArea"] > 0)
-                _pill(
-                  Icons.grid_view_rounded, 
-                  "${voids["totalVoidArea"]} m² Voids", 
-                  color: const Color(0xFFFFCC80)
-                ),
+                _pill(Icons.grid_view_rounded,
+                    "${voids["totalVoidArea"]} m² Voids",
+                    color: const Color(0xFFFFCC80)),
             ],
           ),
-          
           if (pa["notes"] != null && (pa["notes"] as List).isNotEmpty) ...[
             const SizedBox(height: 20),
-            const Text("AI NOTES", style: TextStyle(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1)),
+            const Text("AI NOTES",
+                style: TextStyle(
+                    color: Colors.white38,
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1)),
             const SizedBox(height: 8),
             ...(pa["notes"] as List).map((n) => Padding(
-              padding: const EdgeInsets.only(bottom: 4),
-              child: Text("• $n", style: const TextStyle(color: Colors.white60, fontSize: 12)),
-            )),
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text("• $n",
+                      style: const TextStyle(color: Colors.white60, fontSize: 12)),
+                )),
           ]
         ],
       ),
@@ -274,8 +273,8 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
     final est = (p["estimation"] is Map)
         ? Map<String, dynamic>.from(p["estimation"])
         : (p["estimate"] is Map)
-        ? Map<String, dynamic>.from(p["estimate"])
-        : <String, dynamic>{};
+            ? Map<String, dynamic>.from(p["estimate"])
+            : <String, dynamic>{};
 
     final total = est["totalCost"] ?? est["total"];
     final currency = (est["currency"] ?? "JOD").toString();
@@ -338,7 +337,6 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
             ),
           ),
           Divider(color: Colors.white.withOpacity(0.1), height: 1),
-
           if (items.isNotEmpty)
             ListView.separated(
               physics: const NeverScrollableScrollPhysics(),
@@ -404,7 +402,6 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
                 );
               },
             ),
-
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
             child: SizedBox(
@@ -502,7 +499,7 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
     final name = map["name"] ?? "Unknown Contractor";
     final phone = map["phone"] ?? "";
     final email = map["email"] ?? "";
-    
+
     final img = _toAbsoluteUrl(map["profileImageUrl"] ?? map["profileImage"] ?? "");
 
     return Container(
@@ -656,6 +653,7 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
     );
   }
 
+  // ✅✅ التعديل هنا: إضافة زر Reject ✅✅
   Widget _buildOfferCard(dynamic o) {
     final m = (o as Map);
     final id = m["_id"] ?? m["id"];
@@ -674,6 +672,7 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Header Row
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -716,29 +715,58 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
             ),
           ],
           const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            height: 44,
-            child: ElevatedButton(
-              onPressed: (_accepting) ? null : () => _acceptOffer(id),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF9EE7B7),
-                foregroundColor: Colors.black,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+          
+          // Action Buttons: Accept & Reject
+          Row(
+            children: [
+              // زر القبول
+              Expanded(
+                child: SizedBox(
+                  height: 44,
+                  child: ElevatedButton(
+                    onPressed: (_processingOffer) ? null : () => _acceptOffer(id),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF9EE7B7),
+                      foregroundColor: Colors.black,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: _processingOffer
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text(
+                            "Accept",
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                  ),
                 ),
               ),
-              child: _accepting
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text(
-                      "Accept Offer",
+              const SizedBox(width: 12),
+              // زر الرفض
+              Expanded(
+                child: SizedBox(
+                  height: 44,
+                  child: OutlinedButton(
+                    onPressed: (_processingOffer) ? null : () => _rejectOffer(id),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.redAccent,
+                      side: const BorderSide(color: Colors.redAccent),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text(
+                      "Reject",
                       style: TextStyle(fontWeight: FontWeight.bold),
                     ),
-            ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -746,13 +774,62 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
   }
 
   Future<void> _acceptOffer(String offerId) async {
-    setState(() => _accepting = true);
+    setState(() => _processingOffer = true);
     try {
       await _service.acceptOffer(projectId: widget.projectId, offerId: offerId);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text("Offer accepted! Project moved to In Progress."),
+        ),
+      );
+      _load();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red),
+      );
+    } finally {
+      if (mounted) setState(() => _processingOffer = false);
+    }
+  }
+
+  // ✅✅ دالة الرفض الجديدة ✅✅
+  Future<void> _rejectOffer(String offerId) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF15221D),
+        title: const Text("Reject Offer?", style: TextStyle(color: Colors.white)),
+        content: const Text(
+          "Rejecting this offer will cancel the entire project. Are you sure?",
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text("Cancel", style: TextStyle(color: Colors.white54)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text("Reject & Cancel", style: TextStyle(color: Colors.redAccent)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    setState(() => _processingOffer = true);
+    try {
+      // ✅ يجب إضافة هذه الدالة في ProjectService
+      await _service.rejectOfferAndCancel(projectId: widget.projectId, offerId: offerId);
+      
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Offer rejected and project cancelled."),
+          backgroundColor: Colors.orange,
         ),
       );
       _load(); 
@@ -762,7 +839,7 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
         SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red),
       );
     } finally {
-      if (mounted) setState(() => _accepting = false);
+      if (mounted) setState(() => _processingOffer = false);
     }
   }
 
@@ -823,14 +900,11 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
         children: [
           Icon(icon, color: color ?? Colors.white70, size: 16),
           const SizedBox(width: 8),
-          Text(
-            text, 
-            style: TextStyle(
-              color: color ?? Colors.white, 
-              fontSize: 13, 
-              fontWeight: FontWeight.w500
-            )
-          ),
+          Text(text,
+              style: TextStyle(
+                  color: color ?? Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500)),
         ],
       ),
     );
@@ -851,6 +925,10 @@ class _ProjectDetailsPageState extends State<ProjectDetailsPage> {
       case "completed":
         bg = Colors.blue.withOpacity(0.2);
         fg = Colors.blueAccent;
+        break;
+      case "cancelled": // ✅ حالة الإلغاء
+        bg = Colors.red.withOpacity(0.2);
+        fg = Colors.redAccent;
         break;
       default:
         bg = Colors.white10;

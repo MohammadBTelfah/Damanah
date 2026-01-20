@@ -18,7 +18,8 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
   final _formKey = GlobalKey<FormState>();
 
   final _nameController = TextEditingController(); // Full name
-  final _fullNameController = TextEditingController(); // ✅ الاسم الإنجليزي من الهوية
+  final _fullNameController =
+      TextEditingController(); // ✅ الاسم الإنجليزي من الهوية
   final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -124,7 +125,8 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
       debugPrint("Picked contractor file:");
       debugPrint("name: ${file.name}");
       debugPrint("path: ${file.path}");
-      debugPrint("bytes: ${file.bytes != null ? file.bytes!.length : 'null'}");
+      debugPrint(
+          "bytes: ${file.bytes != null ? file.bytes!.length : 'null'}");
     }
   }
 
@@ -336,7 +338,7 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
                       ),
                       const SizedBox(height: 20),
 
-                      // Full name
+                      // Full name (Display Name)
                       TextFormField(
                         controller: _nameController,
                         style: const TextStyle(color: Colors.white),
@@ -354,35 +356,14 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
                             vertical: 16,
                           ),
                         ),
-                        validator: (value) => (value == null || value.isEmpty)
-                            ? "Name is required"
-                            : null,
+                        validator: (value) =>
+                            (value == null || value.isEmpty)
+                                ? "Name is required"
+                                : null,
                       ),
                       const SizedBox(height: 12),
 
-                      // ✅ Full Name from ID (editable)
-                      TextFormField(
-                        controller: _fullNameController,
-                        style: const TextStyle(color: Colors.white),
-                        decoration: InputDecoration(
-                          filled: true,
-                          fillColor: inputFill,
-                          hintText: "Full Name (from ID - English)",
-                          hintStyle: const TextStyle(color: Colors.white54),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide.none,
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 16,
-                          ),
-                        ),
-                        validator: (value) => (value == null || value.trim().isEmpty)
-                            ? "Full Name from ID is required"
-                            : null,
-                      ),
-                      const SizedBox(height: 12),
+                      // ❌ تم النقل من هنا: Full Name from ID
 
                       // Email
                       TextFormField(
@@ -434,9 +415,10 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
                           ),
                         ),
                         keyboardType: TextInputType.phone,
-                        validator: (value) => (value == null || value.isEmpty)
-                            ? "Phone is required"
-                            : null,
+                        validator: (value) =>
+                            (value == null || value.isEmpty)
+                                ? "Phone is required"
+                                : null,
                       ),
                       const SizedBox(height: 12),
 
@@ -581,6 +563,7 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
                         controller: _nationalIdController,
                         style: const TextStyle(color: Colors.white),
                         keyboardType: TextInputType.number,
+                        readOnly: true, // ✅
                         decoration: InputDecoration(
                           filled: true,
                           fillColor: inputFill,
@@ -601,6 +584,33 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
                           }
                           return null;
                         },
+                      ),
+
+                      const SizedBox(height: 12),
+
+                      // ✅✅✅ تم النقل إلى هنا: Full Name from ID (editable) ✅✅✅
+                      TextFormField(
+                        controller: _fullNameController,
+                        style: const TextStyle(color: Colors.white),
+                        readOnly: true, // ✅ يفضل جعله readOnly لأنه من السكانر
+                        decoration: InputDecoration(
+                          filled: true,
+                          fillColor: inputFill,
+                          hintText: "Full Name (from ID - English)",
+                          hintStyle: const TextStyle(color: Colors.white54),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 16,
+                          ),
+                        ),
+                        validator: (value) =>
+                            (value == null || value.trim().isEmpty)
+                                ? "Full Name from ID is required"
+                                : null,
                       ),
 
                       const SizedBox(height: 12),

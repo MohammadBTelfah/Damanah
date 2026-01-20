@@ -133,20 +133,27 @@ class ProjectService {
     if (planAnalysis != null) {
       formattedAnalysis = {
         "totalArea": area, // نأخذ المساحة المراجعة يدوياً
-        "floors": floors,   // نأخذ عدد الطوابق المراجع يدوياً
-        "wallPerimeterLinear": planAnalysis["wallPerimeter"] ?? planAnalysis["wallPerimeterLinear"] ?? 0,
+        "floors": floors, // نأخذ عدد الطوابق المراجع يدوياً
+        "wallPerimeterLinear": planAnalysis["wallPerimeter"] ??
+            planAnalysis["wallPerimeterLinear"] ??
+            0,
         "ceilingHeight": planAnalysis["ceilingHeight"] ?? 3.0,
         "rooms": planAnalysis["rooms"] ?? 0,
         "bathrooms": planAnalysis["bathrooms"] ?? 0,
         "openings": {
           "windows": {
-            "count": planAnalysis["windowsCount"] ?? planAnalysis["openings"]?["windows"]?["count"] ?? 0
+            "count": planAnalysis["windowsCount"] ??
+                planAnalysis["openings"]?["windows"]?["count"] ??
+                0
           },
           "internalDoors": {
-            "count": planAnalysis["internalDoorsCount"] ?? planAnalysis["openings"]?["internalDoors"]?["count"] ?? 0
+            "count": planAnalysis["internalDoorsCount"] ??
+                planAnalysis["openings"]?["internalDoors"]?["count"] ??
+                0
           },
           "voids": {
-             "totalVoidArea": planAnalysis["openings"]?["voids"]?["totalVoidArea"] ?? 0
+            "totalVoidArea":
+                planAnalysis["openings"]?["voids"]?["totalVoidArea"] ?? 0
           }
         }
       };
@@ -186,6 +193,7 @@ class ProjectService {
       "(${res.statusCode}) ${data["message"] ?? "Create project failed"}",
     );
   }
+
   /// POST /api/projects/:id/estimate
   Future<Map<String, dynamic>> estimateProject({
     required String projectId,
@@ -212,53 +220,54 @@ class ProjectService {
   }
 
   /// POST /api/projects/plan/analyze
-Future<Map<String, dynamic>> analyzePlan({required String filePath}) async {
-  final token = await _mustToken();
-  final uri = Uri.parse(ApiConfig.join("/api/projects/plan/analyze"));
+  Future<Map<String, dynamic>> analyzePlan({required String filePath}) async {
+    final token = await _mustToken();
+    final uri = Uri.parse(ApiConfig.join("/api/projects/plan/analyze"));
 
-  final req = http.MultipartRequest("POST", uri);
-  req.headers.addAll(_authHeaders(token));
-  req.files.add(await http.MultipartFile.fromPath("planFile", filePath));
+    final req = http.MultipartRequest("POST", uri);
+    req.headers.addAll(_authHeaders(token));
+    req.files.add(await http.MultipartFile.fromPath("planFile", filePath));
 
-  final streamed = await req.send().timeout(const Duration(seconds: 60));
-  final res = await http.Response.fromStream(streamed);
+    final streamed = await req.send().timeout(const Duration(seconds: 60));
+    final res = await http.Response.fromStream(streamed);
 
-  final map = _safeJsonMap(res.body);
+    final map = _safeJsonMap(res.body);
 
-  if (res.statusCode >= 200 && res.statusCode < 300) {
-    // ✅ تعديل جوهري: التأكد من هيكلة البيانات الجديدة قبل إعادتها
-    // لضمان أن الواجهة (Step 2) تستلم القيم الصحيحة
-    if (map.containsKey("analysis")) {
-      final analysis = map["analysis"] as Map<String, dynamic>;
-      
-      // نضمن وجود كائن openings حتى لو لم يرسله السيرفر لتجنب الـ Null errors
-      analysis["openings"] ??= {
-        "windows": {"count": 0},
-        "internalDoors": {"count": 0},
-        "voids": {"totalVoidArea": 0}
-      };
+    if (res.statusCode >= 200 && res.statusCode < 300) {
+      // ✅ تعديل جوهري: التأكد من هيكلة البيانات الجديدة قبل إعادتها
+      // لضمان أن الواجهة (Step 2) تستلم القيم الصحيحة
+      if (map.containsKey("analysis")) {
+        final analysis = map["analysis"] as Map<String, dynamic>;
+
+        // نضمن وجود كائن openings حتى لو لم يرسله السيرفر لتجنب الـ Null errors
+        analysis["openings"] ??= {
+          "windows": {"count": 0},
+          "internalDoors": {"count": 0},
+          "voids": {"totalVoidArea": 0}
+        };
+      }
+      return map;
     }
-    return map;
+
+    final code = map["code"]?.toString();
+
+    // منطق تحويل المستخدم لليدوي في حال تعطل الـ AI (كما هو في كودك)
+    final isAiUnavailable = code == "AI_UNAVAILABLE" ||
+        res.statusCode == 503 ||
+        res.statusCode == 429 ||
+        (map["error"]?.toString().contains("rate_limit_exceeded") ?? false) ||
+        (map["message"]?.toString().toLowerCase().contains("rate limit") ??
+            false);
+
+    if (isAiUnavailable) {
+      throw Exception("AI_UNAVAILABLE (${res.statusCode})");
+    }
+
+    throw Exception(
+      "(${res.statusCode}) ${map["message"] ?? "Analyze plan failed"}",
+    );
   }
 
-  final code = map["code"]?.toString();
-
-  // منطق تحويل المستخدم لليدوي في حال تعطل الـ AI (كما هو في كودك)
-  final isAiUnavailable =
-      code == "AI_UNAVAILABLE" ||
-      res.statusCode == 503 ||
-      res.statusCode == 429 ||
-      (map["error"]?.toString().contains("rate_limit_exceeded") ?? false) ||
-      (map["message"]?.toString().toLowerCase().contains("rate limit") ?? false);
-
-  if (isAiUnavailable) {
-    throw Exception("AI_UNAVAILABLE (${res.statusCode})");
-  }
-
-  throw Exception(
-    "(${res.statusCode}) ${map["message"] ?? "Analyze plan failed"}",
-  );
-}
   /// GET /api/materials
   Future<List<dynamic>> getMaterials() async {
     final token = await _mustToken();
@@ -318,7 +327,8 @@ Future<Map<String, dynamic>> analyzePlan({required String filePath}) async {
   // 🔥 NEW: Publish Project
   Future<void> publishProject({required String projectId}) async {
     final token = await _mustToken();
-    final uri = Uri.parse(ApiConfig.join("/api/projects/$projectId/publish"));
+    final uri =
+        Uri.parse(ApiConfig.join("/api/projects/$projectId/publish"));
 
     final res = await http
         .patch(uri, headers: _authHeaders(token, json: true))
@@ -400,7 +410,8 @@ Future<Map<String, dynamic>> analyzePlan({required String filePath}) async {
   /// GET /api/projects/contractor/available
   Future<List<dynamic>> getAvailableProjectsForContractor() async {
     final token = await _mustToken();
-    final uri = Uri.parse(ApiConfig.join("/api/projects/contractor/available"));
+    final uri =
+        Uri.parse(ApiConfig.join("/api/projects/contractor/available"));
 
     final res = await http
         .get(uri, headers: _authHeaders(token))
@@ -428,13 +439,17 @@ Future<Map<String, dynamic>> analyzePlan({required String filePath}) async {
     String? message,
   }) async {
     final token = await _mustToken();
-    final uri = Uri.parse(ApiConfig.join("/api/projects/$projectId/offers"));
+    final uri =
+        Uri.parse(ApiConfig.join("/api/projects/$projectId/offers"));
 
     final res = await http
         .post(
           uri,
           headers: _authHeaders(token, json: true),
-          body: jsonEncode({"price": price, "message": (message ?? "").trim()}),
+          body: jsonEncode({
+            "price": price,
+            "message": (message ?? "").trim()
+          }),
         )
         .timeout(const Duration(seconds: 30));
 
@@ -446,7 +461,8 @@ Future<Map<String, dynamic>> analyzePlan({required String filePath}) async {
   /// GET /api/projects/:projectId/offers  (Client only)
   Future<List<dynamic>> getProjectOffers({required String projectId}) async {
     final token = await _mustToken();
-    final uri = Uri.parse(ApiConfig.join("/api/projects/$projectId/offers"));
+    final uri =
+        Uri.parse(ApiConfig.join("/api/projects/$projectId/offers"));
 
     final res = await http
         .get(uri, headers: _authHeaders(token))
@@ -470,6 +486,26 @@ Future<Map<String, dynamic>> analyzePlan({required String filePath}) async {
     final token = await _mustToken();
     final uri = Uri.parse(
       ApiConfig.join("/api/projects/$projectId/offers/$offerId/accept"),
+    );
+
+    final res = await http
+        .patch(uri, headers: _authHeaders(token))
+        .timeout(const Duration(seconds: 30));
+
+    if (res.statusCode == 200) return;
+
+    throw Exception("(${res.statusCode}) ${_errMsg(res)}");
+  }
+
+  // ✅✅✅ NEW: Reject Offer & Cancel Project ✅✅✅
+  /// PATCH /api/projects/:projectId/offers/:offerId/reject (Client only)
+  Future<void> rejectOfferAndCancel({
+    required String projectId,
+    required String offerId,
+  }) async {
+    final token = await _mustToken();
+    final uri = Uri.parse(
+      ApiConfig.join("/api/projects/$projectId/offers/$offerId/reject"),
     );
 
     final res = await http
@@ -509,8 +545,8 @@ Future<Map<String, dynamic>> analyzePlan({required String filePath}) async {
 
   /// PATCH /api/projects/:id/status (Client/Contractor/Admin)
   Future<void> updateProjectStatus({
-    required String projectId, 
-    required String newStatus, 
+    required String projectId,
+    required String newStatus,
   }) async {
     final token = await _mustToken();
     final uri = Uri.parse(ApiConfig.join("/api/projects/$projectId/status"));
@@ -534,7 +570,8 @@ Future<Map<String, dynamic>> analyzePlan({required String filePath}) async {
   Future<List<dynamic>> getMyOffers() async {
     final token = await _mustToken();
 
-    final uri = Uri.parse(ApiConfig.join("/api/projects/contractor/my-offers"));
+    final uri =
+        Uri.parse(ApiConfig.join("/api/projects/contractor/my-offers"));
 
     final res = await http
         .get(uri, headers: _authHeaders(token))
@@ -593,15 +630,17 @@ Future<Map<String, dynamic>> analyzePlan({required String filePath}) async {
           final firstProject = list.first;
           final owner = firstProject['owner'];
           if (owner != null && owner is Map) {
-             debugPrint("🔍 [MyProjects] Owner Image: ${owner['profileImage']}");
+            debugPrint(
+                "🔍 [MyProjects] Owner Image: ${owner['profileImage']}");
           } else {
-             debugPrint("⚠️ [MyProjects] Owner data is missing or not populated!");
+            debugPrint(
+                "⚠️ [MyProjects] Owner data is missing or not populated!");
           }
         }
 
         return list;
       }
-      
+
       if (decoded is List) return decoded;
       return [];
     }
@@ -613,74 +652,74 @@ Future<Map<String, dynamic>> analyzePlan({required String filePath}) async {
   // 🔥 NEW: Get client-related contractors only
   // GET /api/clients/my-contractors
   Future<List<dynamic>> getMyContractors() async {
-  final token = await _mustToken();
-  // الرابط الصحيح لجلب المقاولين المرتبطين بمشاريع العميل
-  final uri = Uri.parse(ApiConfig.join("/api/clients/my-contractors"));
+    final token = await _mustToken();
+    // الرابط الصحيح لجلب المقاولين المرتبطين بمشاريع العميل
+    final uri = Uri.parse(ApiConfig.join("/api/clients/my-contractors"));
 
-  final res = await http
-      .get(uri, headers: _authHeaders(token))
-      .timeout(const Duration(seconds: 30));
+    final res = await http
+        .get(uri, headers: _authHeaders(token))
+        .timeout(const Duration(seconds: 30));
 
-  final decoded = _safeDecode(res.body);
+    final decoded = _safeDecode(res.body);
 
-  if (res.statusCode == 200) {
-    // الحالة الأولى: الرد عبارة عن مصفوفة مباشرة (وهذا ما يرسله الـ Backend حالياً)
-    if (decoded is List) {
-      return decoded.map((e) {
-        if (e is Map) {
-          final m = Map<String, dynamic>.from(e);
-          _processProfileImage(m); // دالة فرعية لمعالجة الصورة
-          return m;
-        }
-        return e;
-      }).toList();
+    if (res.statusCode == 200) {
+      // الحالة الأولى: الرد عبارة عن مصفوفة مباشرة (وهذا ما يرسله الـ Backend حالياً)
+      if (decoded is List) {
+        return decoded.map((e) {
+          if (e is Map) {
+            final m = Map<String, dynamic>.from(e);
+            _processProfileImage(m); // دالة فرعية لمعالجة الصورة
+            return m;
+          }
+          return e;
+        }).toList();
+      }
+
+      // الحالة الثانية: الرد مغلف داخل كائن (Object) مثل { "contractors": [...] }
+      if (decoded is Map &&
+          (decoded['data'] is List || decoded['contractors'] is List)) {
+        final list = decoded['data'] ?? decoded['contractors'];
+        return (list as List).map((e) {
+          if (e is Map) {
+            final m = Map<String, dynamic>.from(e);
+            _processProfileImage(m);
+            return m;
+          }
+          return e;
+        }).toList();
+      }
+
+      // الحالة الثالثة: الرد كائن واحد فقط (مقاول واحد)
+      if (decoded is Map && decoded['_id'] != null) {
+        final m = Map<String, dynamic>.from(decoded);
+        _processProfileImage(m);
+        return [m];
+      }
+
+      return [];
     }
 
-    // الحالة الثانية: الرد مغلف داخل كائن (Object) مثل { "contractors": [...] }
-    if (decoded is Map &&
-        (decoded['data'] is List || decoded['contractors'] is List)) {
-      final list = decoded['data'] ?? decoded['contractors'];
-      return (list as List).map((e) {
-        if (e is Map) {
-          final m = Map<String, dynamic>.from(e);
-          _processProfileImage(m);
-          return m;
-        }
-        return e;
-      }).toList();
+    if (res.statusCode == 401) {
+      throw Exception("Unauthorized (${res.statusCode})");
     }
 
-    // الحالة الثالثة: الرد كائن واحد فقط (مقاول واحد)
-    if (decoded is Map && decoded['_id'] != null) {
-      final m = Map<String, dynamic>.from(decoded);
-      _processProfileImage(m);
-      return [m];
-    }
-
-    return [];
+    throw Exception("(${res.statusCode}) ${_errMsg(res)}");
   }
 
-  if (res.statusCode == 401) {
-    throw Exception("Unauthorized (${res.statusCode})");
-  }
+  /// ✅ دالة مساعدة لضمان أن رابط الصورة كامل وقابل للعرض في التطبيق
+  void _processProfileImage(Map<String, dynamic> m) {
+    // جلب القيمة الموجودة في profileImage أو profileImageUrl
+    String? img = (m['profileImageUrl'] ?? m['profileImage'])?.toString();
 
-  throw Exception("(${res.statusCode}) ${_errMsg(res)}");
-}
-
-/// ✅ دالة مساعدة لضمان أن رابط الصورة كامل وقابل للعرض في التطبيق
-void _processProfileImage(Map<String, dynamic> m) {
-  // جلب القيمة الموجودة في profileImage أو profileImageUrl
-  String? img = (m['profileImageUrl'] ?? m['profileImage'])?.toString();
-
-  if (img != null && img.isNotEmpty) {
-    // إذا كان المسار محلياً (لا يبدأ بـ http)، نقوم بدمجه مع رابط السيرفر الأساسي
-    if (!img.startsWith('http')) {
-      m['profileImageUrl'] = ApiConfig.join(img);
+    if (img != null && img.isNotEmpty) {
+      // إذا كان المسار محلياً (لا يبدأ بـ http)، نقوم بدمجه مع رابط السيرفر الأساسي
+      if (!img.startsWith('http')) {
+        m['profileImageUrl'] = ApiConfig.join(img);
+      } else {
+        m['profileImageUrl'] = img;
+      }
     } else {
-      m['profileImageUrl'] = img;
+      m['profileImageUrl'] = ''; // قيمة افتراضية لتجنب الـ null في الـ UI
     }
-  } else {
-    m['profileImageUrl'] = ''; // قيمة افتراضية لتجنب الـ null في الـ UI
   }
 }
-  }

@@ -214,10 +214,69 @@ exports.publishProject = async (req, res) => {
   }
 };
 
+
+// =======================
+// Reject Offer & Cancel Project (With Unassign)
+// =======================
+exports.rejectOfferAndCancel = async (req, res) => {
+  try {
+    const { projectId, offerId } = req.params;
+
+    // 1. جلب المشروع
+    const project = await Project.findById(projectId);
+    if (!project) return res.status(404).json({ message: "Project not found" });
+
+    // 2. التحقق من المالك
+    if (String(project.owner) !== String(req.user._id)) {
+      return res.status(403).json({ message: "Not authorized" });
+    }
+
+    // 3. العثور على العرض وتحديث حالته
+    const offer = project.offers.id(offerId);
+    if (offer) {
+        offer.status = "rejected";
+    }
+
+    // 4. تحديث حالة المشروع إلى ملغي
+    project.status = "cancelled";
+
+    // 5. ✅✅ التعديل المطلوب: إزالة تعيين المقاول ✅✅
+    project.contractor = null; 
+    
+    // (اختياري) إزالة السعر المتفق عليه أيضاً لتنظيف البيانات
+    project.agreedPrice = null;
+
+    await project.save();
+
+    // 6. إشعار للمقاول (إذا وُجد العرض والمقاول)
+    if (offer && offer.contractor) {
+        try {
+          await Notification.create({
+            user: offer.contractor,
+            userModel: "Contractor",
+            title: "Offer Rejected",
+            body: `Your offer for "${project.title}" was rejected and the project is cancelled.`,
+            type: "offer_rejected",
+            projectId: project._id,
+            read: false,
+          });
+        } catch (e) {
+          console.error("notification offer_rejected failed:", e.message);
+        }
+    }
+
+    return res.status(200).json({
+      message: "Offer rejected, contractor unassigned, and project cancelled.",
+      project,
+    });
+  } catch (err) {
+    console.error("rejectOfferAndCancel error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+};
 // =======================
 // Contractor - Available projects
 // =======================
-// projectController.js
 
 exports.getAvailableProjectsForContractor = async (req, res) => {
   try {
@@ -306,9 +365,7 @@ exports.getOpenProjects = async (req, res) => {
   }
 };
 
-// =======================
-// Get project by ID
-// =======================
+
 // =======================
 // Get project by ID
 // =======================
@@ -335,9 +392,7 @@ exports.getProjectById = async (req, res) => {
   }
 };
 
-// =======================
-// ✅ Create/Update Offer (Contractor)  (UPSERT)
-// =======================
+
 // =======================
 // ✅ Create Offer OR (if exists) Create Contract (Contractor)
 // =======================
@@ -481,7 +536,6 @@ exports.createOffer = async (req, res) => {
 // =======================
 // Update Project Status
 // =======================
-// projectController.js
 exports.updateProjectStatus = async (req, res) => {
   try {
     const { id } = req.params; // تأكد أن الاسم يطابق الراوتر (:id)
@@ -529,18 +583,10 @@ exports.getProjectOffers = async (req, res) => {
   }
 };
 
-// =======================
-// Accept offer
-// =======================
-// =======================
-// Accept offer
-// =======================
-// تأكد من أن مسار الكلاوديناري صحيح حسب ملفات مشروعك
 
 // =======================
 // Accept offer (Modified & Fixed)
 // =======================
-// projectController.js
 
 exports.acceptOffer = async (req, res) => {
   try {
