@@ -287,10 +287,34 @@ exports.verifyEmail = async (req, res) => {
       emailVerificationExpires: { $gt: Date.now() },
     });
 
+    // ❌ حالة الخطأ (الرابط غير صالح)
     if (!contractor) {
-      return res.status(400).json({ message: "Invalid or expired link." });
+      return res.status(400).send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Link Expired</title>
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <style>
+            body { background-color: #0F261F; color: white; font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+            .card { background-color: #1B3A35; padding: 40px; border-radius: 20px; text-align: center; width: 85%; max-width: 400px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+            h1 { color: #ff6b6b; margin-bottom: 10px; }
+            p { color: #ccc; line-height: 1.5; }
+            .icon { font-size: 60px; margin-bottom: 20px; }
+          </style>
+        </head>
+        <body>
+          <div class="card">
+            <div class="icon">⚠️</div>
+            <h1>Link Invalid or Expired</h1>
+            <p>This verification link is either invalid, expired, or the account has already been verified.</p>
+          </div>
+        </body>
+        </html>
+      `);
     }
 
+    // ✅ تحديث البيانات
     contractor.emailVerified = true;
     contractor.emailVerificationToken = null;
     contractor.emailVerificationExpires = null;
@@ -300,14 +324,37 @@ exports.verifyEmail = async (req, res) => {
 
     await contractor.save();
 
-    return res.json({
-      message: "Email verified. Please wait until admin reviews your documents.",
-    });
+    // ✅ حالة النجاح (مع رسالة خاصة بانتظار المراجعة)
+    return res.send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Email Verified</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <style>
+          body { background-color: #0F261F; color: white; font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+          .card { background-color: #1B3A35; padding: 40px; border-radius: 20px; text-align: center; width: 85%; max-width: 400px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+          h1 { color: #8BE3B5; margin-bottom: 10px; }
+          p { color: #e0e0e0; margin-bottom: 30px; line-height: 1.5; }
+          .icon { font-size: 70px; margin-bottom: 20px; }
+        </style>
+      </head>
+      <body>
+        <div class="card">
+          <div class="icon">✅</div>
+          <h1>Email Verified!</h1>
+          <p>Your email has been verified successfully.</p>
+          <p style="color: #ffcc00; font-weight: bold;">Note: Your account is currently under review by the admin for document verification.</p>
+          <p style="font-size: 14px; opacity: 0.8;">You will be notified once your account is active.</p>
+        </div>
+      </body>
+      </html>
+    `);
+
   } catch (err) {
-    return res.status(500).json({ message: "Server error" });
+    return res.status(500).send("<h1>Server Error</h1>");
   }
 };
-
 exports.resendVerificationEmail = async (req, res) => {
   try {
     const emailNorm = normalizeEmail(req.body.email);
