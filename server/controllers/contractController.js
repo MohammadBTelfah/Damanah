@@ -4,6 +4,7 @@ const path = require("path");
 const os = require("os");
 const Contract = require("../models/Contract");
 const generateContractPdf = require("../utils/pdf/generateContractPdf");
+const Project = require("../models/Project");
 
 // ✅ تصحيح: استدعاء ملف الإعدادات الذي يحتوي على مكتبة Cloudinary الأصلية
 const cloudinary = require("../config/cloudinaryConfig"); 
@@ -92,61 +93,88 @@ exports.getContractById = async (req, res) => {
 // ========================
 exports.createContract = async (req, res) => {
   try {
-    // استقبال البيانات من الـ Body
     const {
-      project, client, contractor, agreedPrice, durationMonths,
-      paymentTerms, projectDescription, materialsAndServices,
-      terms, startDate, endDate
+      project: projectId, // نغير الاسم لتمييزه
+      client, 
+      contractor, 
+      agreedPrice, 
+      durationMonths,
+      paymentTerms, 
+      projectDescription, 
+      // materialsAndServices, // ❌ لن نعتمد على هذا فقط
+      terms, 
+      startDate, 
+      endDate
     } = req.body;
 
-    // التحقق من البيانات الأساسية
-    if (!project || !client || !contractor || agreedPrice == null) {
-      return res.status(400).json({ message: "Missing required fields" });
+    // 1. جلب المشروع للوصول إلى تفاصيل التقدير (Estimation)
+    const projectData = await Project.findById(projectId);
+    
+    if (!projectData) {
+      return res.status(404).json({ message: "Project not found" });
     }
 
-    // 1. إنشاء العقد في قاعدة البيانات
+    // 2. تجهيز قائمة المواد تلقائياً من المشروع
+    let finalMaterials = [];
+
+    // إذا أرسل المستخدم مواد يدوياً نستخدمها، وإلا نأخذها من التقدير
+    if (req.body.materialsAndServices && req.body.materialsAndServices.length > 0) {
+      finalMaterials = req.body.materialsAndServices;
+    } else if (projectData.estimation && projectData.estimation.items) {
+      // تحويل كائنات المواد إلى نصوص ليتم عرضها في القائمة
+      finalMaterials = projectData.estimation.items.map(item => {
+        // مثال: "بلاط خارجي - الكمية: 100 متر"
+        return `${item.name} (الكمية: ${item.quantity} ${item.unit || ''})`; 
+      });
+    }
+
+    // 3. إنشاء العقد مع المواد المجهزة
     const newContract = await Contract.create({
-      project, client, contractor, agreedPrice,
-      durationMonths, paymentTerms, projectDescription,
-      materialsAndServices, terms, startDate, endDate,
+      project: projectId, 
+      client, 
+      contractor, 
+      agreedPrice,
+      durationMonths, 
+      paymentTerms, 
+      projectDescription,
+      materialsAndServices: finalMaterials, // ✅ هنا نضع القائمة المعبأة
+      terms, 
+      startDate, 
+      endDate,
       status: "active"
     });
 
-    // 2. جلب بيانات العقد كاملة (Populate) لملء القالب
+    // 4. جلب البيانات (Populate) لطباعة الـ PDF
     const populatedContract = await Contract.findById(newContract._id)
-      .populate("project") // لجلب اسم المشروع وموقعه
-      .populate("client")  // لجلب اسم العميل وهاتفه
-      .populate("contractor"); // لجلب اسم المقاول وهاتفه
+      .populate("project")
+      .populate("client")
+      .populate("contractor");
 
-    // 3. تحديد مسار مؤقت للملف
+    // 5. توليد الـ PDF
     const tempDir = os.tmpdir();
     const pdfName = `contract-${newContract._id}.pdf`;
     const tempFilePath = path.join(tempDir, pdfName);
 
-    // 4. استدعاء الدالة التي تملأ القالب وتنشئ الـ PDF
     await generateContractPdf(populatedContract, tempFilePath);
 
-    // 5. رفع الملف الناتج إلى Cloudinary
-    // ✅ الآن المتغير cloudinary يحتوي على المكتبة الصحيحة ولن يعطي خطأ undefined
+    // 6. الرفع إلى Cloudinary
     const uploadResult = await cloudinary.uploader.upload(tempFilePath, {
       folder: "damanah_contracts",
-      resource_type: "auto", // يفضل auto ليتعرف عليه سواء كان pdf أو صورة
+      resource_type: "raw",
       access_mode: "public",
-      public_id: `contract_${newContract._id}`, // اسم ثابت للملف لتسهيل الوصول
+      public_id: `contract_${newContract._id}`,
     });
 
-    // 6. حفظ الرابط في العقد وحذف الملف المؤقت
     populatedContract.contractFile = uploadResult.secure_url;
     await populatedContract.save();
 
     if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath);
 
-    // 7. الرد بالرابط (هنا يتم نقلك لفتح القالب المعبأ)
     return res.status(201).json({
       success: true,
-      message: "Contract created and PDF generated successfully",
+      message: "Contract created successfully",
       contract: populatedContract,
-      pdfUrl: populatedContract.contractFile // هذا الرابط هو القالب المعبأ
+      pdfUrl: populatedContract.contractFile
     });
 
   } catch (err) {
@@ -154,7 +182,6 @@ exports.createContract = async (req, res) => {
     return res.status(500).json({ success: false, message: err.message });
   }
 };
-
 // ========================
 // GET /api/contracts/:id/pdf
 // ✅ Redirect to Cloudinary PDF
