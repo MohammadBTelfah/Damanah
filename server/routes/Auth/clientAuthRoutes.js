@@ -1,16 +1,17 @@
 const router = require("express").Router();
 const clientAuth = require("../../controllers/Auth/clientauthcontroller");
 
-// ✅ NEW: استدعاء إعدادات Cloudinary الجاهزة
-const upload = require("../../config/cloudinaryConfig");
+// ✅ التعديل 1: استدعاء الأداة المحددة بدلاً من الملف كاملاً
+// نستخدم الأقواس {} لأننا نريد أداة محددة من الملف
+const { uploadIdentityDoc } = require("../../utils/upload");
 
 /* ================== ROUTES (NO AUTH) ================== */
 
 // register
 router.post(
   "/register",
-  // Cloudinary Config يدعم upload.fields تماماً كما هو
-  upload.fields([
+  // ✅ التعديل 2: استخدام uploadIdentityDoc بدلاً من upload
+  uploadIdentityDoc.fields([
     { name: "profileImage", maxCount: 1 },
     { name: "identityDocument", maxCount: 1 },
   ]),

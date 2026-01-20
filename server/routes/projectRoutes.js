@@ -1,8 +1,5 @@
 const express = require("express");
 const router = express.Router();
-// لم نعد بحاجة لـ path و multer هنا
-// const path = require("path");
-// const multer = require("multer");
 
 const projectController = require("../controllers/projectController");
 const {
@@ -11,10 +8,9 @@ const {
   contractorOnly,
 } = require("../middleware/authMiddleWare");
 
-// ✅ NEW: استيراد إعدادات Cloudinary
-const upload = require("../config/cloudinaryConfig");
-
-// ================================
+// ✅ التعديل 1: استدعاء الأداة المناسبة (uploadPlan)
+// نستخدمها لأنها تدعم رفع الصور والملفات (PDF) وهو المناسب للمخططات
+const { uploadPlan } = require("../utils/upload");// ================================
 // ✅ Contractor routes (لازم قبل :projectId)
 // ================================
 router.get(
@@ -66,11 +62,6 @@ router.post("/:id/share", protect, clientOnly, projectController.shareProject);
 router.patch("/:id/assign", protect, clientOnly, projectController.assignContractor);
 
 // ================================
-// ✅ Project by ID (آخر شي)
-// ================================
-router.get("/:projectId", protect, projectController.getProjectById);
-
-// ================================
 // Offers
 // ================================
 router.post(
@@ -108,7 +99,8 @@ router.post(
   "/plan/analyze",
   protect,
   clientOnly,
-  upload.single("planFile"), // ✅ التعديل هنا: استخدام Cloudinary Upload
+  // ✅ التعديل 2: استخدام uploadPlan بدلاً من upload
+  uploadPlan.single("planFile"), 
   projectController.analyzePlanOnly
 );
 
@@ -121,6 +113,11 @@ router.get(
 
 // ... (تأكد أنك تضعه قبل الراوتات التي تحتوي على :id لتجنب التضارب)
 router.get("/client/recent-offers", protect, projectController.getClientRecentOffers);
+
+// ================================
+// ✅ Project by ID (آخر شي)
+// ================================
+router.get("/:projectId", protect, projectController.getProjectById);
 
 router.patch('/:id/status', protect, contractorOnly, projectController.updateProjectStatus);
 
