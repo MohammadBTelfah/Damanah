@@ -840,20 +840,12 @@ exports.assignContractor = async (req, res) => {
       return res.status(404).json({ message: "Project not found" });
     }
 
-    // ✅ فقط صاحب المشروع يقدر يعيّن مقاول
+    // ✅ فقط صاحب المشروع
     if (String(project.owner) !== String(req.user._id)) {
       return res.status(403).json({ message: "Not owner of this project" });
     }
 
-    // (اختياري) لو بدك تمنع إعادة التعيين إذا فيه مقاول أصلاً:
-    // إذا بدك تسمح بإعادة التعيين، احذف هذا البلوك
-    if (project.contractor && String(project.contractor) !== String(contractorId)) {
-      return res.status(400).json({
-        message: "Project already has a contractor assigned. Unassign first or use reassign endpoint.",
-      });
-    }
-
-    // ✅ تأكد من المقاول وأنه فعّال
+    // ✅ تأكد من المقاول
     const contractor = await Contractor.findById(contractorId)
       .select("name isActive role")
       .lean();
@@ -866,18 +858,21 @@ exports.assignContractor = async (req, res) => {
       return res.status(400).json({ message: "Contractor is not active" });
     }
 
-    // ✅ اربط المقاول بالمشروع فقط (بدون تغيير status)
+    // ✅ الربط
     project.contractor = contractorId;
+
+    // ✅ هنا التعديل المهم
+    project.status = "open"; // ⭐⭐⭐⭐
 
     await project.save();
 
-    // ✅ إشعار للمقاول فقط
+    // ✅ إشعار للمقاول
     try {
       await Notification.create({
         user: contractorId,
         userModel: "Contractor",
-        title: "New project assigned",
-        body: `You have been assigned to project "${project.title}".`,
+        title: "New project request",
+        body: `You have a new client request for project "${project.title}".`,
         type: "contractor_assigned",
         projectId: project._id,
         read: false,
@@ -887,12 +882,15 @@ exports.assignContractor = async (req, res) => {
     }
 
     return res.json({
-      message: "Contractor assigned (status unchanged)",
+      message: "Contractor assigned and project opened",
       project,
     });
   } catch (err) {
     console.error("assignContractor error:", err);
-    return res.status(500).json({ message: "Assign failed", error: err.message });
+    return res.status(500).json({
+      message: "Assign failed",
+      error: err.message,
+    });
   }
 };
 
