@@ -1,16 +1,18 @@
 const router = require("express").Router();
 const contractorAuth = require("../../controllers/Auth/contractorAuthcontroller");
 
-// ✅ NEW: استيراد إعدادات Cloudinary
-const upload = require("../../utils/upload");
+// ✅ التعديل 1: استدعاء الأداة المناسبة (uploadContractorDoc)
+// نستخدم الأقواس {} لأننا نستدعي أداة محددة من الملف
+const { uploadContractorDoc } = require("../../utils/upload");
 
 /* ================== ROUTES (NO AUTH) ================== */
 
 // register
 router.post(
   "/register",
-  // Cloudinary Config يدعم upload.fields تماماً
-  upload.fields([
+  // ✅ التعديل 2: استخدام uploadContractorDoc بدلاً من upload
+  // هذه الأداة مهيأة لقبول الصور والملفات (PDF) معاً
+  uploadContractorDoc.fields([
     { name: "profileImage", maxCount: 1 },
     { name: "identityDocument", maxCount: 1 },
     { name: "contractorDocument", maxCount: 1 },

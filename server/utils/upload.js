@@ -1,7 +1,8 @@
 const multer = require("multer");
 const { CloudinaryStorage } = require("multer-storage-cloudinary");
 const cloudinary = require("../config/cloudinaryConfig");
-// إعداد التخزين السحابي لصور البروفايل
+
+// 1. تخزين صور البروفايل (صور فقط)
 const profileStorage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: {
@@ -10,23 +11,33 @@ const profileStorage = new CloudinaryStorage({
   },
 });
 
-// إعداد التخزين السحابي للهويات (يدعم PDF وصور)
-const identityStorage = new CloudinaryStorage({
+// 2. تخزين الهويات والمستندات (يدعم PDF وصور)
+const docStorage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: {
-    folder: "damanah/identity",
-    resource_type: "auto", // مهم جداً لدعم الـ PDF والصور معاً
+    folder: "damanah/documents", // غيرت الاسم ليكون عاماً أكثر
+    resource_type: "auto", 
     allowed_formats: ["jpg", "png", "jpeg", "pdf"],
   },
 });
 
-// تصدير الـ Middleware لاستخدامها في الـ Routes
-const uploadProfileImage = multer({ storage: profileStorage });
-const uploadIdentityDoc = multer({ storage: identityStorage });
-const uploadContractorDoc = multer({ storage: profileStorage }); // يمكنك استخدام نفس إعداد البروفايل
+const planStorage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: "damanah/plans", // سيتم حفظها في مجلد منفصل ومرتب
+    resource_type: "auto",   // يدعم PDF والصور
+    allowed_formats: ["jpg", "png", "jpeg", "pdf"],
+  },
+});
 
+// تعريف الـ Middleware
+const uploadProfileImage = multer({ storage: profileStorage });
+const uploadIdentityDoc = multer({ storage: docStorage });   // ✅ يدعم PDF
+const uploadContractorDoc = multer({ storage: docStorage }); // ✅ يدعم PDF الآن
+const uploadPlan = multer({ storage: planStorage });
 module.exports = {
   uploadProfileImage,
   uploadIdentityDoc,
   uploadContractorDoc,
+  uploadPlan
 };
