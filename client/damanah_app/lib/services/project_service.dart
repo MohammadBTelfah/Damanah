@@ -613,62 +613,74 @@ Future<Map<String, dynamic>> analyzePlan({required String filePath}) async {
   // 🔥 NEW: Get client-related contractors only
   // GET /api/clients/my-contractors
   Future<List<dynamic>> getMyContractors() async {
-    final token = await _mustToken();
-    final uri = Uri.parse(ApiConfig.join("/api/clients/my-contractors"));
+  final token = await _mustToken();
+  // الرابط الصحيح لجلب المقاولين المرتبطين بمشاريع العميل
+  final uri = Uri.parse(ApiConfig.join("/api/clients/my-contractors"));
 
-    final res = await http
-        .get(uri, headers: _authHeaders(token))
-        .timeout(const Duration(seconds: 30));
+  final res = await http
+      .get(uri, headers: _authHeaders(token))
+      .timeout(const Duration(seconds: 30));
 
-    final decoded = _safeDecode(res.body);
+  final decoded = _safeDecode(res.body);
 
-    if (res.statusCode == 200) {
-      if (decoded is List) {
-        return decoded.map((e) {
-          if (e is Map) {
-            final m = Map<String, dynamic>.from(e);
-            if ((m['profileImageUrl'] == null || m['profileImageUrl'] == '') &&
-                (m['profileImage'] != null && m['profileImage'] is String)) {
-              m['profileImageUrl'] = m['profileImage'];
-            }
-            return m;
-          }
-          return e;
-        }).toList();
-      }
-
-      if (decoded is Map &&
-          (decoded['data'] is List || decoded['contractors'] is List)) {
-        final list = decoded['data'] ?? decoded['contractors'];
-        return (list as List).map((e) {
-          if (e is Map) {
-            final m = Map<String, dynamic>.from(e);
-            if ((m['profileImageUrl'] == null || m['profileImageUrl'] == '') &&
-                (m['profileImage'] != null && m['profileImage'] is String)) {
-              m['profileImageUrl'] = m['profileImage'];
-            }
-            return m;
-          }
-          return e;
-        }).toList();
-      }
-
-      if (decoded is Map && decoded['_id'] != null) {
-        final m = Map<String, dynamic>.from(decoded);
-        if ((m['profileImageUrl'] == null || m['profileImageUrl'] == '') &&
-            (m['profileImage'] != null && m['profileImage'] is String)) {
-          m['profileImageUrl'] = m['profileImage'];
+  if (res.statusCode == 200) {
+    // الحالة الأولى: الرد عبارة عن مصفوفة مباشرة (وهذا ما يرسله الـ Backend حالياً)
+    if (decoded is List) {
+      return decoded.map((e) {
+        if (e is Map) {
+          final m = Map<String, dynamic>.from(e);
+          _processProfileImage(m); // دالة فرعية لمعالجة الصورة
+          return m;
         }
-        return [m];
-      }
-
-      return [];
+        return e;
+      }).toList();
     }
 
-    if (res.statusCode == 401) {
-      throw Exception("Unauthorized (${res.statusCode})");
+    // الحالة الثانية: الرد مغلف داخل كائن (Object) مثل { "contractors": [...] }
+    if (decoded is Map &&
+        (decoded['data'] is List || decoded['contractors'] is List)) {
+      final list = decoded['data'] ?? decoded['contractors'];
+      return (list as List).map((e) {
+        if (e is Map) {
+          final m = Map<String, dynamic>.from(e);
+          _processProfileImage(m);
+          return m;
+        }
+        return e;
+      }).toList();
     }
 
-    throw Exception("(${res.statusCode}) ${_errMsg(res)}");
+    // الحالة الثالثة: الرد كائن واحد فقط (مقاول واحد)
+    if (decoded is Map && decoded['_id'] != null) {
+      final m = Map<String, dynamic>.from(decoded);
+      _processProfileImage(m);
+      return [m];
+    }
+
+    return [];
+  }
+
+  if (res.statusCode == 401) {
+    throw Exception("Unauthorized (${res.statusCode})");
+  }
+
+  throw Exception("(${res.statusCode}) ${_errMsg(res)}");
+}
+
+/// ✅ دالة مساعدة لضمان أن رابط الصورة كامل وقابل للعرض في التطبيق
+void _processProfileImage(Map<String, dynamic> m) {
+  // جلب القيمة الموجودة في profileImage أو profileImageUrl
+  String? img = (m['profileImageUrl'] ?? m['profileImage'])?.toString();
+
+  if (img != null && img.isNotEmpty) {
+    // إذا كان المسار محلياً (لا يبدأ بـ http)، نقوم بدمجه مع رابط السيرفر الأساسي
+    if (!img.startsWith('http')) {
+      m['profileImageUrl'] = ApiConfig.join(img);
+    } else {
+      m['profileImageUrl'] = img;
+    }
+  } else {
+    m['profileImageUrl'] = ''; // قيمة افتراضية لتجنب الـ null في الـ UI
   }
 }
+  }

@@ -921,21 +921,23 @@ exports.getClientRecentOffers = async (req, res) => {
 // =======================
 exports.getMyContractors = async (req, res) => {
   try {
-    const clientId = req.user._id;
+    // 1. التأكد من تحويل المعرف إلى ObjectId لضمان دقة البحث في MongoDB
+    const mongoose = require("mongoose");
+    const clientId = new mongoose.Types.ObjectId(req.user._id);
 
-    // 1. جلب مشاريع العميل التي لها مقاول
+    // 2. جلب مشاريع العميل التي تحتوي على مقاول معين
     const projects = await Project.find({
       owner: clientId,
-      contractor: { $ne: null },
+      contractor: { $exists: true, $ne: null },
     })
       .select("contractor")
       .populate("contractor", "name email phone profileImage contractorStatus isActive");
 
-    // 2. استخراج المقاولين بدون تكرار
+    // 3. استخراج المقاولين باستخدام Map لمنع التكرار
     const contractorsMap = new Map();
 
     projects.forEach((p) => {
-      if (p.contractor) {
+      if (p.contractor && p.contractor._id) {
         contractorsMap.set(
           p.contractor._id.toString(),
           p.contractor
@@ -945,12 +947,34 @@ exports.getMyContractors = async (req, res) => {
 
     const contractors = Array.from(contractorsMap.values());
 
-    return res.json(contractors);
+    // 4. معالجة روابط الصور (الخطوة التي كانت ناقصة وتسبب اختفاء الصور في Flutter)
+    const baseUrl = `${req.protocol}://${req.get("host")}`;
+    
+    const processedList = contractors.map((c) => {
+      const obj = c.toObject ? c.toObject() : c;
+      
+      // توحيد اسم الحقل ليكون profileImageUrl كما يتوقعه كود الـ Flutter والسيرفس لديك
+      let profileImageUrl = null;
+      if (obj.profileImage) {
+        profileImageUrl = obj.profileImage.startsWith("http") 
+          ? obj.profileImage 
+          : `${baseUrl}${obj.profileImage.replace(/\\/g, '/')}`;
+      }
+
+      return {
+        ...obj,
+        profileImageUrl: profileImageUrl
+      };
+    });
+
+    // إرسال القائمة النهائية
+    return res.json(processedList);
   } catch (err) {
     console.error("getMyContractors error:", err);
-    return res.status(500).json({ message: "Server error" });
+    return res.status(500).json({ message: "Server error", error: err.message });
   }
 };
+
 // =======================
 // Contractor - My Submitted Offers (across all projects)
 // GET /api/projects/contractor/my-offers
