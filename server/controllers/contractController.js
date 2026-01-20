@@ -94,14 +94,13 @@ exports.getContractById = async (req, res) => {
 exports.createContract = async (req, res) => {
   try {
     const {
-      project: projectId, // نغير الاسم لتمييزه
+      project: projectId, 
       client, 
       contractor, 
       agreedPrice, 
       durationMonths,
       paymentTerms, 
       projectDescription, 
-      // materialsAndServices, // ❌ لن نعتمد على هذا فقط
       terms, 
       startDate, 
       endDate
@@ -117,13 +116,10 @@ exports.createContract = async (req, res) => {
     // 2. تجهيز قائمة المواد تلقائياً من المشروع
     let finalMaterials = [];
 
-    // إذا أرسل المستخدم مواد يدوياً نستخدمها، وإلا نأخذها من التقدير
     if (req.body.materialsAndServices && req.body.materialsAndServices.length > 0) {
       finalMaterials = req.body.materialsAndServices;
     } else if (projectData.estimation && projectData.estimation.items) {
-      // تحويل كائنات المواد إلى نصوص ليتم عرضها في القائمة
       finalMaterials = projectData.estimation.items.map(item => {
-        // مثال: "بلاط خارجي - الكمية: 100 متر"
         return `${item.name} (الكمية: ${item.quantity} ${item.unit || ''})`; 
       });
     }
@@ -137,18 +133,18 @@ exports.createContract = async (req, res) => {
       durationMonths, 
       paymentTerms, 
       projectDescription,
-      materialsAndServices: finalMaterials, // ✅ هنا نضع القائمة المعبأة
+      materialsAndServices: finalMaterials, 
       terms, 
       startDate, 
       endDate,
       status: "active"
     });
 
-    // 4. جلب البيانات (Populate) لطباعة الـ PDF
+    // 4. ✅ التعديل الجوهري: جلب بيانات الهوية والرقم الوطني للطباعة
     const populatedContract = await Contract.findById(newContract._id)
       .populate("project")
-      .populate("client")
-      .populate("contractor");
+      .populate("client", "name identityData nationalId phone email address") // 👈 أضفنا identityData و nationalId
+      .populate("contractor", "name identityData nationalId phone email address"); // 👈 أضفنا identityData و nationalId
 
     // 5. توليد الـ PDF
     const tempDir = os.tmpdir();
