@@ -1,7 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
-const cloudinary = require("../utils/cloudinary"); // تأكد من المسار
+const cloudinary = require("../config/cloudinaryConfig"); // تأكد من المسار
 const Contract = require("../models/Contract");
 const generateContractPdf = require("../utils/pdf/generateContractPdf");
 
