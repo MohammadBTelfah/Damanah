@@ -1,9 +1,7 @@
-const path = require("path");
 const fs = require("fs");
+const path = require("path");
 const os = require("os");
-const mongoose = require("mongoose");
-const cloudinary = require("cloudinary").v2;
-
+const cloudinary = require("../utils/cloudinary"); // تأكد من المسار
 const Contract = require("../models/Contract");
 const generateContractPdf = require("../utils/pdf/generateContractPdf");
 
@@ -91,99 +89,67 @@ exports.getContractById = async (req, res) => {
 // ========================
 exports.createContract = async (req, res) => {
   try {
+    // استقبال البيانات من الـ Body
     const {
-      project,
-      client,
-      contractor,
-      agreedPrice,
-      durationMonths,
-      paymentTerms,
-      projectDescription,
-      materialsAndServices,
-      terms,
-      startDate,
-      endDate,
+      project, client, contractor, agreedPrice, durationMonths,
+      paymentTerms, projectDescription, materialsAndServices,
+      terms, startDate, endDate
     } = req.body;
 
+    // التحقق من البيانات الأساسية
     if (!project || !client || !contractor || agreedPrice == null) {
-      return res.status(400).json({
-        success: false,
-        message: "project, client, contractor, agreedPrice are required",
-      });
+      return res.status(400).json({ message: "Missing required fields" });
     }
 
-    // ✅ (اختياري لكن مهم) منع عقدين لنفس المشروع
-    const existing = await Contract.findOne({ project });
-    if (existing) {
-      return res.status(200).json({
-        success: true,
-        message: "Contract already exists for this project",
-        data: existing,
-        pdfUrl: existing.contractFile || null,
-      });
-    }
-
-    // 1) Create in DB
-    const created = await Contract.create({
-      project,
-      client,
-      contractor,
-      agreedPrice,
-      durationMonths: durationMonths ?? null,
-      paymentTerms: paymentTerms ?? "",
-      projectDescription: projectDescription ?? "",
-      materialsAndServices: Array.isArray(materialsAndServices)
-        ? materialsAndServices
-        : [],
-      terms: terms ?? "",
-      startDate: startDate ?? undefined,
-      endDate: endDate ?? null,
-      status: "active",
+    // 1. إنشاء العقد في قاعدة البيانات
+    const newContract = await Contract.create({
+      project, client, contractor, agreedPrice,
+      durationMonths, paymentTerms, projectDescription,
+      materialsAndServices, terms, startDate, endDate,
+      status: "active"
     });
 
-    // 2) Populate
-    const contract = await Contract.findById(created._id)
-      .populate("project")
-      .populate("client")
-      .populate("contractor");
+    // 2. جلب بيانات العقد كاملة (Populate) لملء القالب
+    // هذا الجزء مهم جداً لكي تظهر الأسماء بدلاً من الـ IDs في الـ Template
+    const populatedContract = await Contract.findById(newContract._id)
+      .populate("project") // لجلب اسم المشروع وموقعه
+      .populate("client")  // لجلب اسم العميل وهاتفه
+      .populate("contractor"); // لجلب اسم المقاول وهاتفه
 
-    // 3) Generate PDF Locally (Temporary) in os.tmpdir()
+    // 3. تحديد مسار مؤقت للملف
     const tempDir = os.tmpdir();
-    const fileName = `contract-${contract._id}.pdf`;
-    const tempFilePath = path.join(tempDir, fileName);
+    const pdfName = `contract-${newContract._id}.pdf`;
+    const tempFilePath = path.join(tempDir, pdfName);
 
-    await generateContractPdf(contract, tempFilePath);
+    // 4. استدعاء الدالة التي تملأ القالب وتنشئ الـ PDF
+    await generateContractPdf(populatedContract, tempFilePath);
 
-    // 4) Upload to Cloudinary manually
+    // 5. رفع الملف الناتج إلى Cloudinary
     const uploadResult = await cloudinary.uploader.upload(tempFilePath, {
       folder: "damanah_contracts",
-      resource_type: "auto",
-      public_id: `contract_${contract._id}`,
+      resource_type: "raw", // استخدم raw للملفات غير الصور أحياناً، أو auto
       access_mode: "public",
     });
 
-    // 5) Save Cloudinary URL in DB
-    contract.contractFile = uploadResult.secure_url;
-    await contract.save();
+    // 6. حفظ الرابط في العقد وحذف الملف المؤقت
+    populatedContract.contractFile = uploadResult.secure_url;
+    await populatedContract.save();
 
-    // 6) Clean up temp file
-    try {
-      if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath);
-    } catch (e) {
-      console.warn("temp pdf cleanup failed:", e.message);
-    }
+    if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath);
 
+    // 7. الرد بالرابط (هنا يتم نقلك لفتح القالب المعبأ)
     return res.status(201).json({
       success: true,
-      data: contract,
-      pdfUrl: contract.contractFile,
+      message: "Contract created and PDF generated successfully",
+      contract: populatedContract,
+      pdfUrl: populatedContract.contractFile // هذا الرابط هو القالب المعبأ
     });
+
   } catch (err) {
     console.error("Create Contract Error:", err);
     return res.status(500).json({ success: false, message: err.message });
   }
 };
-
 // ========================
 // GET /api/contracts/:id/pdf
 // ✅ Redirect to Cloudinary PDF
