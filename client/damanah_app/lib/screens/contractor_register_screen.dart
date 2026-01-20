@@ -73,6 +73,26 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
       ..showSnackBar(snackBar);
   }
 
+  // ✅✅✅ جديد: Dialog مضمون للنجاح/الرسائل المهمة
+  Future<void> _showSuccessDialog(String message) async {
+    if (!mounted) return;
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        title: const Text("Success"),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("OK"),
+          ),
+        ],
+      ),
+    );
+  }
+
   bool _isValidPassword(String v) {
     // حسب طلبك: طويل + يحتوي @
     return v.length >= 8 && v.contains('@');
@@ -164,27 +184,36 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
         profileImagePath: _profileImagePath,
       );
 
-      debugPrint("Contractor register response: $res");
+      // ✅✅✅ جديد: طباعة للتأكد
+      debugPrint("✅ Contractor register response: $res");
 
       if (!mounted) return;
-      _showTopSnackBar(
-        "Account created. Check your email to verify.",
-        Colors.green,
-      );
 
-      Future.delayed(const Duration(milliseconds: 1400), () {
-        if (!mounted) return;
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (_) => const LoginScreen(role: 'contractor'),
-          ),
-        );
-      });
+      // ✅✅✅ جديد: خذ رسالة السيرفر نفسها
+      final msg = (res["message"] ??
+              "Account created. Please check your email to verify.")
+          .toString();
+
+      // ✅✅✅ أهم تعديل: Dialog مضمون ما بضيع
+      await _showSuccessDialog(msg);
+
+      if (!mounted) return;
+
+      // بعد ما المستخدم يكبس OK، ننقله للوجين
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => const LoginScreen(role: 'contractor'),
+        ),
+      );
     } catch (e) {
       if (!mounted) return;
-      _showTopSnackBar("Registration failed", Colors.red);
-      debugPrint("Contractor register error: $e");
+
+      // ✅✅✅ مهم: اعرض سبب الفشل الحقيقي بدل كلمة ثابتة
+      final errMsg = e.toString().replaceFirst("Exception: ", "");
+      _showTopSnackBar("Registration failed: $errMsg", Colors.red);
+
+      debugPrint("❌ Contractor register error: $e");
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -656,7 +685,8 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
                           Navigator.pushReplacement(
                             context,
                             MaterialPageRoute(
-                              builder: (_) => const LoginScreen(role: 'contractor'),
+                              builder: (_) =>
+                                  const LoginScreen(role: 'contractor'),
                             ),
                           );
                         },

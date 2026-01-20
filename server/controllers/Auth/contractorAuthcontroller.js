@@ -241,7 +241,7 @@ exports.register = async (req, res) => {
     const token = signToken(contractor._id);
 
     // ✅ 9. الرد
-    return res.status(201).json({
+    return res.status(200).json({
       message: "Contractor account created. Please check your email.",
       token,
       role: contractor.role,
