@@ -94,21 +94,21 @@ exports.getContractById = async (req, res) => {
 exports.createContract = async (req, res) => {
   try {
     const {
-      project: projectId, 
-      client, 
-      contractor, 
-      agreedPrice, 
+      project: projectId,
+      client,
+      contractor,
+      agreedPrice,
       durationMonths,
-      paymentTerms, 
-      projectDescription, 
-      terms, 
-      startDate, 
+      paymentTerms,
+      projectDescription,
+      terms,
+      startDate,
       endDate
     } = req.body;
 
     // 1. جلب المشروع للوصول إلى تفاصيل التقدير (Estimation)
     const projectData = await Project.findById(projectId);
-    
+
     if (!projectData) {
       return res.status(404).json({ message: "Project not found" });
     }
@@ -120,31 +120,31 @@ exports.createContract = async (req, res) => {
       finalMaterials = req.body.materialsAndServices;
     } else if (projectData.estimation && projectData.estimation.items) {
       finalMaterials = projectData.estimation.items.map(item => {
-        return `${item.name} (الكمية: ${item.quantity} ${item.unit || ''})`; 
+        return `${item.name} (الكمية: ${item.quantity} ${item.unit || ''})`;
       });
     }
 
     // 3. إنشاء العقد مع المواد المجهزة
     const newContract = await Contract.create({
-      project: projectId, 
-      client, 
-      contractor, 
+      project: projectId,
+      client,
+      contractor,
       agreedPrice,
-      durationMonths, 
-      paymentTerms, 
+      durationMonths,
+      paymentTerms,
       projectDescription,
-      materialsAndServices: finalMaterials, 
-      terms, 
-      startDate, 
+      materialsAndServices: finalMaterials,
+      terms,
+      startDate,
       endDate,
       status: "active"
     });
 
-    // 4. ✅ التعديل الجوهري: جلب بيانات الهوية والرقم الوطني للطباعة
+    // 4. ✅ جلب بيانات الهوية والرقم الوطني + الاسم الرسمي fullNameFromId للطباعة
     const populatedContract = await Contract.findById(newContract._id)
       .populate("project")
-      .populate("client", "name identityData nationalId phone email address") // 👈 أضفنا identityData و nationalId
-      .populate("contractor", "name identityData nationalId phone email address"); // 👈 أضفنا identityData و nationalId
+      .populate("client", "name fullNameFromId identityData nationalId phone email address city")
+      .populate("contractor", "name fullNameFromId identityData nationalId phone email address city");
 
     // 5. توليد الـ PDF
     const tempDir = os.tmpdir();
@@ -178,6 +178,7 @@ exports.createContract = async (req, res) => {
     return res.status(500).json({ success: false, message: err.message });
   }
 };
+
 // ========================
 // GET /api/contracts/:id/pdf
 // ✅ Redirect to Cloudinary PDF

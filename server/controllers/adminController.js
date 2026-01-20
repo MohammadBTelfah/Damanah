@@ -411,23 +411,39 @@ exports.getUserIdentityDetails = async (req, res) => {
     const { role, id } = req.params;
 
     if (!["client", "contractor"].includes(role)) {
-      return res.status(400).json({ message: "Identity exists only for client/contractor" });
+      return res
+        .status(400)
+        .json({ message: "Identity exists only for client/contractor" });
     }
 
     const Model = role === "client" ? Client : Contractor;
 
     const user = await Model.findById(id).select("-password");
-    if (!user) return res.status(404).json({ message: "User not found" });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
 
     const baseUrl = getBaseUrl(req);
     const out = toPublicUrls(user, baseUrl);
+
+    // ✅ إضافة الأسماء بشكل واضح
     out.role = role;
+    out.accountName = user.name; // اسم الحساب
+    out.fullNameFromId = user.fullNameFromId || null; // الاسم الذي أدخله المستخدم من الهوية
+    out.extractedName = user.identityData?.extractedName || null; // الاسم من OCR
+
+    // ✅ اسم رسمي جاهز للاستخدام في الواجهة
+    out.officialName =
+      user.fullNameFromId ||
+      user.identityData?.extractedName ||
+      user.name;
 
     res.json(out);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 };
+
 
 /* ===================== Contractors ===================== */
 

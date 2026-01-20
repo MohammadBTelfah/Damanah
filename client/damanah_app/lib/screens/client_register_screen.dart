@@ -312,7 +312,7 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
                       const SizedBox(height: 20),
                       // ============================================================
 
-                      // Name
+                      // Name (Display Name)
                       TextFormField(
                         controller: _nameController,
                         style: const TextStyle(color: Colors.white),
@@ -336,29 +336,6 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
                           }
                           return null;
                         },
-                      ),
-
-                      const SizedBox(height: 12),
-
-                      // ✅✅✅ Full Name (from ID) تحت Full name مباشرة ✅✅✅
-                      TextFormField(
-                        controller: _fullNameController,
-                        style: const TextStyle(color: Colors.white),
-                        readOnly: true, // ✅ غير قابل للتعديل (مثل ما كان عندك)
-                        decoration: InputDecoration(
-                          filled: true,
-                          fillColor: inputFill,
-                          hintText: "Full Name (from ID)",
-                          hintStyle: const TextStyle(color: Colors.white54),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide.none,
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 16,
-                          ),
-                        ),
                       ),
 
                       const SizedBox(height: 12),
@@ -602,6 +579,29 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
                           }
                           return null;
                         },
+                      ),
+
+                      const SizedBox(height: 12),
+
+                      // ✅✅✅ Full Name (from ID) تم النقل هنا ✅✅✅
+                      TextFormField(
+                        controller: _fullNameController,
+                        style: const TextStyle(color: Colors.white),
+                        readOnly: true, // ✅ غير قابل للتعديل
+                        decoration: InputDecoration(
+                          filled: true,
+                          fillColor: inputFill,
+                          hintText: "Full Name (from ID)",
+                          hintStyle: const TextStyle(color: Colors.white54),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 16,
+                          ),
+                        ),
                       ),
 
                       // =====================================================
