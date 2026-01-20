@@ -1,71 +1,98 @@
-// services/identity_ocr.service.js
-// ✅ OCR helper (placeholder) — اربطه مع OCR provider لاحقاً
-// يرجّع اقتراح للرقم الوطني + confidence + rawText
+const Tesseract = require("tesseract.js");
 
+// دالة تنظيف النص (إزالة المسافات الزائدة وتحويل الأرقام العربية إلى إنجليزية)
 function normalizeText(text = "") {
   return String(text)
-    .replace(/[^\S\r\n]+/g, " ") // collapse spaces
-    .replace(/[٠-٩]/g, (d) => "٠١٢٣٤٥٦٧٨٩".indexOf(d)) // Arabic digits -> Latin
+    .replace(/[^\S\r\n]+/g, " ") // دمج المسافات
+    .replace(/[٠-٩]/g, (d) => "٠١٢٣٤٥٦٧٨٩".indexOf(d)) // تحويل الأرقام للعربية
     .trim();
 }
 
 /**
- * ✅ استخراج رقم وطني أردني:
- * - 10 أرقام
- * - غالباً يبدأ بـ 2
- * - نفضّل اللي يجي قريب من كلمات: رقم وطني / National ID / ID No
+ * محاولة استخراج الاسم (تجريبي)
+ * تبحث عن كلمة "الاسم" وتأخذ ما بعدها
+ */
+function extractName(text) {
+  const t = normalizeText(text);
+  // يبحث عن: الاسم : فلان الفلاني
+  // \s* تعني مسافات محتملة
+  // ([:.-])? تعني قد يكون هناك نقطتين أو شرطة أو لا شيء
+  const nameRegex = /(?:الاسم|name)\s*[:.-]?\s*([\u0600-\u06FF\s]+)/i;
+  const match = t.match(nameRegex);
+  
+  if (match && match[1]) {
+    // تنظيف النتيجة (نأخذ أول 4 كلمات مثلاً)
+    return match[1].trim().split(/\s+/).slice(0, 4).join(" ");
+  }
+  return null;
+}
+
+/**
+ * استخراج الرقم الوطني الأردني
  */
 function extractJordanNationalId(text) {
   const t = normalizeText(text);
   if (!t) return null;
 
-  // 1) سياق قوي: كلمات تدل على الرقم الوطني + بعدها الرقم
-  const ctxRegex =
-    /(national\s*id|id\s*no|id\s*number|رقم\s*وطني|الرقم\s*الوطني)[^\d]{0,20}(2\d{9})/i;
-
+  // 1. البحث عن سياق (رقم وطني: xxxxx)
+  const ctxRegex = /(?:national\s*id|no|num|رقم\s*وطني|الرقم)[^\d\n]{0,10}(\d{10})/i;
   const ctx = t.match(ctxRegex);
-  if (ctx && ctx[2]) return ctx[2];
+  if (ctx && ctx[1] && ctx[1].startsWith("2")) return ctx[1];
 
-  // 2) أي رقم يبدأ بـ 2 وطوله 10
+  // 2. البحث عن أي رقم يبدأ بـ 2 وطوله 10 خانات (الأكثر شيوعاً في الأردن)
   const candidates = t.match(/\b2\d{9}\b/g) || [];
-  if (candidates.length === 1) return candidates[0];
+  if (candidates.length > 0) return candidates[0];
 
-  // 3) fallback: أي 10 أرقام (بس آخر خيار)
+  // 3. أي 10 أرقام
   const any10 = t.match(/\b\d{10}\b/g) || [];
-
-  // لو في أكثر من خيار، اختار الأكثر منطقية:
-  // - فضّل اللي يبدأ بـ 2
-  const all = [...candidates, ...any10].filter(Boolean);
-  if (all.length === 0) return null;
-
-  const prefer2 = all.find((x) => String(x).startsWith("2"));
-  return prefer2 || all[0];
+  return any10.length > 0 ? any10[0] : null;
 }
 
+/**
+ * الدالة الرئيسية: تأخذ رابط الصورة وتعيد البيانات
+ */
 async function extractNationalIdFromIdentity(identityDocumentUrl) {
-  // TODO: اربطه مع OCR الحقيقي:
-  // - حمّل الصورة من identityDocumentUrl
-  // - شغل OCR (google vision / tesseract / aws textract...)
-  // - رجّع extractedText الحقيقي
+  try {
+    console.log("OCR Starting for:", identityDocumentUrl);
 
-  // ✅ placeholder نص للتجربة فقط
-  const extractedText = "Name: ... National ID: 1234567890";
+    // تشغيل Tesseract (يدعم العربية والإنجليزية)
+    const { data: { text } } = await Tesseract.recognize(
+      identityDocumentUrl,
+      'ara+eng', // لغة عربية + إنجليزية
+      { 
+        //logger: m => console.log(m) // شيل التعليق لو بدك تشوف شريط التقدم
+      }
+    );
 
-  const nationalId = extractJordanNationalId(extractedText);
+    const cleanText = normalizeText(text);
+    
+    // استخراج البيانات
+    const nationalId = extractJordanNationalId(cleanText);
+    const extractedName = extractName(cleanText);
 
-  // confidence هنا placeholder — بالـOCR الحقيقي بتجيب confidence من المزود
-  const confidence = nationalId ? 0.85 : null;
+    // حساب نسبة الثقة (بسيط)
+    const confidence = nationalId ? (extractedName ? 0.9 : 0.7) : 0.0;
 
-  return {
-    nationalId,          // اقتراح
-    confidence,          // رقم تقريبي
-    rawText: extractedText,
-    source: "placeholder",
-    identityDocumentUrl,
-  };
+    return {
+      nationalId,       // الرقم الوطني المستخرج
+      extractedName,    // الاسم المستخرج (إن وجد)
+      rawText: text,    // النص الخام (للمراجعة اليدوية)
+      confidence,
+      identityDocumentUrl // نعيد الرابط للحفظ
+    };
+
+  } catch (error) {
+    console.error("OCR Error:", error);
+    return {
+      nationalId: null,
+      extractedName: null,
+      rawText: "",
+      confidence: 0,
+      error: error.message
+    };
+  }
 }
 
 module.exports = {
-  extractJordanNationalId,
   extractNationalIdFromIdentity,
 };
