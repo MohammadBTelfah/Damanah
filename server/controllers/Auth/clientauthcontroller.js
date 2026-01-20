@@ -80,7 +80,7 @@ async function sendVerificationEmailForClient(client) {
         Verify Email
       </a>
 
-      <p>This link is valid for 24 hours.</p>
+      <p>This link is valid for 2 hours.</p>
       <br />
       <p>— Damana Team</p>
     `,
