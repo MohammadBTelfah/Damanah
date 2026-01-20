@@ -615,7 +615,7 @@ Future<Map<String, dynamic>> analyzePlan({required String filePath}) async {
   Future<List<dynamic>> getMyContractors() async {
   final token = await _mustToken();
   // الرابط الصحيح لجلب المقاولين المرتبطين بمشاريع العميل
-  final uri = Uri.parse(ApiConfig.join("/api/clients/my-contractors"));
+final uri = Uri.parse(ApiConfig.join("/api/projects/clients/my-contractors"));
 
   final res = await http
       .get(uri, headers: _authHeaders(token))

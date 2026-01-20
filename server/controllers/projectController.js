@@ -830,33 +830,54 @@ exports.shareProject = async (req, res) => {
 exports.assignContractor = async (req, res) => {
   try {
     const { contractorId } = req.body;
-    if (!contractorId)
+
+    if (!contractorId) {
       return res.status(400).json({ message: "contractorId is required" });
+    }
 
     const project = await Project.findById(req.params.id);
-    if (!project) return res.status(404).json({ message: "Project not found" });
+    if (!project) {
+      return res.status(404).json({ message: "Project not found" });
+    }
+
+    // ✅ فقط صاحب المشروع يقدر يعيّن مقاول
     if (String(project.owner) !== String(req.user._id)) {
       return res.status(403).json({ message: "Not owner of this project" });
     }
 
+    // (اختياري) لو بدك تمنع إعادة التعيين إذا فيه مقاول أصلاً:
+    // إذا بدك تسمح بإعادة التعيين، احذف هذا البلوك
+    if (project.contractor && String(project.contractor) !== String(contractorId)) {
+      return res.status(400).json({
+        message: "Project already has a contractor assigned. Unassign first or use reassign endpoint.",
+      });
+    }
+
+    // ✅ تأكد من المقاول وأنه فعّال
     const contractor = await Contractor.findById(contractorId)
       .select("name isActive role")
       .lean();
-    if (!contractor || contractor.role !== "contractor")
-      return res.status(404).json({ message: "Contractor not found" });
-    if (!contractor.isActive)
-      return res.status(400).json({ message: "Contractor is not active" });
 
+    if (!contractor || contractor.role !== "contractor") {
+      return res.status(404).json({ message: "Contractor not found" });
+    }
+
+    if (!contractor.isActive) {
+      return res.status(400).json({ message: "Contractor is not active" });
+    }
+
+    // ✅ اربط المقاول بالمشروع فقط (بدون تغيير status)
     project.contractor = contractorId;
-    project.status = "in_progress";
+
     await project.save();
 
+    // ✅ إشعار للمقاول فقط
     try {
       await Notification.create({
         user: contractorId,
         userModel: "Contractor",
-        title: "You were assigned",
-        body: `You were assigned to project "${project.title}".`,
+        title: "New project assigned",
+        body: `You have been assigned to project "${project.title}".`,
         type: "contractor_assigned",
         projectId: project._id,
         read: false,
@@ -865,14 +886,16 @@ exports.assignContractor = async (req, res) => {
       console.error("notification contractor_assigned failed:", e.message);
     }
 
-    return res.json({ message: "Contractor assigned", project });
+    return res.json({
+      message: "Contractor assigned (status unchanged)",
+      project,
+    });
   } catch (err) {
     console.error("assignContractor error:", err);
-    return res
-      .status(500)
-      .json({ message: "Assign failed", error: err.message });
+    return res.status(500).json({ message: "Assign failed", error: err.message });
   }
 };
+
 // =======================
 // Get Recent Offers across all projects (Client Dashboard)
 // =======================
