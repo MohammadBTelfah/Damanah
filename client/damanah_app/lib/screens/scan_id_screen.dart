@@ -7,10 +7,12 @@ import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart
 class ScanIdResult {
   final File imageFile;
   final String nationalId;
+  final String fullName; // ✅ الاسم الإنجليزي
 
   ScanIdResult({
     required this.imageFile,
     required this.nationalId,
+    required this.fullName,
   });
 }
 
@@ -23,6 +25,7 @@ class ScanIdScreen extends StatefulWidget {
 
 class _ScanIdScreenState extends State<ScanIdScreen> {
   final ImagePicker _picker = ImagePicker();
+  final TextEditingController _fullNameCtrl = TextEditingController();
   final TextEditingController _nationalIdCtrl = TextEditingController();
 
   File? _image;
@@ -56,7 +59,9 @@ class _ScanIdScreenState extends State<ScanIdScreen> {
       final inputImage = InputImage.fromFile(_image!);
 
       // استخدام Script Latin كافٍ للأرقام الإنجليزية المستخدمة في الهوية
-      final textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
+      final textRecognizer = TextRecognizer(
+        script: TextRecognitionScript.latin,
+      );
 
       final recognizedText = await textRecognizer.processImage(inputImage);
       await textRecognizer.close();
@@ -75,7 +80,9 @@ class _ScanIdScreenState extends State<ScanIdScreen> {
       if (extracted == null && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text("Could not detect ID automatically. Please enter it manually."),
+            content: Text(
+              "Could not detect ID automatically. Please enter it manually.",
+            ),
             duration: Duration(seconds: 2),
           ),
         );
@@ -83,9 +90,9 @@ class _ScanIdScreenState extends State<ScanIdScreen> {
     } catch (e) {
       setState(() => _loading = false);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Scan failed: $e")),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Scan failed: $e")));
     }
   }
 
@@ -98,11 +105,19 @@ class _ScanIdScreenState extends State<ScanIdScreen> {
     }
 
     final nid = _nationalIdCtrl.text.trim();
+    final fullName = _fullNameCtrl.text.trim();
 
     // ✅ التحقق من الطول (10 أرقام)
     if (!RegExp(r'^[0-9]{10}$').hasMatch(nid)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("National ID must be exactly 10 digits")),
+      );
+      return;
+    }
+    // ✅ التحقق من الاسم الكامل
+    if (fullName.isEmpty || fullName.length < 5) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please enter your full name (English)")),
       );
       return;
     }
@@ -113,6 +128,7 @@ class _ScanIdScreenState extends State<ScanIdScreen> {
       ScanIdResult(
         imageFile: _image!,
         nationalId: nid,
+        fullName: _fullNameCtrl.text.trim(), // ✅ الاسم الإنجليزي
       ),
     );
   }
@@ -120,6 +136,7 @@ class _ScanIdScreenState extends State<ScanIdScreen> {
   @override
   void dispose() {
     _nationalIdCtrl.dispose();
+    _fullNameCtrl.dispose();
     super.dispose();
   }
 
@@ -129,7 +146,8 @@ class _ScanIdScreenState extends State<ScanIdScreen> {
       appBar: AppBar(title: const Text("Scan Identity Document")),
       body: Padding(
         padding: const EdgeInsets.all(16),
-        child: SingleChildScrollView( // إضافة Scroll لتجنب overflow
+        child: SingleChildScrollView(
+          // إضافة Scroll لتجنب overflow
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -142,7 +160,7 @@ class _ScanIdScreenState extends State<ScanIdScreen> {
                   padding: const EdgeInsets.symmetric(vertical: 12),
                 ),
               ),
-              
+
               const SizedBox(height: 12),
 
               if (_loading) const LinearProgressIndicator(),
@@ -171,10 +189,28 @@ class _ScanIdScreenState extends State<ScanIdScreen> {
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: Colors.grey.shade400),
                   ),
-                  child: const Text("No image captured", style: TextStyle(color: Colors.grey)),
+                  child: const Text(
+                    "No image captured",
+                    style: TextStyle(color: Colors.grey),
+                  ),
                 ),
 
               const SizedBox(height: 20),
+
+              // حقل الاسم الإنجليزي
+              const SizedBox(height: 20),
+
+              // ===== Full Name (Editable) =====
+              TextField(
+                controller: _fullNameCtrl,
+                textCapitalization: TextCapitalization.words,
+                decoration: const InputDecoration(
+                  labelText: "Full Name (English)",
+                  hintText: "e.g. MOHAMMAD BASAM TELFAH",
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.person),
+                ),
+              ),
 
               // حقل الرقم الوطني
               TextField(
@@ -198,7 +234,10 @@ class _ScanIdScreenState extends State<ScanIdScreen> {
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 16),
                 ),
-                child: const Text("Confirm & Use This ID", style: TextStyle(fontSize: 16)),
+                child: const Text(
+                  "Confirm & Use This ID",
+                  style: TextStyle(fontSize: 16),
+                ),
               ),
             ],
           ),

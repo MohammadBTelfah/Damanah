@@ -108,12 +108,25 @@ async function sendIdentityPendingEmailForClient(client) {
 
 exports.register = async (req, res) => {
   try {
-    let { name, email, phone, password, nationalId: nationalIdInput } = req.body;
+    let {
+      name,
+      fullName, // ✅ الاسم الإنجليزي القادم من Flutter (قابل للتعديل)
+      email,
+      phone,
+      password,
+      nationalId: nationalIdInput
+    } = req.body;
 
     // ✅ 1. تطبيع البيانات
     name = String(name || "").trim();
     const emailNorm = normalizeEmail(email);
     const phoneNorm = normalizePhone(phone);
+
+    // ✅ fullName القادم من Flutter (اختياري)
+    const fullNameFromFlutter =
+      typeof fullName === "string" && fullName.trim()
+        ? fullName.trim()
+        : null;
 
     // ✅ 2. استلام الملفات (Cloudinary)
     const profileFile = req.files?.profileImage?.[0] || null;
@@ -155,16 +168,16 @@ exports.register = async (req, res) => {
       extractedNationalId: null,
       confidence: 0,
       rawText: null,
-      extractedAt: null
+      extractedAt: null,
     };
 
     if (identityDocumentPath) {
       try {
         console.log("Starting OCR for:", identityDocumentPath);
-        
+
         // استدعاء خدمة OCR
         const ocrRes = await extractNationalIdFromIdentity(identityDocumentPath);
-        
+
         // تعبئة البيانات المستخرجة
         if (ocrRes) {
           ocrData = {
@@ -172,7 +185,7 @@ exports.register = async (req, res) => {
             extractedNationalId: ocrRes.nationalId || null,
             confidence: ocrRes.confidence || 0,
             rawText: ocrRes.rawText || null,
-            extractedAt: new Date()
+            extractedAt: new Date(),
           };
         }
       } catch (ocrError) {
@@ -182,9 +195,15 @@ exports.register = async (req, res) => {
 
     const identityStatus = identityDocumentPath ? "pending" : "none";
 
-    // ✅ 6. إنشاء العميل
+    // ✅ 6. تحديد الاسم النهائي الذي سيتم تخزينه
+    // الأولوية: Flutter fullName (المستخدم عدّله) -> OCR extractedName -> null
+    const finalFullNameFromId = fullNameFromFlutter || ocrData.extractedName || null;
+
+    // ✅ 7. إنشاء العميل
     const client = await Client.create({
       name,
+      fullNameFromId: finalFullNameFromId, // ✅ جديد
+
       email: emailNorm,
       phone: phoneNorm,
       password: hashed,
@@ -202,10 +221,10 @@ exports.register = async (req, res) => {
       identityStatus,
 
       emailVerified: false,
-      isActive: false, 
+      isActive: false,
     });
 
-    // ✅ 7. إرسال الإيميلات
+    // ✅ 8. إرسال الإيميلات
     await sendVerificationEmailForClient(client);
 
     if (client.identityStatus === "pending") {
@@ -222,10 +241,14 @@ exports.register = async (req, res) => {
       user: {
         id: client._id,
         name: client.name,
+
+        // ✅ رجّع الاسم الإنجليزي
+        fullNameFromId: client.fullNameFromId,
+
         email: client.email,
         phone: client.phone,
         role: client.role,
-        
+
         profileImage: client.profileImage,
         identityDocument: client.identityDocument,
 
@@ -234,12 +257,11 @@ exports.register = async (req, res) => {
         isActive: client.isActive,
 
         nationalId: client.nationalId,
-        
+
         // إرجاع بيانات الـ OCR
-        identityData: client.identityData 
+        identityData: client.identityData,
       },
     });
-
   } catch (err) {
     console.error("Register Error:", err);
     return res.status(err.statusCode || 500).json({

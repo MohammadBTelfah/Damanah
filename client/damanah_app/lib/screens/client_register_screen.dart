@@ -18,6 +18,8 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
   final _formKey = GlobalKey<FormState>();
 
   final _nameController = TextEditingController();
+  final _fullNameController =
+      TextEditingController(); // ✅ الاسم الإنجليزي من الهوية
   final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -47,6 +49,7 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
   @override
   void dispose() {
     _nameController.dispose();
+    _fullNameController.dispose(); // ✅
     _emailController.dispose();
     _phoneController.dispose();
     _passwordController.dispose();
@@ -97,6 +100,7 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
       setState(() {
         _identityImageFile = result.imageFile;
         _nationalIdController.text = result.nationalId;
+        _fullNameController.text = result.fullName; // ✅ الاسم الإنجليزي
       });
 
       _showTopSnackBar("ID scanned successfully", Colors.green);
@@ -120,7 +124,8 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
     }
 
     // ✅ التحقق من تطابق كلمة المرور
-    if (_passwordController.text.trim() != _confirmPasswordController.text.trim()) {
+    if (_passwordController.text.trim() !=
+        _confirmPasswordController.text.trim()) {
       _showTopSnackBar("Passwords do not match", Colors.red);
       return;
     }
@@ -130,16 +135,17 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
     try {
       final res = await _authService.registerClient(
         name: _nameController.text.trim(),
+        fullName: _fullNameController.text.trim(), // ✅ جديد
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
         phone: _phoneController.text.trim(),
-        
+
         // ✅ صورة الهوية من الـ Scan
         identityFilePath: _identityImageFile!.path,
-        
+
         // ✅ الرقم الوطني
         nationalId: nationalId,
-        
+
         // ✅ الصورة الشخصية (اختياري)
         profileImagePath: _profileImagePath,
       );
@@ -167,7 +173,6 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
           ),
         );
       });
-
     } catch (e) {
       if (!mounted) return;
       _showTopSnackBar("Registration failed: ${e.toString()}", Colors.red);
@@ -216,10 +221,7 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
                   const Spacer(),
                   IconButton(
                     onPressed: () {},
-                    icon: const Icon(
-                      Icons.help_outline,
-                      color: Colors.white,
-                    ),
+                    icon: const Icon(Icons.help_outline, color: Colors.white),
                   ),
                 ],
               ),
@@ -281,7 +283,10 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
                                 decoration: BoxDecoration(
                                   color: Colors.black87,
                                   shape: BoxShape.circle,
-                                  border: Border.all(color: Colors.white, width: 1),
+                                  border: Border.all(
+                                    color: Colors.white,
+                                    width: 1,
+                                  ),
                                 ),
                                 child: const Icon(
                                   Icons.camera_alt,
@@ -416,7 +421,9 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
                           ),
                           suffixIcon: IconButton(
                             icon: Icon(
-                              _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                              _obscurePassword
+                                  ? Icons.visibility_off
+                                  : Icons.visibility,
                               color: Colors.white70,
                             ),
                             onPressed: () {
@@ -429,8 +436,10 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
                         validator: (value) {
                           final v = value?.trim() ?? '';
                           if (v.isEmpty) return 'Password is required';
-                          if (v.length < 8) return 'Password must be at least 8 characters';
-                          if (!v.contains('@')) return 'Password must contain @';
+                          if (v.length < 8)
+                            return 'Password must be at least 8 characters';
+                          if (!v.contains('@'))
+                            return 'Password must contain @';
                           return null;
                         },
                       ),
@@ -457,12 +466,15 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
                           ),
                           suffixIcon: IconButton(
                             icon: Icon(
-                              _obscureConfirmPassword ? Icons.visibility_off : Icons.visibility,
+                              _obscureConfirmPassword
+                                  ? Icons.visibility_off
+                                  : Icons.visibility,
                               color: Colors.white70,
                             ),
                             onPressed: () {
                               setState(() {
-                                _obscureConfirmPassword = !_obscureConfirmPassword;
+                                _obscureConfirmPassword =
+                                    !_obscureConfirmPassword;
                               });
                             },
                           ),
@@ -475,6 +487,26 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
                           }
                           return null;
                         },
+                      ),
+
+                      // ================= Full Name from ID (غير قابل للتعديل) =================
+                      TextFormField(
+                        controller: _fullNameController,
+                        style: const TextStyle(color: Colors.white),
+                        readOnly: true, // ✅ غير قابل للتعديل
+                        decoration: InputDecoration(
+                          filled: true,
+                          fillColor: inputFill,
+                          labelText: "Full Name (from ID)",
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 16,
+                          ),
+                        ),
                       ),
 
                       const SizedBox(height: 16),
@@ -498,12 +530,17 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
                         borderRadius: BorderRadius.circular(12),
                         child: Container(
                           width: double.infinity,
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 14,
+                          ),
                           decoration: BoxDecoration(
                             color: inputFill,
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                              color: _identityImageFile == null ? Colors.white24 : Colors.green,
+                              color: _identityImageFile == null
+                                  ? Colors.white24
+                                  : Colors.green,
                             ),
                           ),
                           child: Row(
@@ -519,7 +556,9 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
                                       ? "Scan your national ID"
                                       : "ID scanned ✅ (tap to rescan)",
                                   style: TextStyle(
-                                    color: _identityImageFile == null ? Colors.white54 : Colors.white,
+                                    color: _identityImageFile == null
+                                        ? Colors.white54
+                                        : Colors.white,
                                     fontSize: 14,
                                   ),
                                   overflow: TextOverflow.ellipsis,
@@ -536,6 +575,7 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
                       TextFormField(
                         controller: _nationalIdController,
                         style: const TextStyle(color: Colors.white),
+                        readOnly: true, // ✅ غير قابل للتعديل
                         keyboardType: TextInputType.number,
                         decoration: InputDecoration(
                           filled: true,
@@ -558,8 +598,8 @@ class _ClientRegisterScreenState extends State<ClientRegisterScreen> {
                           return null;
                         },
                       ),
-                      // =====================================================
 
+                      // =====================================================
                       const SizedBox(height: 24),
 
                       // Sign up button

@@ -118,6 +118,7 @@ exports.register = async (req, res) => {
   try {
     let {
       name,
+      fullName, // ✅ جديد: الاسم الإنجليزي القادم من Flutter
       email,
       phone,
       password,
@@ -133,6 +134,12 @@ exports.register = async (req, res) => {
     name = String(name || "").trim();
     const emailNorm = normalizeEmail(email);
     const phoneNorm = normalizePhone(phone);
+
+    // ✅ fullName القادم من Flutter (اختياري)
+    const fullNameFromFlutter =
+      typeof fullName === "string" && fullName.trim()
+        ? fullName.trim()
+        : null;
 
     // ✅ 2. استلام الملفات (Cloudinary URLs)
     const profileFile = req.files?.profileImage?.[0] || null;
@@ -169,13 +176,12 @@ exports.register = async (req, res) => {
     }
 
     // ================= 5. OCR Processing (ذكاء اصطناعي) =================
-    // تجهيز كائن البيانات الافتراضي
     let ocrData = {
       extractedName: null,
       extractedNationalId: null,
       confidence: 0,
       rawText: null,
-      extractedAt: null
+      extractedAt: null,
     };
 
     if (identityDocumentPath) {
@@ -189,7 +195,7 @@ exports.register = async (req, res) => {
             extractedNationalId: ocrRes.nationalId || null,
             confidence: ocrRes.confidence || 0,
             rawText: ocrRes.rawText || null,
-            extractedAt: new Date()
+            extractedAt: new Date(),
           };
         }
       } catch (ocrError) {
@@ -201,9 +207,15 @@ exports.register = async (req, res) => {
     const identityStatus = identityDocumentPath ? "pending" : "none";
     const contractorStatus = contractorDocumentPath ? "pending" : "none";
 
+    // ✅ 6.5 تحديد الاسم النهائي الذي سيتم حفظه
+    // الأولوية: Flutter fullName -> OCR extractedName -> null
+    const finalFullNameFromId = fullNameFromFlutter || ocrData.extractedName || null;
+
     // ✅ 7. إنشاء المقاول
     const contractor = await Contractor.create({
       name,
+      fullNameFromId: finalFullNameFromId, // ✅ جديد
+
       email: emailNorm,
       phone: phoneNorm,
       password: hashed,
@@ -248,6 +260,10 @@ exports.register = async (req, res) => {
       user: {
         id: contractor._id,
         name: contractor.name,
+
+        // ✅ رجّع الاسم الإنجليزي المخزن
+        fullNameFromId: contractor.fullNameFromId,
+
         email: contractor.email,
         phone: contractor.phone,
         role: contractor.role,

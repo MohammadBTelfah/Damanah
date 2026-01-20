@@ -18,6 +18,7 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
   final _formKey = GlobalKey<FormState>();
 
   final _nameController = TextEditingController(); // Full name
+  final _fullNameController = TextEditingController(); // ✅ الاسم الإنجليزي من الهوية
   final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -48,6 +49,7 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
   @override
   void dispose() {
     _nameController.dispose();
+    _fullNameController.dispose(); // ✅
     _emailController.dispose();
     _phoneController.dispose();
     _passwordController.dispose();
@@ -96,6 +98,9 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
       setState(() {
         _identityImageFile = result.imageFile;
         _nationalIdController.text = result.nationalId;
+
+        // ✅ الاسم القادم من شاشة المسح
+        _fullNameController.text = result.fullName;
       });
 
       _showTopSnackBar("ID scanned successfully", Colors.green);
@@ -103,26 +108,25 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
   }
 
   Future<void> _pickContractorDocument() async {
-  final result = await FilePicker.platform.pickFiles(
-    type: FileType.any,
-    withData: true, // ⭐ مهم جدًا للتلفون الحقيقي
-  );
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.any,
+      withData: true, // ⭐ مهم جدًا للتلفون الحقيقي
+    );
 
-  if (result != null && result.files.isNotEmpty) {
-    final file = result.files.single;
+    if (result != null && result.files.isNotEmpty) {
+      final file = result.files.single;
 
-    setState(() {
-      _contractorFilePath = file.path; // قد تكون null على بعض الأجهزة
-      _contractorFileName = file.name;
-    });
+      setState(() {
+        _contractorFilePath = file.path; // قد تكون null على بعض الأجهزة
+        _contractorFileName = file.name;
+      });
 
-    debugPrint("Picked contractor file:");
-    debugPrint("name: ${file.name}");
-    debugPrint("path: ${file.path}");
-    debugPrint("bytes: ${file.bytes != null ? file.bytes!.length : 'null'}");
+      debugPrint("Picked contractor file:");
+      debugPrint("name: ${file.name}");
+      debugPrint("path: ${file.path}");
+      debugPrint("bytes: ${file.bytes != null ? file.bytes!.length : 'null'}");
+    }
   }
-}
-
 
   Future<void> _handleRegister() async {
     if (!_formKey.currentState!.validate()) return;
@@ -137,6 +141,13 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
     final nationalId = _nationalIdController.text.trim();
     if (nationalId.isEmpty) {
       _showTopSnackBar("National ID is required", Colors.red);
+      return;
+    }
+
+    // ✅ لازم اسم من الهوية (لأنك بدك تخزنه)
+    final fullNameFromId = _fullNameController.text.trim();
+    if (fullNameFromId.isEmpty) {
+      _showTopSnackBar("Full name from ID is required", Colors.red);
       return;
     }
 
@@ -159,6 +170,7 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
     try {
       final res = await _authService.registerContractor(
         name: _nameController.text.trim(),
+        fullName: fullNameFromId, // ✅ مهم: إرسال الاسم للباك اند
         email: _emailController.text.trim(),
         password: pass,
         phone: _phoneController.text.trim(),
@@ -348,6 +360,30 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
                       ),
                       const SizedBox(height: 12),
 
+                      // ✅ Full Name from ID (editable)
+                      TextFormField(
+                        controller: _fullNameController,
+                        style: const TextStyle(color: Colors.white),
+                        decoration: InputDecoration(
+                          filled: true,
+                          fillColor: inputFill,
+                          hintText: "Full Name (from ID - English)",
+                          hintStyle: const TextStyle(color: Colors.white54),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 16,
+                          ),
+                        ),
+                        validator: (value) => (value == null || value.trim().isEmpty)
+                            ? "Full Name from ID is required"
+                            : null,
+                      ),
+                      const SizedBox(height: 12),
+
                       // Email
                       TextFormField(
                         controller: _emailController,
@@ -463,8 +499,8 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
                             vertical: 16,
                           ),
                           suffixIcon: IconButton(
-                            onPressed: () => setState(
-                                () => _showConfirm = !_showConfirm),
+                            onPressed: () =>
+                                setState(() => _showConfirm = !_showConfirm),
                             icon: Icon(
                               _showConfirm
                                   ? Icons.visibility_off
@@ -668,7 +704,8 @@ class _ContractorRegisterScreenState extends State<ContractorRegisterScreen> {
                           Navigator.pushReplacement(
                             context,
                             MaterialPageRoute(
-                              builder: (_) => const LoginScreen(role: 'contractor'),
+                              builder: (_) =>
+                                  const LoginScreen(role: 'contractor'),
                             ),
                           );
                         },

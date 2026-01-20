@@ -79,52 +79,75 @@ class AuthService {
   }
 
   Future<Map<String, dynamic>> registerClient({
-    required String name,
-    required String email,
-    required String password,
-    required String phone,
-    String? profileImagePath,
-    String? identityFilePath,
-    String? nationalId,
-  }) async {
-    final uri = Uri.parse('$_clientAuthBaseUrl/register');
-    final request = http.MultipartRequest('POST', uri);
+  required String name,
+  required String email,
+  required String password,
+  required String phone,
+  String? fullName, // ✅ جديد: الاسم الإنجليزي من الهوية
+  String? profileImagePath,
+  String? identityFilePath,
+  String? nationalId,
+}) async {
+  final uri = Uri.parse('$_clientAuthBaseUrl/register');
+  final request = http.MultipartRequest('POST', uri);
 
-    request.fields['name'] = name;
-    request.fields['email'] = email;
-    request.fields['password'] = password;
-    request.fields['phone'] = phone;
+  request.fields['name'] = name;
+  request.fields['email'] = email;
+  request.fields['password'] = password;
+  request.fields['phone'] = phone;
 
-    if (nationalId != null && nationalId.trim().isNotEmpty) {
-      request.fields['nationalId'] = nationalId.trim();
-    }
+  // ✅ إرسال الاسم الإنجليزي (اختياري)
+  if (fullName != null && fullName.trim().isNotEmpty) {
+    request.fields['fullName'] = fullName.trim();
+  }
 
-    // ✅ ضغط ورفع الصورة الشخصية
-    if (profileImagePath != null && profileImagePath.isNotEmpty) {
-      final compressedPath = await _compressFileIfNeeded(profileImagePath);
-      request.files.add(
-        await http.MultipartFile.fromPath('profileImage', compressedPath),
-      );
-    }
+  if (nationalId != null && nationalId.trim().isNotEmpty) {
+    request.fields['nationalId'] = nationalId.trim();
+  }
 
-    // ✅ ضغط ورفع الهوية (إذا كانت صورة)
-    if (identityFilePath != null && identityFilePath.isNotEmpty) {
-      final compressedPath = await _compressFileIfNeeded(identityFilePath);
+  // ✅ ضغط ورفع الصورة الشخصية
+  if (profileImagePath != null && profileImagePath.isNotEmpty) {
+    final compressedPath = await _compressFileIfNeeded(profileImagePath);
+    request.files.add(
+      await http.MultipartFile.fromPath('profileImage', compressedPath),
+    );
+  }
+
+  // ✅ ضغط ورفع الهوية (إذا كانت صورة)
+  if (identityFilePath != null && identityFilePath.isNotEmpty) {
+    final compressedPath = await _compressFileIfNeeded(identityFilePath);
+
+    // غالبًا camera بيعطي path طبيعي
+    // بس بنخلي fallback آمن لو صار أي مشكلة
+    try {
       request.files.add(
         await http.MultipartFile.fromPath('identityDocument', compressedPath),
       );
+    } catch (_) {
+      // fallback: اقرأ الملف كبايتات
+      final bytes = await File(compressedPath).readAsBytes();
+      final fileName = p.basename(compressedPath);
+
+      request.files.add(
+        http.MultipartFile.fromBytes(
+          'identityDocument',
+          bytes,
+          filename: fileName,
+        ),
+      );
     }
-
-    final streamed = await request.send().timeout(_uploadTimeout); // ✅ مهلة أطول للرفع
-    final response = await http.Response.fromStream(streamed);
-
-    final data = _safeJson(response.body);
-
-    if (response.statusCode == 201 || response.statusCode == 200) {
-      return data;
-    }
-    throw Exception(data['message'] ?? 'Registration failed');
   }
+
+  final streamed = await request.send().timeout(_uploadTimeout);
+  final response = await http.Response.fromStream(streamed);
+
+  final data = _safeJson(response.body);
+
+  if (response.statusCode == 201 || response.statusCode == 200) {
+    return data;
+  }
+  throw Exception(data['message'] ?? 'Registration failed');
+}
 
   Future<Map<String, dynamic>> resendClientVerificationEmail({
     required String email,
@@ -241,8 +264,9 @@ class AuthService {
     throw Exception(data['message'] ?? 'Login failed');
   }
 
- Future<Map<String, dynamic>> registerContractor({
+Future<Map<String, dynamic>> registerContractor({
   required String name,
+  String? fullName, // ✅ جديد: الاسم الإنجليزي من الهوية (editable)
   required String email,
   required String password,
   required String phone,
@@ -258,6 +282,11 @@ class AuthService {
   request.fields['email'] = email;
   request.fields['password'] = password;
   request.fields['phone'] = phone;
+
+  // ✅ إرسال الاسم الإنجليزي (اختياري)
+  if (fullName != null && fullName.trim().isNotEmpty) {
+    request.fields['fullName'] = fullName.trim();
+  }
 
   if (nationalId != null && nationalId.trim().isNotEmpty) {
     request.fields['nationalId'] = nationalId.trim();
@@ -282,11 +311,15 @@ class AuthService {
       final f = File(effectivePath);
       if (await f.exists()) {
         final bytes = await f.readAsBytes();
+
+        // اسم ملف آمن (يدعم / و \)
+        final filename = effectivePath.split(RegExp(r'[\\/]+')).last;
+
         request.files.add(
           http.MultipartFile.fromBytes(
             fieldName,
             bytes,
-            filename: effectivePath.split('/').last,
+            filename: filename,
           ),
         );
       } else {
@@ -320,7 +353,6 @@ class AuthService {
   }
   throw Exception(data['message'] ?? 'Registration failed');
 }
-
 
   Future<Map<String, dynamic>> resendContractorVerificationEmail({
     required String email,
