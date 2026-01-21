@@ -12,7 +12,7 @@ import 'contractor_project_details_page.dart';
 import 'contractor_stats_pages.dart';
 import 'my_contracts_page.dart';
 import 'my_offers_page.dart';
-import 'contractor_notifications_page.dart'; // ✅ الاستدعاء الجديد
+import 'contractor_notifications_page.dart';
 
 String _joinUrl(String base, String path) {
   final b = base.endsWith('/') ? base.substring(0, base.length - 1) : base;
@@ -48,17 +48,17 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
   Future<List<dynamic>>? _availableProjectsFuture;
   Future<List<Map<String, dynamic>>>? _newsFuture;
 
-  // إحصائيات
+  // Stats
   int _worksCount = 0;
   int _offersCount = 0;
   int _contractsCount = 0;
   bool _loadingStats = true;
 
-  // ✅✅✅ (تعديل) عداد الإشعارات غير المقروءة
+  // Notifications
   int _unreadNotifications = 0;
   bool _loadingNotiCount = true;
 
-  // للتحريك التلقائي للأخبار
+  // News Auto-scroll
   final PageController _newsPageController = PageController(viewportFraction: 0.85);
   int _currentNewsPage = 0;
   Timer? _newsTimer;
@@ -69,7 +69,7 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
     _syncUserAndLoad();
     _loadNews();
     _loadDashboardStats();
-    _loadNotificationCount(); // ✅✅✅ (تعديل) تحميل عداد الإشعارات
+    _loadNotificationCount();
   }
 
   @override
@@ -91,8 +91,18 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
     final u = widget.user ?? await SessionService.getUser();
     if (!mounted) return;
     setState(() => _userLocal = u);
+    
+    // ✅✅✅ FILTER LOGIC ADDED HERE ✅✅✅
     setState(() {
-      _availableProjectsFuture = _projectService.getAvailableProjectsForContractor();
+      _availableProjectsFuture = _projectService.getAvailableProjectsForContractor().then((list) {
+        // Filter out projects that are already active/completed (i.e., have contracts)
+        return list.where((p) {
+          final status = (p['status'] ?? "").toString().toLowerCase();
+          // Keep only 'open' or 'pending' (pending usually means direct request not yet accepted)
+          // Hide 'in_progress', 'active', 'completed', 'cancelled'
+          return status == 'open' || status == 'pending';
+        }).toList();
+      });
     });
   }
 
@@ -128,13 +138,12 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
     });
   }
 
-  // ✅✅✅ (تعديل) تحميل عداد الإشعارات (غير المقروءة)
   Future<void> _loadNotificationCount() async {
     if (!mounted) return;
     setState(() => _loadingNotiCount = true);
 
     try {
-      final list = await NotificationService().getMyNotifications(); // لازم تكون موجودة
+      final list = await NotificationService().getMyNotifications();
       final unread = list.where((n) => (n is Map && n['read'] == false)).length;
 
       if (!mounted) return;
@@ -188,7 +197,7 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
     await _syncUserAndLoad();
     _loadNews();
     await _loadDashboardStats();
-    await _loadNotificationCount(); // ✅✅✅ (تعديل) يحدث العداد عند السحب
+    await _loadNotificationCount();
   }
 
   Future<void> _openUrl(String url) async {
@@ -205,7 +214,7 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
       MaterialPageRoute(
         builder: (_) => ContractorProjectDetailsPage(projectId: projectId),
       ),
-    );
+    ).then((_) => _refreshAll()); // Refresh list when coming back
   }
 
   @override
@@ -273,7 +282,7 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
                         ),
                         const Spacer(),
 
-                        // ✅✅✅ (تعديل) جرس الإشعارات + عداد
+                        // Notification Icon + Badge
                         Stack(
                           clipBehavior: Clip.none,
                           children: [
@@ -283,7 +292,7 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
                                   context,
                                   MaterialPageRoute(builder: (_) => const ContractorNotificationsPage()),
                                 );
-                                _loadNotificationCount(); // يحدث العداد بعد الرجوع
+                                _loadNotificationCount();
                               },
                               icon: const Icon(Icons.notifications_outlined, color: Colors.white, size: 28),
                             ),
@@ -295,7 +304,7 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
                                 child: Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFF9EE7B7), // ✅ أخضر
+                                    color: const Color(0xFF9EE7B7),
                                     borderRadius: BorderRadius.circular(12),
                                     border: Border.all(color: const Color(0xFF0F261F), width: 2),
                                   ),
@@ -352,7 +361,7 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
                             title: "My Works",
                             count: _loadingStats ? "-" : "$_worksCount",
                             icon: Icons.engineering,
-                            color: const Color(0xFFFFA726), // Orange
+                            color: const Color(0xFFFFA726),
                             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MyWorksPage())),
                           ),
                         ),
@@ -362,7 +371,7 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
                             title: "Offers",
                             count: _loadingStats ? "-" : "$_offersCount",
                             icon: Icons.local_offer,
-                            color: const Color(0xFF29B6F6), // Blue
+                            color: const Color(0xFF29B6F6),
                             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MyOffersPage())),
                           ),
                         ),
@@ -372,7 +381,7 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
                             title: "Contracts",
                             count: _loadingStats ? "-" : "$_contractsCount",
                             icon: Icons.description,
-                            color: const Color(0xFF66BB6A), // Green
+                            color: const Color(0xFF66BB6A),
                             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MyContractsPage())),
                           ),
                         ),
@@ -382,7 +391,7 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
 
                   const SizedBox(height: 30),
 
-                  // Client Requests
+                  // Client Requests (Filtered)
                   const Padding(
                     padding: EdgeInsets.symmetric(horizontal: 20),
                     child: Text(
@@ -403,7 +412,7 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
 
                   const SizedBox(height: 30),
 
-                  // JCCA News (Auto-Scrolling)
+                  // JCCA News
                   const Padding(
                     padding: EdgeInsets.symmetric(horizontal: 20),
                     child: Text(
@@ -468,7 +477,7 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
   }
 }
 
-// ... (Helper Widgets: _OverviewCard, _ProjectsList, _ProjectCard, _NewsCard تبقى كما هي)
+// Helpers
 class _OverviewCard extends StatelessWidget {
   final String title;
   final String count;

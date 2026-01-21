@@ -995,41 +995,19 @@ const Contract = require("../models/Contract");
 exports.getMyContractors = async (req, res) => {
   try {
     const clientId = req.user._id;
-    console.log("================ DEBUG START ================");
-    console.log("1. Who is asking? User ID:", clientId);
 
-    // 1. بحث مبدئي بدون populate للتأكد من وجود العقود أصلاً
-    const rawContracts = await Contract.find({ client: clientId });
-    console.log(`2. Found ${rawContracts.length} raw contracts in DB for this client.`);
-
-    if (rawContracts.length === 0) {
-        console.log("❌ No contracts found. Checking if field name is correct...");
-        // تجربة البحث بالعكس (ربما المستخدم هو المقاول؟)
-        const reversed = await Contract.find({ contractor: clientId });
-        console.log(`   (Check) Are you listed as contractor? Found: ${reversed.length}`);
-        return res.json([]); 
-    }
-
-    // 2. تجربة الـ populate
+    // 1. البحث في جدول العقود
+    // نبحث عن كل عقد يكون فيه المستخدم الحالي هو "العميل"
     const contracts = await Contract.find({ client: clientId })
-      .populate("contractor", "name email phone profileImage");
-    
-    console.log("3. Contracts loaded with populate.");
+      .populate("contractor", "name email phone profileImage specialty city");
 
-    // 3. فحص نتيجة الـ populate
-    contracts.forEach((c, index) => {
-        console.log(`   - Contract #${index + 1} ID: ${c._id}`);
-        console.log(`     -> Contractor Field Value:`, c.contractor);
-        
-        if (!c.contractor) {
-            console.log("     ⚠️ WARNING: Contractor field is NULL or Missing! Populate failed.");
-            console.log("     -> Check your 'Contract' Schema. Does 'contractor' have ref: 'User'?");
-        }
-    });
+    console.log(`[DEBUG] Found ${contracts.length} contracts for user ${clientId}`);
 
-    // 4. تجميع المقاولين (الكود الأصلي)
+    // 2. استخراج المقاولين من العقود (مع منع التكرار)
     const contractorsMap = new Map();
+
     contracts.forEach((contract) => {
+      // نتأكد أن حقل المقاول موجود وتم جلبه بنجاح
       if (contract.contractor && contract.contractor._id) {
         contractorsMap.set(
           contract.contractor._id.toString(),
@@ -1038,31 +1016,39 @@ exports.getMyContractors = async (req, res) => {
       }
     });
 
+    // تحويل الـ Map إلى مصفوفة
     const contractors = Array.from(contractorsMap.values());
-    console.log(`4. Final contractors list size: ${contractors.length}`);
-    
-    // 5. معالجة الصور
+
+    // 3. معالجة روابط الصور (لإصلاح مسارات السيرفر المحلي)
     const baseUrl = `${req.protocol}://${req.get("host")}`;
+    
     const processedList = contractors.map((c) => {
       const obj = c.toObject ? c.toObject() : c;
+      
       let profileImageUrl = null;
       if (obj.profileImage) {
         profileImageUrl = obj.profileImage.startsWith("http")
           ? obj.profileImage
           : `${baseUrl}${obj.profileImage.replace(/\\/g, '/')}`;
       }
-      return { ...obj, profileImageUrl };
+
+      return {
+        ...obj,
+        profileImageUrl: profileImageUrl
+      };
     });
 
-    console.log("================ DEBUG END ================");
+    console.log(`[DEBUG] Returning ${processedList.length} unique contractors.`);
     return res.json(processedList);
 
   } catch (err) {
-    console.error("❌ ERROR in getMyContractors:", err);
-    return res.status(500).json({ message: err.message });
+    console.error("getMyContractors error:", err);
+    return res.status(500).json({ 
+      message: "Server error", 
+      error: err.message 
+    });
   }
-};
-// =======================
+};// =======================
 // Contractor - My Submitted Offers (across all projects)
 // GET /api/projects/contractor/my-offers
 // =======================

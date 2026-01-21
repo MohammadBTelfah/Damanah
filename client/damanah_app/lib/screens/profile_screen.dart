@@ -31,7 +31,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _service = UserService();
   bool _saving = false;
   String? _pickedImagePath;
-  // استخدام الـ Timestamp لضمان تحديث الصورة فوراً وتخطي الكاش
   int _imageBust = DateTime.now().millisecondsSinceEpoch;
 
   @override
@@ -60,7 +59,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _user = u;
       _name.text = (u["name"] ?? "").toString();
       _phone.text = (u["phone"] ?? "").toString();
-      // تحديث الـ timestamp عند تحميل بيانات جديدة
       _imageBust = DateTime.now().millisecondsSinceEpoch;
     });
   }
@@ -137,22 +135,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _saveProfile() async {
     setState(() => _saving = true);
     try {
-      // 1. إرسال التحديث للسيرفر
       final res = await _service.updateMe(
         name: _name.text.trim(),
         phone: _phone.text.trim(),
         profileImagePath: _pickedImagePath,
       );
 
-      // 2. استخراج البيانات المحدثة من الرد
       final updatedUser = Map<String, dynamic>.from(res["user"]);
       final token = await SessionService.getToken();
       if (token == null) throw Exception("No token found");
 
-      // 3. حفظ البيانات الجديدة في الـ Session (مهم جداً للـ MainShell)
       await SessionService.saveSession(token: token, user: updatedUser);
 
-      // 4. تحديث حالة الصفحة الحالية
       if (!mounted) return;
       setState(() {
         _user = updatedUser;
@@ -162,7 +156,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _imageBust = DateTime.now().millisecondsSinceEpoch;
       });
 
-      // 5. استدعاء الدالة الممرة من الـ MainShell لتحديث البار السفلي والواجهات الأخرى
       await widget.onRefreshUser();
 
       if (mounted) {
@@ -195,6 +188,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final role = (u["role"] ?? "").toString().toUpperCase();
     final email = (u["email"] ?? "").toString();
     final displayName = _name.text.trim().isEmpty ? "User" : _name.text.trim();
+
+    // ✅ استخراج البيانات الرسمية (غير القابلة للتعديل)
+    final fullNameFromId = (u["fullNameFromId"] ?? "").toString(); // الاسم الرسمي
+    final nationalId = (u["nationalId"] ?? "").toString();         // الرقم الوطني
 
     return Scaffold(
       backgroundColor: bgTop,
@@ -280,10 +277,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               child: Column(
                 children: [
-                  _tile(Icons.person_outline, "Name", displayName, onTap: () => _editField("Edit Name", _name)),
+                  // ✅ 1. الاسم الرسمي من الهوية (غير قابل للتعديل)
+                  if (fullNameFromId.isNotEmpty) ...[
+                     _tile(Icons.badge_outlined, "Official Name (ID)", fullNameFromId, isEditable: false),
+                     Divider(color: Colors.white.withOpacity(0.05), height: 1),
+                  ],
+
+                  // ✅ 2. الرقم الوطني (غير قابل للتعديل)
+                  if (nationalId.isNotEmpty) ...[
+                     _tile(Icons.fingerprint, "National ID", nationalId, isEditable: false),
+                     Divider(color: Colors.white.withOpacity(0.05), height: 1),
+                  ],
+
+                  // الاسم المعروض (قابل للتعديل)
+                  _tile(Icons.person_outline, "Display Name", displayName, onTap: () => _editField("Edit Name", _name)),
+                  
                   Divider(color: Colors.white.withOpacity(0.05), height: 1),
+                  
+                  // الإيميل (غير قابل للتعديل)
                   _tile(Icons.email_outlined, "Email", email, isEditable: false), 
+                  
                   Divider(color: Colors.white.withOpacity(0.05), height: 1),
+                  
+                  // الهاتف (قابل للتعديل)
                   _tile(Icons.phone_outlined, "Phone", _phone.text, onTap: () => _editField("Edit Phone", _phone)),
                 ],
               ),
@@ -335,7 +351,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       subtitle: Text(value.isEmpty ? "-" : value, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w500)),
       trailing: isEditable 
           ? const Icon(Icons.edit, size: 18, color: Color(0xFF9EE7B7)) 
-          : null,
+          : null, // لا نظهر أيقونة إذا كان غير قابل للتعديل
       onTap: onTap,
     );
   }
