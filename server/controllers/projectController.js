@@ -987,10 +987,6 @@ exports.getClientRecentOffers = async (req, res) => {
 // =======================
 // Client - My Contractors (ONLY RELATED)
 // =======================
-// جلب المقاولين المرتبطين بمشاريع العميل الحالي (العميل الذي وظفهم)
-const mongoose = require("mongoose");
-const Contract = require("../models/Contract"); 
-// تأكد أن مسار Contract صحيح
 
 exports.getMyContractors = async (req, res) => {
   try {
