@@ -40,14 +40,12 @@ const projectSchema = new mongoose.Schema(
 
     planFile: { type: String, default: null },
 
-    // ✅ تحديث حقول تحليل المخطط لدعم الحصر الهندسي الدقيق
     planAnalysis: {
       totalArea: Number,
       floors: Number,
       rooms: Number,
       bathrooms: Number,
       
-      // الإضافات المعمارية الجديدة:
       wallPerimeterLinear: { type: Number, default: 0 }, // إجمالي طول الجدران
       ceilingHeight: { type: Number, default: 3.0 },      // ارتفاع السقف الصافي
       

@@ -3,6 +3,6 @@ const router = express.Router();
 const tipController = require("../controllers/tipController");
 
 router.get("/", tipController.getAllTips);
-router.post("/", tipController.createTip); // ✅ هذا السطر الجديد
+router.post("/", tipController.createTip);
 
 module.exports = router;

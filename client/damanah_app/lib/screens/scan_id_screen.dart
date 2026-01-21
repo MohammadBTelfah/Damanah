@@ -30,7 +30,6 @@ class _ScanIdScreenState extends State<ScanIdScreen> {
 
   File? _image;
   bool _loading = false;
-  // String _rawText = ""; // يمكن حذفها إذا لم تكن تريد عرض النص الخام للمستخدم
 
   /// ✅ استخراج الرقم الوطني الأردني
   String? _extractJordanNationalId(String text) {

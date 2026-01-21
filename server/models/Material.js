@@ -15,7 +15,6 @@ const materialSchema = new mongoose.Schema(
     name: { type: String, required: true },        // Cement / Blocks ...
     unit: { type: String, required: true },        // bag, block, m3, ton...
 
-    // ✅ legacy (اختياري) لو بدك تضل تدعم القديم
     pricePerUnit: { type: Number },
     quantityPerM2: { type: Number },
 

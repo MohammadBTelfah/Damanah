@@ -120,9 +120,7 @@ router.get(
 // ... (تأكد أنك تضعه قبل الراوتات التي تحتوي على :id لتجنب التضارب)
 router.get("/client/recent-offers", protect, projectController.getClientRecentOffers);
 
-// ================================
-// ✅ Project by ID (آخر شي)
-// ================================
+
 router.get("/:projectId", protect, projectController.getProjectById);
 
 router.patch('/:id/status', protect, contractorOnly, projectController.updateProjectStatus);

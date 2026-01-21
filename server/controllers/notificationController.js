@@ -3,7 +3,6 @@ const Notification = require("../models/Notification");
 // GET /api/notifications
 exports.getMyNotifications = async (req, res) => {
   try {
-    // protect لازم يحط req.user + role
     const userModel =
       req.user.role === "client" ? "Client" :
       req.user.role === "contractor" ? "Contractor" : "Admin";

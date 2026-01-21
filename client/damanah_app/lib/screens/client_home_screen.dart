@@ -17,7 +17,6 @@ String _joinUrl(String base, String path) {
   return '$b/$p';
 }
 
-// ✅ دالة مساعدة ذكية للتعامل مع روابط الصور (Cloudinary أو Local)
 String? _getSmartUrl(String? path, String baseUrl) {
   if (path == null || path.trim().isEmpty) return null;
   final s = path.trim();

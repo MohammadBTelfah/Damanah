@@ -10,7 +10,6 @@ const {
   bulkInsertMaterials
 } = require("../controllers/materialController");
 
-// (اختياري) حماية + adminOnly لاحقاً
 router.post("/", createMaterial);
 router.get("/", getMaterials);
 router.get("/:id", getMaterialById);

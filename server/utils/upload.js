@@ -30,7 +30,6 @@ const planStorage = new CloudinaryStorage({
   },
 });
 
-// تعريف الـ Middleware
 const uploadProfileImage = multer({ storage: profileStorage });
 const uploadIdentityDoc = multer({ storage: docStorage });   // ✅ يدعم PDF
 const uploadContractorDoc = multer({ storage: docStorage }); // ✅ يدعم PDF الآن

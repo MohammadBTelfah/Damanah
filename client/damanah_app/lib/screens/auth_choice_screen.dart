@@ -26,7 +26,6 @@ class AuthChoiceScreen extends StatelessWidget {
                 children: [
                   InkWell(
                     onTap: () {
-                      // ✅ يرجع لصفحة اختيار الدور (RoleSelection)
                       Navigator.of(context).pushAndRemoveUntil(
                         MaterialPageRoute(
                           builder: (_) => const RoleSelectionScreen(),

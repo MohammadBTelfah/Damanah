@@ -712,7 +712,6 @@ final uri = Uri.parse(ApiConfig.join("/api/projects/clients/my-contractors"));
     String? img = (m['profileImageUrl'] ?? m['profileImage'])?.toString();
 
     if (img != null && img.isNotEmpty) {
-      // إذا كان المسار محلياً (لا يبدأ بـ http)، نقوم بدمجه مع رابط السيرفر الأساسي
       if (!img.startsWith('http')) {
         m['profileImageUrl'] = ApiConfig.join(img);
       } else {

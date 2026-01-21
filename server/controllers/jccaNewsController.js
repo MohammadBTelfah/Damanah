@@ -1,7 +1,6 @@
 const axios = require("axios");
 const cheerio = require("cheerio");
 
-// ✅ الرابط اللي بدك إياه
 const JCCA_NEWS_URL = "https://www.jcca.org.jo/NewsArchive.aspx";
 const BASE = "https://www.jcca.org.jo";
 
@@ -10,7 +9,6 @@ exports.getJccaNews = async (req, res) => {
   try {
     const limit = Math.min(parseInt(req.query.limit || "5", 10), 20);
 
-    // نحاول نجيب الأرشيف بدون lang أولاً (زي ما بدك)
     let html = null;
     let usedUrl = JCCA_NEWS_URL;
 
@@ -57,9 +55,7 @@ exports.getJccaNews = async (req, res) => {
 
       let title = $(el).text().replace(/\s+/g, " ").trim();
 
-      // إذا العنوان فاضي (بعض الروابط تكون "مشاهدة التفاصيل")
       if (!title || title.includes("مشاهدة") || title.length < 4) {
-        // حاول نجيب أقرب نص من نفس السطر/الصف
         title = $(el)
           .closest("tr, li, div")
           .text()

@@ -49,8 +49,6 @@ function extractEnglishName(text) {
   const t = normalizeText(text);
   if (!t) return null;
 
-  // 1) محاولة مباشرة: Name: XXXXX
-  // بعض أخطاء OCR: Narne / Nane بدل Name
   const directRegex =
     /\bN(?:ame|arne|ane)\b\s*[:\-]?\s*([A-Z][A-Za-z\s]{6,80})/;
 
@@ -86,8 +84,6 @@ function extractEnglishName(text) {
       if (isLikelyEnglishName(cand)) candidates.push(cand);
     }
 
-    // التقط أسطر uppercase بالكامل (غالباً الاسم يطلع uppercase)
-    // مثال: MOHAMMAD BASAM MOHAMMAD TELFAH
     if (/^[A-Z]{2,}(?:\s+[A-Z]{2,}){1,5}$/.test(line)) {
       const cand = cleanupEnglishName(line);
       if (isLikelyEnglishName(cand)) candidates.push(cand);
@@ -96,7 +92,6 @@ function extractEnglishName(text) {
 
   if (candidates.length === 0) return null;
 
-  // رجّع الأطول (غالباً اسم كامل)
   candidates.sort((a, b) => b.length - a.length);
   return candidates[0];
 }

@@ -9,5 +9,4 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-// ✅ تصدير مكتبة Cloudinary نفسها (وليس Multer)
 module.exports = cloudinary;

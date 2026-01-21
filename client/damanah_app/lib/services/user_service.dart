@@ -75,7 +75,6 @@ class UserService {
     final data = decoded is Map<String, dynamic> ? decoded : <String, dynamic>{};
 
     if (response.statusCode == 200) {
-      // ✅ ملاحظة: الباك إند سيرجع الآن رابط Cloudinary كامل في الحقل profileImage
       return data;
     }
 

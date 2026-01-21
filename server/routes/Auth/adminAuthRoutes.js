@@ -5,7 +5,6 @@ const adminAuth = require("../../controllers/Auth/adminauthcontroller");
 const { uploadProfileImage } = require("../../utils/upload");
 /* ================== ROUTES (NO AUTH) ================== */
 
-// الآن سيتم رفع الصورة إلى Cloudinary تلقائياً عند التسجيل
 router.post("/register", uploadProfileImage.single("profileImage"), adminAuth.register);
 router.post("/login", adminAuth.login);
 

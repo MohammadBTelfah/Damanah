@@ -1,7 +1,5 @@
 const bcrypt = require("bcryptjs");
 const crypto = require("crypto");
-// لم نعد بحاجة لـ fs لأن الصور على الكلاود
-// const fs = require("fs");
 
 const Client = require("../models/Client");
 const Contractor = require("../models/Contractor");
