@@ -988,26 +988,48 @@ exports.getClientRecentOffers = async (req, res) => {
 // Client - My Contractors (ONLY RELATED)
 // =======================
 // جلب المقاولين المرتبطين بمشاريع العميل الحالي (العميل الذي وظفهم)
+const mongoose = require("mongoose");
+const Contract = require("../models/Contract"); 
+// تأكد أن مسار Contract صحيح
+
 exports.getMyContractors = async (req, res) => {
   try {
-    const clientId = new mongoose.Types.ObjectId(req.user._id);
+    const clientId = req.user._id;
+    console.log("================ DEBUG START ================");
+    console.log("1. Who is asking? User ID:", clientId);
 
-    // ============================================================
-    // التغيير هنا: البحث في جدول العقود بدلاً من المشاريع
-    // نبحث عن كل العقود التي يكون فيها المستخدم الحالي هو "العميل"
-    // ============================================================
-    const contracts = await Contract.find({
-      client: clientId,
-      // يمكن إضافة شرط للحالة إذا أردت فقط العقود النشطة أو المكتملة
-      // status: { $in: ['active', 'completed'] } 
-    })
-    .populate("contractor", "name email phone profileImage contractorStatus isActive specialty city");
+    // 1. بحث مبدئي بدون populate للتأكد من وجود العقود أصلاً
+    const rawContracts = await Contract.find({ client: clientId });
+    console.log(`2. Found ${rawContracts.length} raw contracts in DB for this client.`);
 
-    // 3. استخدام Map لمنع التكرار (نفس المنطق القديم)
+    if (rawContracts.length === 0) {
+        console.log("❌ No contracts found. Checking if field name is correct...");
+        // تجربة البحث بالعكس (ربما المستخدم هو المقاول؟)
+        const reversed = await Contract.find({ contractor: clientId });
+        console.log(`   (Check) Are you listed as contractor? Found: ${reversed.length}`);
+        return res.json([]); 
+    }
+
+    // 2. تجربة الـ populate
+    const contracts = await Contract.find({ client: clientId })
+      .populate("contractor", "name email phone profileImage");
+    
+    console.log("3. Contracts loaded with populate.");
+
+    // 3. فحص نتيجة الـ populate
+    contracts.forEach((c, index) => {
+        console.log(`   - Contract #${index + 1} ID: ${c._id}`);
+        console.log(`     -> Contractor Field Value:`, c.contractor);
+        
+        if (!c.contractor) {
+            console.log("     ⚠️ WARNING: Contractor field is NULL or Missing! Populate failed.");
+            console.log("     -> Check your 'Contract' Schema. Does 'contractor' have ref: 'User'?");
+        }
+    });
+
+    // 4. تجميع المقاولين (الكود الأصلي)
     const contractorsMap = new Map();
-
     contracts.forEach((contract) => {
-      // ✅ نأخذ المقاول من العقد
       if (contract.contractor && contract.contractor._id) {
         contractorsMap.set(
           contract.contractor._id.toString(),
@@ -1017,38 +1039,29 @@ exports.getMyContractors = async (req, res) => {
     });
 
     const contractors = Array.from(contractorsMap.values());
-
-    // 4. معالجة الروابط (نفس الكود القديم)
-    const baseUrl = `${req.protocol}://${req.get("host")}`;
+    console.log(`4. Final contractors list size: ${contractors.length}`);
     
+    // 5. معالجة الصور
+    const baseUrl = `${req.protocol}://${req.get("host")}`;
     const processedList = contractors.map((c) => {
       const obj = c.toObject ? c.toObject() : c;
-      
       let profileImageUrl = null;
       if (obj.profileImage) {
         profileImageUrl = obj.profileImage.startsWith("http")
           ? obj.profileImage
           : `${baseUrl}${obj.profileImage.replace(/\\/g, '/')}`;
       }
-
-      return {
-        ...obj,
-        profileImageUrl: profileImageUrl
-      };
+      return { ...obj, profileImageUrl };
     });
 
-    console.log(`[Success] Found ${processedList.length} contractors from contracts for client: ${clientId}`);
+    console.log("================ DEBUG END ================");
     return res.json(processedList);
 
   } catch (err) {
-    console.error("getMyContractors error:", err);
-    return res.status(500).json({ 
-      message: "Server error while fetching your contractors",
-      error: err.message 
-    });
+    console.error("❌ ERROR in getMyContractors:", err);
+    return res.status(500).json({ message: err.message });
   }
 };
-
 // =======================
 // Contractor - My Submitted Offers (across all projects)
 // GET /api/projects/contractor/my-offers
