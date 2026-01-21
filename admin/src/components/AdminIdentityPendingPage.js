@@ -37,6 +37,18 @@ function getAvatarSrc(u) {
   return "";
 }
 
+// ✅ مساعد: اختر الاسم الأفضل (يدعم الAPI الجديد + القديم)
+function resolveOfficialName(u) {
+  return (
+    u?.officialName ||
+    u?.fullNameFromId ||
+    u?.identityData?.extractedName ||
+    u?.name ||
+    u?.email ||
+    "—"
+  );
+}
+
 export default function AdminIdentityPendingPage() {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState("");
@@ -63,7 +75,12 @@ export default function AdminIdentityPendingPage() {
       const data = await adminGetPendingIdentities();
       setItems(Array.isArray(data) ? data : []);
     } catch (e) {
-      setError(e?.response?.data?.message || e?.response?.data?.error || e?.message || "Failed to load");
+      setError(
+        e?.response?.data?.message ||
+          e?.response?.data?.error ||
+          e?.message ||
+          "Failed to load"
+      );
     } finally {
       setLoading(false);
     }
@@ -81,7 +98,21 @@ export default function AdminIdentityPendingPage() {
       const email = (u?.email || "").toLowerCase();
       const phone = (u?.phone || "").toLowerCase();
       const role = (u?.role || "").toLowerCase();
-      return name.includes(q) || email.includes(q) || phone.includes(q) || role.includes(q);
+
+      // ✅ دعم البحث بالاسم الرسمي لو كان موجود
+      const official = (u?.officialName || "").toLowerCase();
+      const fullNameFromId = (u?.fullNameFromId || "").toLowerCase();
+      const ocrName = (u?.identityData?.extractedName || "").toLowerCase();
+
+      return (
+        name.includes(q) ||
+        email.includes(q) ||
+        phone.includes(q) ||
+        role.includes(q) ||
+        official.includes(q) ||
+        fullNameFromId.includes(q) ||
+        ocrName.includes(q)
+      );
     });
   }, [items, search]);
 
@@ -95,7 +126,12 @@ export default function AdminIdentityPendingPage() {
       const data = await adminGetIdentityDetails(u.role, u._id);
       setDetails(data);
     } catch (e) {
-      setError(e?.response?.data?.message || e?.response?.data?.error || e?.message || "Failed to load identity");
+      setError(
+        e?.response?.data?.message ||
+          e?.response?.data?.error ||
+          e?.message ||
+          "Failed to load identity"
+      );
     } finally {
       setViewLoading(false);
     }
@@ -127,16 +163,27 @@ export default function AdminIdentityPendingPage() {
       const payload = { status: "verified" };
       if (nationalId.trim()) payload.nationalId = nationalId.trim();
 
-      const res = await adminUpdateIdentityStatus(selected.role, selected._id, payload);
+      const res = await adminUpdateIdentityStatus(
+        selected.role,
+        selected._id,
+        payload
+      );
       setSuccess(res?.message || "Identity verified");
 
       // remove from pending list
-      setItems((prev) => prev.filter((x) => !(x._id === selected._id && x.role === selected.role)));
+      setItems((prev) =>
+        prev.filter((x) => !(x._id === selected._id && x.role === selected.role))
+      );
 
       setVerifyOpen(false);
       setViewOpen(false);
     } catch (e) {
-      setError(e?.response?.data?.message || e?.response?.data?.error || e?.message || "Verify failed");
+      setError(
+        e?.response?.data?.message ||
+          e?.response?.data?.error ||
+          e?.message ||
+          "Verify failed"
+      );
     } finally {
       setVerifyLoading(false);
     }
@@ -146,17 +193,29 @@ export default function AdminIdentityPendingPage() {
     if (!window.confirm("Reject this identity request?")) return;
     setError("");
     try {
-      const res = await adminUpdateIdentityStatus(u.role, u._id, { status: "rejected" });
+      const res = await adminUpdateIdentityStatus(u.role, u._id, {
+        status: "rejected",
+      });
       setSuccess(res?.message || "Identity rejected");
-      setItems((prev) => prev.filter((x) => !(x._id === u._id && x.role === u.role)));
+      setItems((prev) =>
+        prev.filter((x) => !(x._id === u._id && x.role === u.role))
+      );
     } catch (e) {
-      setError(e?.response?.data?.message || e?.response?.data?.error || e?.message || "Reject failed");
+      setError(
+        e?.response?.data?.message ||
+          e?.response?.data?.error ||
+          e?.message ||
+          "Reject failed"
+      );
     }
   };
 
   return (
     <Box sx={{ width: "100%", px: { xs: 2, md: 3 }, py: 2 }}>
-      <Typography variant="h4" sx={{ fontWeight: 900, textAlign: "center", mb: 2 }}>
+      <Typography
+        variant="h4"
+        sx={{ fontWeight: 900, textAlign: "center", mb: 2 }}
+      >
         Pending Identity
       </Typography>
 
@@ -189,7 +248,12 @@ export default function AdminIdentityPendingPage() {
             onChange={(e) => setSearch(e.target.value)}
             fullWidth
           />
-          <Button variant="outlined" onClick={load} disabled={loading} sx={{ fontWeight: 900, py: 1.4 }}>
+          <Button
+            variant="outlined"
+            onClick={load}
+            disabled={loading}
+            sx={{ fontWeight: 900, py: 1.4 }}
+          >
             {loading ? "Loading..." : "REFRESH"}
           </Button>
         </Box>
@@ -231,23 +295,39 @@ export default function AdminIdentityPendingPage() {
                       border: "1px solid rgba(255,255,255,0.1)",
                     }}
                   >
-                    {initials(u?.name || u?.email)}
+                    {initials(resolveOfficialName(u))}
                   </Avatar>
 
                   <Box sx={{ minWidth: 0 }}>
-                    <Typography sx={{ fontWeight: 900, fontSize: 20, lineHeight: 1.1 }}>
-                      {u?.name || "—"}
+                    {/* ✅ عرض الاسم الرسمي إن وجد */}
+                    <Typography
+                      sx={{ fontWeight: 900, fontSize: 20, lineHeight: 1.1 }}
+                    >
+                      {resolveOfficialName(u)}
                     </Typography>
+
+                    {/* ✅ خلي الإيميل واضح */}
                     <Typography sx={{ opacity: 0.75, fontSize: 14 }}>
                       {u?.email || "—"}
                     </Typography>
+
+                    {/* ✅ اسم الحساب كمرجع (اختياري) */}
+                    {u?.name && u?.name !== resolveOfficialName(u) ? (
+                      <Typography sx={{ opacity: 0.55, fontSize: 12 }}>
+                        account: {u.name}
+                      </Typography>
+                    ) : null}
                   </Box>
                 </Box>
 
                 {/* CENTER: phone */}
                 <Box sx={{ textAlign: { xs: "left", md: "center" } }}>
-                  <Typography sx={{ opacity: 0.75, fontSize: 14, mb: 0.3 }}>Phone</Typography>
-                  <Typography sx={{ fontWeight: 900, fontSize: 20 }}>{u?.phone || "—"}</Typography>
+                  <Typography sx={{ opacity: 0.75, fontSize: 14, mb: 0.3 }}>
+                    Phone
+                  </Typography>
+                  <Typography sx={{ fontWeight: 900, fontSize: 20 }}>
+                    {u?.phone || "—"}
+                  </Typography>
                 </Box>
 
                 {/* RIGHT: chips + actions */}
@@ -311,18 +391,37 @@ export default function AdminIdentityPendingPage() {
             </Box>
           ) : (
             <Box sx={{ display: "grid", gap: 2 }}>
+              {/* ✅ هنا التعديل المهم */}
               <Alert severity="info">
-                {details?.name} — {details?.email} — role: <b>{details?.role}</b>
+                <b>{details?.officialName || details?.name || "—"}</b>{" "}
+                {details?.accountName && details?.accountName !== details?.officialName ? (
+                  <> (account: {details.accountName})</>
+                ) : null}
+                {" — "}
+                {details?.email || "—"} {" — role: "}
+                <b>{details?.role || "—"}</b>
               </Alert>
 
-              <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" }, gap: 2 }}>
+              <Box
+                sx={{
+                  display: "grid",
+                  gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" },
+                  gap: 2,
+                }}
+              >
                 <Paper sx={{ p: 2, borderRadius: 2 }}>
-                  <Typography sx={{ fontWeight: 900, mb: 1 }}>Identity Document</Typography>
+                  <Typography sx={{ fontWeight: 900, mb: 1 }}>
+                    Identity Document
+                  </Typography>
                   {details?.identityDocumentUrl ? (
                     <img
                       alt="identity"
                       src={details.identityDocumentUrl}
-                      style={{ width: "100%", borderRadius: 12, display: "block" }}
+                      style={{
+                        width: "100%",
+                        borderRadius: 12,
+                        display: "block",
+                      }}
                     />
                   ) : (
                     <Typography sx={{ opacity: 0.7 }}>No document</Typography>
@@ -331,11 +430,32 @@ export default function AdminIdentityPendingPage() {
 
                 <Paper sx={{ p: 2, borderRadius: 2 }}>
                   <Typography sx={{ fontWeight: 900, mb: 1 }}>Info</Typography>
+
                   <Typography sx={{ opacity: 0.85 }}>
                     Status: <b>{details?.identityStatus || "pending"}</b>
                   </Typography>
+
                   <Typography sx={{ opacity: 0.85 }}>
                     National ID: <b>{details?.nationalId || "—"}</b>
+                  </Typography>
+
+                  {/* ✅ أسماء الهوية */}
+                  <Divider sx={{ my: 1.2 }} />
+
+                  <Typography sx={{ opacity: 0.85 }}>
+                    Official Name: <b>{details?.officialName || "—"}</b>
+                  </Typography>
+
+                  <Typography sx={{ opacity: 0.85 }}>
+                    Full Name From ID: <b>{details?.fullNameFromId || "—"}</b>
+                  </Typography>
+
+                  <Typography sx={{ opacity: 0.85 }}>
+                    OCR Name: <b>{details?.extractedName || details?.identityData?.extractedName || "—"}</b>
+                  </Typography>
+
+                  <Typography sx={{ opacity: 0.85 }}>
+                    Account Name: <b>{details?.accountName || details?.name || "—"}</b>
                   </Typography>
                 </Paper>
               </Box>
