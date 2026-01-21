@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart'; // لتنسيق التاريخ (أضف intl للـ pubspec.yaml)
+import 'package:intl/intl.dart'; 
+import 'package:url_launcher/url_launcher.dart'; // ✅ تم إضافة المكتبة
 import '../services/contract_service.dart';
 import '../services/session_service.dart';
 
@@ -43,7 +44,7 @@ class _ContractsPageState extends State<ContractsPage>
 
   @override
   Widget build(BuildContext context) {
-    // تصفية القوائم بناءً على الـ status في الموديل الجديد
+    // تصفية القوائم بناءً على الـ status
     final activeList = _allContracts.where((c) {
       final s = (c["status"] ?? "").toString().toLowerCase();
       return s == "active" || s == "pending";
@@ -117,62 +118,33 @@ class _ContractCard extends StatelessWidget {
 
   const _ContractCard({required this.contract, required this.myId});
 
-  void _showDetails(BuildContext context) {
-    final terms = contract["terms"] ?? "No specific terms.";
-    final paymentTerms = contract["paymentTerms"] ?? "Not specified.";
-    final desc = contract["projectDescription"] ?? "No description.";
-    
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF15221D),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) {
-        return Container(
-          padding: const EdgeInsets.all(24),
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text("Contract Details", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 16),
-                _detailItem("Project Description", desc),
-                _detailItem("Payment Terms", paymentTerms),
-                _detailItem("Terms & Conditions", terms),
-                const SizedBox(height: 20),
-                SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: ElevatedButton(
-                    onPressed: () => Navigator.pop(ctx),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF9EE7B7),
-                      foregroundColor: Colors.black,
-                    ),
-                    child: const Text("Close"),
-                  ),
-                )
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
+  // ✅ دالة جديدة لفتح رابط الـ PDF
+  Future<void> _openContractPdf(BuildContext context) async {
+    final String? pdfUrl = contract["contractFile"]; // الرابط من الباك إند
 
-  Widget _detailItem(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: const TextStyle(color: Color(0xFF9EE7B7), fontSize: 13, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 4),
-          Text(value, style: const TextStyle(color: Colors.white70, fontSize: 14, height: 1.4)),
-        ],
-      ),
-    );
+    if (pdfUrl != null && pdfUrl.isNotEmpty) {
+      final Uri uri = Uri.parse(pdfUrl);
+      
+      try {
+        if (await canLaunchUrl(uri)) {
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+        } else {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text("Could not launch contract URL")),
+            );
+          }
+        }
+      } catch (e) {
+        debugPrint("Error launching URL: $e");
+      }
+    } else {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Contract PDF not available yet")),
+        );
+      }
+    }
   }
 
   @override
@@ -291,13 +263,13 @@ class _ContractCard extends StatelessWidget {
             width: double.infinity,
             height: 40,
             child: OutlinedButton(
-              onPressed: () => _showDetails(context),
+              onPressed: () => _openContractPdf(context), // ✅ استدعاء دالة فتح الرابط
               style: OutlinedButton.styleFrom(
                 side: BorderSide(color: Colors.white.withOpacity(0.1)),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 foregroundColor: Colors.white70,
               ),
-              child: const Text("View Contract Details"),
+              child: const Text("View Contract PDF"), // ✅ تغيير النص ليكون أدق
             ),
           )
         ],

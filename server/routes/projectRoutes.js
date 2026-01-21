@@ -111,7 +111,7 @@ router.post(
 );
 
 router.get(
-  "/clients/my-contractors",
+  "/my-contractors",  // ✅ الصحيح: بدون تكرار clients
   protect,
   clientOnly,
   projectController.getMyContractors

@@ -1,6 +1,5 @@
 const Project = require("../models/Project");
-const Contract = require("../models/Contract");
-const Contractor = require("../models/Contractor");
+const Contract = require("../models/Contract"); // ✅ تأكد من استدعاء موديل العقودconst Contractor = require("../models/Contractor");
 const Notification = require("../models/Notification");
 const generateContractPdf = require("../utils/pdf/generateContractPdf");
 
@@ -988,45 +987,42 @@ exports.getClientRecentOffers = async (req, res) => {
 // =======================
 // Client - My Contractors (ONLY RELATED)
 // =======================
-// جلب المقاولين المرتبطين بمشاريع العميل الحالي (العميل الذي وظفهم)
+
 exports.getMyContractors = async (req, res) => {
   try {
-    // 1. التأكد من تحويل المعرف إلى ObjectId لضمان مطابقة قاعدة البيانات
-    const clientId = new mongoose.Types.ObjectId(req.user._id);
+    const clientId = req.user._id;
 
-    // 2. البحث عن المشاريع التي يملكها العميل ولديها مقاول معين
-    // استخدمنا $exists للتأكد من وجود الحقل و $ne للتأكد أنه ليس null
-    const projects = await Project.find({
-      owner: clientId,
-      contractor: { $exists: true, $ne: null },
-    })
-      .select("contractor")
-      .populate("contractor", "name email phone profileImage contractorStatus isActive specialty city");
+    // 1. البحث في جدول العقود
+    // نبحث عن كل عقد يكون فيه المستخدم الحالي هو "العميل"
+    const contracts = await Contract.find({ client: clientId })
+      .populate("contractor", "name email phone profileImage specialty city");
 
-    // 3. استخدام Map لمنع تكرار المقاولين إذا كان المقاول يعمل في أكثر من مشروع لنفس العميل
+    console.log(`[DEBUG] Found ${contracts.length} contracts for user ${clientId}`);
+
+    // 2. استخراج المقاولين من العقود (مع منع التكرار)
     const contractorsMap = new Map();
 
-    projects.forEach((p) => {
-      if (p.contractor && p.contractor._id) {
+    contracts.forEach((contract) => {
+      // نتأكد أن حقل المقاول موجود وتم جلبه بنجاح
+      if (contract.contractor && contract.contractor._id) {
         contractorsMap.set(
-          p.contractor._id.toString(),
-          p.contractor
+          contract.contractor._id.toString(),
+          contract.contractor
         );
       }
     });
 
+    // تحويل الـ Map إلى مصفوفة
     const contractors = Array.from(contractorsMap.values());
 
-    // 4. معالجة الروابط لضمان عمل الصور في Flutter (تحويل المسارات المحلية لروابط كاملة)
+    // 3. معالجة روابط الصور (لإصلاح مسارات السيرفر المحلي)
     const baseUrl = `${req.protocol}://${req.get("host")}`;
     
     const processedList = contractors.map((c) => {
-      // تحويل وثيقة Mongoose إلى كائن عادي للتعديل عليه
       const obj = c.toObject ? c.toObject() : c;
       
       let profileImageUrl = null;
       if (obj.profileImage) {
-        // إذا كان الرابط يبدأ بـ http فهو من Cloudinary، وإلا فهو مسار محلي يحتاج baseUrl
         profileImageUrl = obj.profileImage.startsWith("http")
           ? obj.profileImage
           : `${baseUrl}${obj.profileImage.replace(/\\/g, '/')}`;
@@ -1034,23 +1030,21 @@ exports.getMyContractors = async (req, res) => {
 
       return {
         ...obj,
-        profileImageUrl: profileImageUrl // هذا الحقل هو ما يبحث عنه السيرفس في Flutter
+        profileImageUrl: profileImageUrl
       };
     });
 
-    // 5. إرجاع القائمة النهائية
-    console.log(`[Success] Found ${processedList.length} contractors for client: ${clientId}`);
+    console.log(`[DEBUG] Returning ${processedList.length} unique contractors.`);
     return res.json(processedList);
 
   } catch (err) {
     console.error("getMyContractors error:", err);
     return res.status(500).json({ 
-      message: "Server error while fetching your contractors",
+      message: "Server error", 
       error: err.message 
     });
   }
-};
-// =======================
+};// =======================
 // Contractor - My Submitted Offers (across all projects)
 // GET /api/projects/contractor/my-offers
 // =======================

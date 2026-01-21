@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:intl/intl.dart'; // ✅ تأكد من إضافة intl في pubspec.yaml
+import 'package:intl/intl.dart';
 
 import '../services/project_service.dart';
 import '../services/session_service.dart';
@@ -9,10 +9,7 @@ import '../services/contract_service.dart';
 class ContractorProjectDetailsPage extends StatefulWidget {
   final String projectId;
 
-  const ContractorProjectDetailsPage({
-    super.key,
-    required this.projectId,
-  });
+  const ContractorProjectDetailsPage({super.key, required this.projectId});
 
   @override
   State<ContractorProjectDetailsPage> createState() =>
@@ -39,7 +36,7 @@ class _ContractorProjectDetailsPageState
   // ✅ عقد المشروع الحالي (إذا موجود)
   Map<String, dynamic>? _myContract;
   bool _loadingContract = false;
-  bool _creatingContract = false; // ✅ حالة تحميل إنشاء العقد
+  bool _creatingContract = false;
 
   @override
   void initState() {
@@ -92,7 +89,7 @@ class _ContractorProjectDetailsPageState
 
   Future<void> _loadMyContractIfNeeded(Map<String, dynamic> p) async {
     final status = (p["status"] ?? "").toString().toLowerCase().trim();
-    
+
     // إذا المشروع لا يزال مفتوحاً، لا يوجد عقد بعد
     if (status == "open") {
       setState(() => _myContract = null);
@@ -112,8 +109,8 @@ class _ContractorProjectDetailsPageState
         final m = (c as Map).cast<String, dynamic>();
 
         final proj = m["project"];
-        final projId = proj is Map 
-            ? (proj["_id"] ?? proj["id"]).toString() 
+        final projId = proj is Map
+            ? (proj["_id"] ?? proj["id"]).toString()
             : proj?.toString();
 
         if (projId == widget.projectId) {
@@ -141,7 +138,8 @@ class _ContractorProjectDetailsPageState
   }
 
   Map<String, dynamic> _estimationOf(Map<String, dynamic> p) {
-    if (p["estimation"] is Map) return Map<String, dynamic>.from(p["estimation"]);
+    if (p["estimation"] is Map)
+      return Map<String, dynamic>.from(p["estimation"]);
     if (p["estimate"] is Map) return Map<String, dynamic>.from(p["estimate"]);
     if (p["estimationResult"] is Map) {
       return Map<String, dynamic>.from(p["estimationResult"]);
@@ -224,16 +222,14 @@ class _ContractorProjectDetailsPageState
     _snack("PDF url is missing. Please create the contract first.");
   }
 
-  // ✅ دالة جديدة: تفتح حوار لإنشاء العقد
   void _onTapCreateContract() {
     final p = _project ?? {};
-    
-    // استخراج بيانات العميل
     final ownerObj = p["owner"];
-    final clientId = (ownerObj is Map ? (ownerObj["_id"] ?? ownerObj["id"]) : ownerObj).toString();
+    final clientId =
+        (ownerObj is Map ? (ownerObj["_id"] ?? ownerObj["id"]) : ownerObj)
+            .toString();
     final contractorId = _myId();
 
-    // السعر: نأخذه من العرض المقبول أو من حقل الإدخال
     double? initialPrice;
     if (_myOfferCache != null) {
       initialPrice = double.tryParse(_myOfferCache!["price"].toString());
@@ -244,9 +240,7 @@ class _ContractorProjectDetailsPageState
       builder: (_) => _CreateContractDialog(
         initialPrice: initialPrice,
         onSubmit: (data) async {
-          // إغلاق الديالوج
           Navigator.pop(context);
-          // استدعاء API الإنشاء
           await _createContractApiCall(
             clientId: clientId,
             contractorId: contractorId,
@@ -257,7 +251,6 @@ class _ContractorProjectDetailsPageState
     );
   }
 
-  // ✅ دالة جديدة: استدعاء الـ API لإنشاء العقد
   Future<void> _createContractApiCall({
     required String clientId,
     required String contractorId,
@@ -278,9 +271,7 @@ class _ContractorProjectDetailsPageState
       );
 
       _snack("Contract Created Successfully! ✅");
-      
-      // إعادة تحميل الصفحة لجلب العقد الجديد
-      _load(); 
+      _load();
     } catch (e) {
       _snack("Failed to create contract: $e");
     } finally {
@@ -311,8 +302,8 @@ class _ContractorProjectDetailsPageState
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? _errorView()
-              : RefreshIndicator(onRefresh: _load, child: _content()),
+          ? _errorView()
+          : RefreshIndicator(onRefresh: _load, child: _content()),
     );
   }
 
@@ -321,7 +312,11 @@ class _ContractorProjectDetailsPageState
       padding: const EdgeInsets.all(16),
       children: [
         const SizedBox(height: 60),
-        Icon(Icons.error_outline, size: 46, color: Colors.white.withOpacity(0.7)),
+        Icon(
+          Icons.error_outline,
+          size: 46,
+          color: Colors.white.withOpacity(0.7),
+        ),
         const SizedBox(height: 12),
         Center(
           child: Text(
@@ -336,7 +331,9 @@ class _ContractorProjectDetailsPageState
           style: ElevatedButton.styleFrom(
             backgroundColor: const Color(0xFF9EE7B7),
             foregroundColor: Colors.black,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
             minimumSize: const Size.fromHeight(48),
           ),
           child: const Text("Retry"),
@@ -353,10 +350,24 @@ class _ContractorProjectDetailsPageState
     final total = est["totalCost"] ?? est["total"] ?? est["total_cost"];
     final currency = (est["currency"] ?? "JOD").toString();
 
-    final status = (p["status"] ?? "").toString().toLowerCase().trim();
-    // يمكن تقديم عرض فقط إذا كانت الحالة open
-    final canOffer = status.isEmpty || status == "open";
-    final isUpdate = _myOfferCache != null;
+    final projectStatus = (p["status"] ?? "").toString().toLowerCase().trim();
+    // حالة العرض الخاص بي
+    final myOfferStatus =
+        _myOfferCache?['status']?.toString().toLowerCase() ?? "";
+
+    // منطق العرض الجديد (Truth Table):
+    // 1. هل هناك عقد موجود؟
+    final hasContract = _myContract != null;
+    // 2. هل العرض مقبول؟
+    final isOfferAccepted = myOfferStatus == 'accepted';
+    // 3. هل العرض قيد الانتظار؟
+    final isOfferPending = myOfferStatus == 'pending';
+    // 4. هل لا يوجد عرض أو مرفوض؟
+    final noOfferOrRejected =
+        _myOfferCache == null || myOfferStatus == 'rejected';
+
+    // هل المشروع مفتوح بشكل عام؟
+    final isProjectOpen = projectStatus.isEmpty || projectStatus == "open";
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -396,7 +407,10 @@ class _ContractorProjectDetailsPageState
             children: [
               const Text(
                 "Client Estimate",
-                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
               const SizedBox(height: 10),
               Row(
@@ -405,7 +419,9 @@ class _ContractorProjectDetailsPageState
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      total == null ? "No estimate available." : "${_fmtNum(total)} $currency",
+                      total == null
+                          ? "No estimate available."
+                          : "${_fmtNum(total)} $currency",
                       style: const TextStyle(
                         color: Color(0xFF9EE7B7),
                         fontSize: 18,
@@ -423,16 +439,68 @@ class _ContractorProjectDetailsPageState
 
         const SizedBox(height: 12),
 
-        // ✅ عرض كرت العقد: إما لإنشاء العقد أو لعرضه
-        if (!canOffer) _contractCard(),
+        // ========================================================
+        // ✅ المنطق الجديد لظهور البطاقات (Flow Control)
+        // ========================================================
 
-        // ✅ عرض كرت العرض: لتقديم أو تحديث السعر
-        if (canOffer) _offerCard(isUpdate: isUpdate, status: status),
+        // الحالة 1: العقد موجود أو العرض مقبول => عرض كرت العقد (لإنشائه أو لعرضه)
+        if (hasContract || isOfferAccepted)
+          _contractCard()
+        // الحالة 2: العرض مرسل وقيد الانتظار => عرض كرت "Waiting"
+        else if (isOfferPending)
+          _waitingCard()
+        // الحالة 3: لا يوجد عرض أو مرفوض + المشروع مفتوح => عرض كرت "Send Offer"
+        else if (noOfferOrRejected && isProjectOpen)
+          _offerCard(isUpdate: _myOfferCache != null, status: projectStatus),
       ],
     );
   }
 
-  // ✅ كرت العقد المحدث: يعرض زر الإنشاء إذا لم يكن موجوداً
+  // ✅ كرت جديد: انتظار موافقة العميل
+  Widget _waitingCard() {
+    final price = _myOfferCache?['price'] ?? "0";
+    return _card(
+      child: Column(
+        children: [
+          const Icon(
+            Icons.hourglass_top_rounded,
+            color: Colors.orangeAccent,
+            size: 40,
+          ),
+          const SizedBox(height: 10),
+          const Text(
+            "Offer Sent",
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            "Waiting for client to accept...",
+            style: TextStyle(color: Colors.white70),
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.05),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(
+              "Your Price: $price JOD",
+              style: const TextStyle(
+                color: Color(0xFF9EE7B7),
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _contractCard() {
     final c = _myContract;
     final hasContract = c != null;
@@ -446,18 +514,29 @@ class _ContractorProjectDetailsPageState
             children: [
               const Text(
                 "Contract",
-                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
               if (_loadingContract || _creatingContract)
-                 const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
+                const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                ),
             ],
           ),
           const SizedBox(height: 10),
-
           if (_loadingContract)
-            const Text("Loading status...", style: TextStyle(color: Colors.white70))
+            const Text(
+              "Loading status...",
+              style: TextStyle(color: Colors.white70),
+            )
           else if (hasContract) ...[
-            // ✅ إذا العقد موجود، نعرض بياناته وزر الفتح
             _rowText("Agreed Price", c["agreedPrice"]),
             _rowText("Status", c["status"]),
             const SizedBox(height: 12),
@@ -469,19 +548,37 @@ class _ContractorProjectDetailsPageState
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF9EE7B7),
                   foregroundColor: Colors.black,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
                   minimumSize: const Size.fromHeight(48),
                 ),
                 label: const Text("Open Contract PDF"),
               ),
             ),
           ] else ...[
-            // ✅ إذا العقد غير موجود، نعرض زر الإنشاء
-            const Text(
-              "Contract pending creation.",
-              style: TextStyle(color: Colors.white70),
+            // ✅ بما أننا هنا، فهذا يعني أن العرض accepted ولكن العقد لم ينشأ بعد
+            Container(
+              padding: const EdgeInsets.all(12),
+              margin: const EdgeInsets.only(bottom: 12),
+              decoration: BoxDecoration(
+                color: Colors.green.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.greenAccent.withOpacity(0.5)),
+              ),
+              child: Row(
+                children: const [
+                  Icon(Icons.check_circle, color: Colors.greenAccent),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      "Offer Accepted! You can now create the contract.",
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 12),
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
@@ -490,7 +587,9 @@ class _ContractorProjectDetailsPageState
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF9EE7B7),
                   foregroundColor: Colors.black,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
                   minimumSize: const Size.fromHeight(48),
                 ),
                 label: const Text("Create Contract"),
@@ -518,7 +617,10 @@ class _ContractorProjectDetailsPageState
         childrenPadding: const EdgeInsets.only(top: 8),
         title: Text(
           "Estimate Breakdown (${items.length} items)",
-          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w700,
+          ),
         ),
         children: [
           ...items.map((it) {
@@ -542,11 +644,13 @@ class _ContractorProjectDetailsPageState
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(name,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w800,
-                      )),
+                  Text(
+                    name,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
                   const SizedBox(height: 6),
                   Text(
                     "Qty: ${qty ?? "-"} ${unit.isEmpty ? "" : unit}",
@@ -572,22 +676,21 @@ class _ContractorProjectDetailsPageState
   }
 
   Widget _offerCard({required bool isUpdate, required String status}) {
-    final canEditOffer = status.isEmpty || status == "open";
-
-    if (!canEditOffer) {
-      return const SizedBox.shrink();
-    }
-
+    // هذه الدالة تعرض فقط إذا كان لا يوجد عرض، أو العرض مرفوض
     return _card(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            isUpdate ? "Update Offer" : "Send Offer",
-            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+            isUpdate
+                ? "Update Offer"
+                : "Send Offer", // نظرياً لن نصل لل Update هنا لأن ال pending له كرت خاص
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w800,
+            ),
           ),
           const SizedBox(height: 12),
-
           TextField(
             controller: _offerPriceCtrl,
             keyboardType: TextInputType.number,
@@ -597,7 +700,9 @@ class _ContractorProjectDetailsPageState
               labelStyle: const TextStyle(color: Colors.white70),
               filled: true,
               fillColor: Colors.white.withOpacity(0.06),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(14),
                 borderSide: BorderSide(color: Colors.white.withOpacity(0.10)),
@@ -614,7 +719,9 @@ class _ContractorProjectDetailsPageState
               labelStyle: const TextStyle(color: Colors.white70),
               filled: true,
               fillColor: Colors.white.withOpacity(0.06),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(14),
                 borderSide: BorderSide(color: Colors.white.withOpacity(0.10)),
@@ -622,7 +729,6 @@ class _ContractorProjectDetailsPageState
             ),
           ),
           const SizedBox(height: 12),
-
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
@@ -630,7 +736,9 @@ class _ContractorProjectDetailsPageState
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF9EE7B7),
                 foregroundColor: Colors.black,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
                 minimumSize: const Size.fromHeight(48),
               ),
               child: _submittingOffer
@@ -669,7 +777,10 @@ class _ContractorProjectDetailsPageState
             width: 120,
             child: Text(
               label,
-              style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.w700),
+              style: const TextStyle(
+                color: Colors.white70,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
           Expanded(child: value),
@@ -681,7 +792,10 @@ class _ContractorProjectDetailsPageState
   Widget _rowText(String label, dynamic value) {
     return _row(
       label,
-      Text((value ?? "-").toString(), style: const TextStyle(color: Colors.white)),
+      Text(
+        (value ?? "-").toString(),
+        style: const TextStyle(color: Colors.white),
+      ),
     );
   }
 
@@ -693,14 +807,14 @@ class _ContractorProjectDetailsPageState
     final bg = isOpen
         ? Colors.green.withOpacity(0.18)
         : isProgress
-            ? Colors.orange.withOpacity(0.18)
-            : Colors.white.withOpacity(0.12);
+        ? Colors.orange.withOpacity(0.18)
+        : Colors.white.withOpacity(0.12);
 
     final fg = isOpen
         ? Colors.greenAccent
         : isProgress
-            ? Colors.orangeAccent
-            : Colors.white70;
+        ? Colors.orangeAccent
+        : Colors.white70;
 
     return Align(
       alignment: Alignment.centerLeft,
@@ -713,22 +827,22 @@ class _ContractorProjectDetailsPageState
         ),
         child: Text(
           s.replaceAll("_", " "),
-          style: TextStyle(color: fg, fontSize: 12, fontWeight: FontWeight.w700),
+          style: TextStyle(
+            color: fg,
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+          ),
         ),
       ),
     );
   }
 }
 
-// ✅ ويدجت داخلي (Private Widget) لنموذج إنشاء العقد
 class _CreateContractDialog extends StatefulWidget {
   final double? initialPrice;
   final Function(Map<String, dynamic>) onSubmit;
 
-  const _CreateContractDialog({
-    this.initialPrice,
-    required this.onSubmit,
-  });
+  const _CreateContractDialog({this.initialPrice, required this.onSubmit});
 
   @override
   State<_CreateContractDialog> createState() => _CreateContractDialogState();
@@ -753,7 +867,6 @@ class _CreateContractDialogState extends State<_CreateContractDialog> {
 
   @override
   Widget build(BuildContext context) {
-    // استخدمنا Dialog عادي، يمكن استخدام AlertDialog
     return Dialog(
       backgroundColor: const Color(0xFF1A2C24),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -765,24 +878,37 @@ class _CreateContractDialogState extends State<_CreateContractDialog> {
           children: [
             const Text(
               "Create Contract",
-              style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
             ),
             const SizedBox(height: 20),
-            
             _field("Agreed Price (JOD)", _priceCtrl, isNumber: true),
             _field("Duration (Months)", _durationCtrl, isNumber: true),
             _field("Payment Terms", _paymentTermsCtrl),
             _field("Terms & Conditions", _termsCtrl, lines: 3),
-
             const SizedBox(height: 10),
             Row(
               children: [
-                Expanded(child: _datePickerBtn("Start Date", _startDate, (d) => setState(() => _startDate = d))),
+                Expanded(
+                  child: _datePickerBtn(
+                    "Start Date",
+                    _startDate,
+                    (d) => setState(() => _startDate = d),
+                  ),
+                ),
                 const SizedBox(width: 10),
-                Expanded(child: _datePickerBtn("End Date", _endDate, (d) => setState(() => _endDate = d))),
+                Expanded(
+                  child: _datePickerBtn(
+                    "End Date",
+                    _endDate,
+                    (d) => setState(() => _endDate = d),
+                  ),
+                ),
               ],
             ),
-            
             const SizedBox(height: 24),
             SizedBox(
               width: double.infinity,
@@ -792,29 +918,32 @@ class _CreateContractDialogState extends State<_CreateContractDialog> {
                   foregroundColor: Colors.black,
                 ),
                 onPressed: () {
-                   final price = double.tryParse(_priceCtrl.text) ?? 0;
-                   // يمكنك إضافة validation هنا
-                   
-                   final data = {
-                     "agreedPrice": price,
-                     "duration": _durationCtrl.text,
-                     "paymentTerms": _paymentTermsCtrl.text,
-                     "terms": _termsCtrl.text,
-                     "startDate": _startDate?.toIso8601String(),
-                     "endDate": _endDate?.toIso8601String(),
-                   };
-                   widget.onSubmit(data);
+                  final price = double.tryParse(_priceCtrl.text) ?? 0;
+                  final data = {
+                    "agreedPrice": price,
+                    "duration": _durationCtrl.text,
+                    "paymentTerms": _paymentTermsCtrl.text,
+                    "terms": _termsCtrl.text,
+                    "startDate": _startDate?.toIso8601String(),
+                    "endDate": _endDate?.toIso8601String(),
+                  };
+                  widget.onSubmit(data);
                 },
                 child: const Text("Create Now"),
               ),
-            )
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _field(String label, TextEditingController ctrl, {bool isNumber = false, int lines = 1}) {
+  Widget _field(
+    String label,
+    TextEditingController ctrl, {
+    bool isNumber = false,
+    int lines = 1,
+  }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: TextField(
@@ -833,7 +962,11 @@ class _CreateContractDialogState extends State<_CreateContractDialog> {
     );
   }
 
-  Widget _datePickerBtn(String label, DateTime? date, Function(DateTime) onPick) {
+  Widget _datePickerBtn(
+    String label,
+    DateTime? date,
+    Function(DateTime) onPick,
+  ) {
     return InkWell(
       onTap: () async {
         final now = DateTime.now();
