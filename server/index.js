@@ -66,17 +66,17 @@ app.use("/api/contracts", contractRoutes);
 
 // MongoDB connection
 const PORT = process.env.PORT || 5000;
+const HOST = "0.0.0.0";
 const MONGO_URI = process.env.MONGO_URI;
+
+app.listen(PORT, HOST, () => {
+  console.log(`🚀 Server running on http://${HOST}:${PORT}`);
+});
 
 mongoose
   .connect(MONGO_URI)
   .then(() => {
     console.log("✅ MongoDB Connected");
-    const HOST = "0.0.0.0"; // لضمان العمل على المحاكي والشبكة
-
-    app.listen(PORT, HOST, () => {
-      console.log(`🚀 Server running on http://${HOST}:${PORT}`);
-    });
   })
   .catch((err) => {
     console.error("❌ MongoDB connection error:", err.message);
